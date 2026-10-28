@@ -1,0 +1,68 @@
+﻿// Developed by Neko Creative Technologies
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "NativeGameplayTags.h"
+
+namespace Dnd5e
+{
+	namespace Content
+	{
+		namespace Block
+		{
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Unsupported);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Section);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Paragraph);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(List);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Table);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Quote);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Inset);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Image);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Gallery);
+		}
+		
+		namespace Inline
+		{
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Unsupported);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Text);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Formatted);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Reference);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Annotation);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Number);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ExternalLink);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(AnchorLink);
+		}
+
+		namespace Annotation
+		{
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(DiceRoll);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(DamageRoll);
+		}
+		
+		namespace Formatting
+		{
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Bold);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Italic);
+		}
+		
+		namespace Presentation
+		{
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ReadAloud);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ExpectsLightBackground);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(ExpectsDarkBackground);
+		}
+
+		namespace ImageRole
+		{
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Map);
+			DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(PlayerMap);
+		}
+		
+	}
+	
+	namespace Category
+	{
+		DND5E_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Spell);
+	}
+}

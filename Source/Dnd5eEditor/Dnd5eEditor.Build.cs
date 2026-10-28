@@ -9,6 +9,7 @@ public class Dnd5eEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
+			"CoreUObject",
 			"Dnd5e",
 			"Dnd5eJson",
 			"UnrealEd"
