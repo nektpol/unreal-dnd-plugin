@@ -19,6 +19,16 @@
 			"Name": "Dnd5e",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "Dnd5eJson",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "Dnd5eEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	]
 }
