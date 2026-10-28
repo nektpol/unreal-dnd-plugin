@@ -36,6 +36,7 @@ Local dataset configuration and import instructions will be documented when thos
 
 ## Documentation
 
+- [Architecture](docs/architecture.md): agreed module boundaries and dependency direction.
 - [Project specification](docs/project-specification.md): scope, data boundaries, proposed architecture, queries, milestones, and acceptance criteria.
 
 ## License

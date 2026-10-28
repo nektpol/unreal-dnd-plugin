@@ -3,6 +3,8 @@
 Status: Initial specification for review  
 Date: 2026-10-28
 
+Scope clarification: class-level gains and XP lookup below are illustrative examples of reference queries, not committed API features or mandatory first-milestone deliverables. The current domain and module decisions are recorded in [Architecture](architecture.md). Detailed query designs are deferred until the shared record model and domain types have been established.
+
 ## 1. Purpose
 
 Provide an Unreal Engine plugin that reads user-supplied reference datasets, represents their content through Unreal-compatible types, and exposes stateless queries to C++ and Blueprint consumers.
@@ -182,7 +184,7 @@ Document module boundaries, data ownership, identity, edition policy, supported 
 
 ### B. First complete vertical slice
 
-Use synthetic class/progression fixtures to demonstrate external loading, normalization, class-level gains, and XP lookup through C++ and Blueprints. Include missing-data and invalid-input behavior. This milestone follows the project's central use cases.
+Select an initial content domain after its type design is agreed. Use synthetic fixtures to demonstrate external loading, normalization, record retrieval, and tag filtering through C++ and Blueprints. Include missing-data and invalid-input behavior. Class progression and XP calculations are not required for this milestone.
 
 ### C. Character reference content
 
@@ -204,8 +206,8 @@ Verify an empty-data installation, build/package exclusions, fixture provenance,
 
 - A fresh installation contains no supplied dataset or generated content and operates without network access.
 - A developer can select external synthetic fixtures without saving their absolute path in shared configuration.
-- Class-level queries distinguish fixed grants, choices, and progression values.
-- XP lookup handles thresholds, negative inputs, missing tables, and the final threshold correctly.
+- Record retrieval exposes the agreed shared metadata and the selected domain's typed fields.
+- Tag filtering and missing-record outcomes behave according to their documented contracts.
 - Same-name records and rules editions remain distinguishable.
 - Diagnostics identify invalid records and unresolved references without dumping source content.
 - Failed loads leave the previous catalog usable.
