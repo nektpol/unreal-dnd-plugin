@@ -2,7 +2,7 @@
 
 `FDnd5eJsonSpellReader::ReadSpell` converts one explicitly selected entry from supplied JSON text into [FDnd5eSpell](spell-model.md). It maps the inspected 5etools spell fields and preserves unmodeled Content explicitly. Source acceptance, typed mapping, and complete rule interpretation are separate claims. It does not load files, discover datasets, fetch URLs, resolve a catalog, or execute rules.
 
-The API lives in Dnd5eJson: [reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReader.h), [request](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadRequest.h), and [result](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h). A consuming module needs Dnd5eJson as a dependency. Json and GameplayTags are private implementation dependencies; public dependencies are Core, CoreUObject, and Dnd5e.
+The API lives in Dnd5eJson: [reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReader.h), [request](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadRequest.h), and [result](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h). A consuming module needs Dnd5eJson as a dependency. Json and GameplayTags are private implementation dependencies; public dependencies are Core, CoreUObject, Dnd5e, and Engine. Engine supplies the public base class of the module's separate Blueprint catalog-build library.
 
 For multiple supplied documents and supplementary availability, use the separate [catalog builder and query API](spell-catalog.md). ReadSpell itself remains a one-record converter and leaves availability unknown. Shared JSON status is declared in [Dnd5eJsonReadStatus.h](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonReadStatus.h).
 

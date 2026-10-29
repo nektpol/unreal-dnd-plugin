@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [252-case standard suite](testing.md) covers all 59 public model schemas/defaults and 264 reflected fields, populated copy/serialization, Content helpers, the expanded [JSON spell reader](json-spell-reader.md), and [spell availability/catalog operations](spell-catalog.md). Opt-in source-file auditing is recorded separately. Earlier batch notes retain their historical verification dates. Complete semantic rule interpretation, general reference resolution, and editor dataset loading remain pending.
+Status: current shared declarations and remaining logical contracts. The [257-case standard suite](testing.md) covers all 59 public model schemas/defaults and 264 reflected fields, populated copy/serialization, Content helpers, the expanded [JSON spell reader](json-spell-reader.md), and [native/Blueprint catalog operations](spell-catalog.md). The wrapper batch adds object ownership and functions without changing the value schemas. Opt-in source-file auditing is recorded separately. Earlier batch notes retain their historical verification dates. Complete semantic rule interpretation, general reference resolution, and editor dataset loading remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 

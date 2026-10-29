@@ -2,11 +2,12 @@
 
 The plugin can build an in-memory spell catalog from supplied JSON documents, optionally join a supplied spell-availability lookup, and answer read-only queries. The caller supplies all text and chooses when to replace the catalog. These APIs perform no filesystem or network access, select no default publication/edition, and apply no character or gameplay changes.
 
-The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h) lives in Dnd5e. The [availability reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellAvailabilityReader.h) and [catalog builder](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogBuilder.h) live in Dnd5eJson. Their operations are currently C++ APIs; their input/output structs are exported and Blueprint-visible. Blueprint callable wrappers and editor dataset-selection workflows remain pending.
+The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h) and its [Blueprint object wrapper](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalogObject.h) live in Dnd5e. The [availability reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellAvailabilityReader.h), [native builder](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogBuilder.h), and [Blueprint build library](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h) live in Dnd5eJson. The single-record readers remain native C++ APIs; catalog construction, replacement, and queries are also callable from Blueprint. Editor dataset-selection workflows remain pending.
 
 ## Contents
 
 - [Build and query](#build-and-query)
+- [Blueprint ownership and operations](#blueprint-ownership-and-operations)
 - [JSON document value](#json-document-value)
 - [Availability reader](#availability-reader)
 - [Catalog builder](#catalog-builder)
@@ -55,6 +56,36 @@ if (Result.Status == EDnd5eJsonReadStatus::Success)
 ```
 
 The application handles both build and query diagnostics. A successful operation can return warnings. Omitting the lookup leaves availability unknown; it does not prevent ordinary name/level/school queries.
+
+## Blueprint ownership and operations
+
+UDnd5eSpellCatalogObject is an exported UCLASS(BlueprintType, Transient) derived from UObject. It owns one private native FDnd5eSpellCatalog and introduces no duplicate reflected spell storage. Each constructed object has its own initially empty catalog. The consumer chooses the lifetime and scope; there is no automatically shared singleton or default dataset.
+
+Construct the native class with Construct Object from Class and retain the result in a Blueprint object-reference variable on an appropriate owner. Outer supplies context/containment; it does not replace a strong owner reference. Native owners normally retain a UPROPERTY TObjectPtr<UDnd5eSpellCatalogObject>. An Actor can own a test catalog; a consumer needing a collection across map changes can choose its GameInstance or another suitable owner.
+
+| Reflected function | Exposure | Behavior |
+| --- | --- | --- |
+| ReplaceSpells(Records, Diagnostics) | BlueprintCallable, instance | Core validated replacement; returns bool and diagnostics, preserves previous records on failure |
+| TryGetSpell(Id, Spell) const | BlueprintCallable, explicitly not pure | Exact lookup, independent copied spell output; resets output on miss |
+| QuerySpellIds(Query, Ids, Diagnostics) const | BlueprintCallable, explicitly not pure | Query validity bool, ordered `TArray<FDnd5eRecordId>` output, diagnostics |
+| GetSpellCount() const | BlueprintPure | Current int32 count |
+| GetSpellIds() const | BlueprintCallable, explicitly not pure | Independent `TArray<FDnd5eRecordId>` containing all installed IDs |
+
+Querying and copying are explicit execution nodes even though they are const. This avoids repeated scans or copying large Content trees through pure-node reevaluation. The cheap count getter is pure. Const struct/array reference parameters are inputs; non-const reference parameters are output pins. GetMutableCatalog is an unreflected C++ integration method used by the JSON wrapper, not a Blueprint node.
+
+UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(CatalogObject, Request) is a static BlueprintCallable function returning the existing FDnd5eJsonSpellCatalogBuildResult. It uses the target's native catalog and forwards the builder result unchanged. A null or invalid object returns Failure, SpellCount=0, and one Error with code Dnd5e.Json.InvalidCatalogObject and empty source location. The library owns no catalog and never clears a valid target before building.
+
+The Blueprint flow is:
+
+1. Construct and retain a catalog object.
+2. Obtain document text through the consuming application's explicit loading flow. JsonText holds the content, not a file path.
+3. Make a document with namespace/relative label, put it in a `TArray<FDnd5eJsonDocument>`, and make the build request.
+4. Call BuildSpellCatalog and inspect Status, count, and diagnostics. Continue dependent work on Success.
+5. Query the same retained object, then pass a returned ID to TryGetSpell and inspect the copied struct.
+
+For an unfiltered query leave strings/containers empty and set Level=-1. SourceId is a publication selector, so putting `-1` there searches for that literal publication and produces no matches. A valid empty query result is distinct from query failure. Without a supplied availability lookup, ordinary queries still work; availability constraints can return an incomplete-results warning.
+
+Use these object operations synchronously on the game thread for the current API. The object's lifetime follows Unreal garbage collection; catalog replacement guarantees failure preservation, not thread synchronization. This is transient in-memory data, not a saved asset, replicated catalog, file loader, or asynchronous service. Dnd5eJson publicly declares Engine for its public UBlueprintFunctionLibrary base; the core still has no JSON dependency.
 
 ## JSON document value
 
@@ -185,6 +216,7 @@ The existing Dnd5e.Json codes remain in use. Additional fixed codes are:
 | Dnd5e.Json.AvailabilityEntryNotFound | Info | Selected spell lacks a supplied lookup entry; availability remains unknown |
 | Dnd5e.Json.MissingSpellDocuments | Error | No spell document supplied |
 | Dnd5e.Json.AvailabilityNamespaceMismatch | Error | Lookup and spell-document namespaces differ |
+| Dnd5e.Json.InvalidCatalogObject | Error | Blueprint build target is null or invalid; parsing has not started |
 | Dnd5e.Catalog.InvalidSpell | Error | Required catalog identity/name/level check failed |
 | Dnd5e.Catalog.DuplicateRecordId | Error | Repeated exact ID |
 | Dnd5e.Catalog.InvalidAvailability | Error | Inconsistent presence or incomplete provider/qualification |
@@ -198,4 +230,4 @@ Availability provenance retains the lookup label and escaped provider JSON Point
 
 The [automation suite](testing.md) covers all new value contracts, exact identity/reflected equality, copy-out, atomic failures, availability shapes/presence/qualification, joins, and query behavior. The explicitly selected external snapshot build produced 969 spells with 969 matched lookup entries and 14,448 associations. No source records, passages, lookup file, or real-data reports are bundled in the repository.
 
-Editor loading, Blueprint operation wrappers, provider-record resolution, omitted-source/ambiguous reference policy, media/fluff loading, explicit edition policy, and complete typed rule semantics remain pending. Catalog availability is a reference-data index and does not implement a character's spell selection or casting system.
+Editor loading, provider-record resolution, omitted-source/ambiguous reference policy, media/fluff loading, explicit edition policy, and complete typed rule semantics remain pending. Blueprint construction/query wrappers are implemented; a consuming project's local file-reading helper is outside the plugin's API. Catalog availability is a reference-data index and does not implement a character's spell selection or casting system.

@@ -4,13 +4,15 @@ An Unreal Engine plugin being developed to represent user-supplied fifth-edition
 
 ## Status
 
-Early development. The runtime module contains shared identity, provenance, measurements, costs, dice-expression, media, spell, and structured Content values with read-only extraction helpers and an in-memory spell catalog. The JSON adapter reads supplied spell documents, optionally joins a supplied availability lookup, and retains unmodeled Content with warnings. General reference resolution, navigation, execution, media loading, and complete rule semantics remain pending.
+Early development. The runtime module contains shared identity, provenance, measurements, costs, dice-expression, media, spell, and structured Content values with read-only extraction helpers and an in-memory spell catalog. A Blueprint-visible UObject owns each catalog and exposes read-only lookup/filtering and validated replacement. The JSON adapter builds catalogs from supplied documents through native and Blueprint APIs, optionally joins a supplied availability lookup, and retains unmodeled Content with warnings. General reference resolution, navigation, execution, media loading, and complete rule semantics remain pending.
 
 The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, selected references, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
 
-The standard editor automation suite has 252 passing cases on 2026-10-29. The combined opt-in run passed 271 cases, converted all 969 records across the supplied snapshot's 18 spell files, and joined 14,448 availability associations. See [Automated tests](docs/testing.md) for evidence and limits.
+The standard editor automation suite has 257 passing cases on 2026-10-29. The combined opt-in run passed 276 cases, converted all 969 records across the supplied snapshot's 18 spell files, and joined 14,448 availability associations. This includes five new Blueprint wrapper/reflection/lifetime scenarios. See [Automated tests](docs/testing.md) for evidence and limits.
 
 The [JSON spell reader](docs/json-spell-reader.md) accepts supplied text and an explicit spell-array index. It constructs identity/provenance and typed values, retains supported metadata and fallbacks, and returns diagnostics. Unknown required top-level values fail with a default output spell. The runtime reader performs no file or network access.
+
+For Blueprint use, construct and retain a [spell catalog object](docs/spell-catalog.md#blueprint-ownership-and-operations), supply document text to BuildSpellCatalog, query IDs, and retrieve copied spell structs with TryGetSpell. Each object owns an independent transient catalog; failed replacement preserves its previous records. The consuming application still provides any file-reading or selection interface.
 
 The development host project uses Unreal Engine 5.8. Compatibility with other versions has not been established.
 
