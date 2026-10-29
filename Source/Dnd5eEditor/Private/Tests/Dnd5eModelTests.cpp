@@ -21,7 +21,7 @@ bool FDnd5eModelContractTest::RunTest(const FString& Parameters)
 	UScriptStruct* Type = Case->Type();
 	if (!TestNotNull(TEXT("The public struct is reflected and linked across modules"), Type)) { return false; }
 	TestTrue(TEXT("The value is available as a Blueprint type"), Type->GetBoolMetaData(TEXT("BlueprintType")));
-	TestEqual(TEXT("The struct belongs to the runtime module"), Type->GetOutermost()->GetName(), FString(TEXT("/Script/Dnd5e")));
+	TestEqual(TEXT("The struct belongs to its declared runtime module"), Type->GetOutermost()->GetName(), FString(Case->Module));
 	int32 ReflectedCount = 0;
 	for (TFieldIterator<FProperty> It(Type); It; ++It) { ++ReflectedCount; }
 	TestEqual(TEXT("No public field was silently omitted or added"), ReflectedCount, Case->Fields.Num());
@@ -95,6 +95,8 @@ namespace
 			{ TEXT("EDnd5eDurationKind"), &StaticEnum<EDnd5eDurationKind>, { TEXT("Unspecified"), TEXT("Instantaneous"), TEXT("Timed"), TEXT("Permanent"), TEXT("Special") } },
 			{ TEXT("EDnd5eCurrency"), &StaticEnum<EDnd5eCurrency>, { TEXT("Unspecified"), TEXT("Copper"), TEXT("Silver"), TEXT("Electrum"), TEXT("Gold"), TEXT("Platinum") } },
 			{ TEXT("EDnd5eMaterialConsumption"), &StaticEnum<EDnd5eMaterialConsumption>, { TEXT("Unspecified"), TEXT("Consumed"), TEXT("Optional"), TEXT("NotConsumed") } },
+			{ TEXT("EDnd5eDiagnosticSeverity"), &StaticEnum<EDnd5eDiagnosticSeverity>, { TEXT("Unspecified"), TEXT("Info"), TEXT("Warning"), TEXT("Error") } },
+			{ TEXT("EDnd5eJsonReadStatus"), &StaticEnum<EDnd5eJsonReadStatus>, { TEXT("NotAttempted"), TEXT("Success"), TEXT("Failure") } },
 		};
 		return Cases;
 	}

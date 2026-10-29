@@ -218,11 +218,22 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("AttackTypes"), TEXT("FGameplayTagContainer"), TEXT("") },
 			{ TEXT("AffectedCreatureTypes"), TEXT("FGameplayTagContainer"), TEXT("") },
 			{ TEXT("Relationships"), TEXT("TArray<FDnd5eRecordRelationship>"), TEXT("") },
+			{ TEXT("LevelScaling"), TEXT("TArray<FDnd5eSpellLevelScaling>"), TEXT("") },
+			{ TEXT("bHasAvailabilityData"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Availability"), TEXT("TArray<FDnd5eSpellAvailability>"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eSpellArea"), &FDnd5eSpellArea::StaticStruct, {
 			{ TEXT("Geometry"), TEXT("FDnd5eArea"), TEXT("") },
 			{ TEXT("Origin"), TEXT("FGameplayTag"), TEXT("") },
 			{ TEXT("OriginDescription"), TEXT("TArray<FDnd5eContentBlock>"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eSpellLevelScalingEntry"), &FDnd5eSpellLevelScalingEntry::StaticStruct, {
+			{ TEXT("Level"), TEXT("int32"), TEXT("0") },
+			{ TEXT("Dice"), TEXT("FDnd5eDiceExpression"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eSpellLevelScaling"), &FDnd5eSpellLevelScaling::StaticStruct, {
+			{ TEXT("Label"), TEXT("TArray<FDnd5eInlineContent>"), TEXT("") },
+			{ TEXT("Entries"), TEXT("TArray<FDnd5eSpellLevelScalingEntry>"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eSpellDuration"), &FDnd5eSpellDuration::StaticStruct, {
 			{ TEXT("Duration"), TEXT("FDnd5eDuration"), TEXT("") },
@@ -296,6 +307,85 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("Amount"), TEXT("FDnd5eNumber"), TEXT("") },
 			{ TEXT("Unit"), TEXT("EDnd5eTimeUnit"), TEXT("EDnd5eTimeUnit::Unspecified") },
 		} },
+		{ TEXT("FDnd5eDiagnostic"), &FDnd5eDiagnostic::StaticStruct, {
+			{ TEXT("Severity"), TEXT("EDnd5eDiagnosticSeverity"), TEXT("EDnd5eDiagnosticSeverity::Unspecified") },
+			{ TEXT("Code"), TEXT("FName"), TEXT("") },
+			{ TEXT("Message"), TEXT("FString"), TEXT("") },
+			{ TEXT("RelativeFilePath"), TEXT("FString"), TEXT("") },
+			{ TEXT("JsonPointer"), TEXT("FString"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eSpellAvailabilityProvider"), &FDnd5eSpellAvailabilityProvider::StaticStruct, {
+			{ TEXT("Category"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Name"), TEXT("FString"), TEXT("") },
+			{ TEXT("SourceId"), TEXT("FString"), TEXT("") },
+			{ TEXT("ShortName"), TEXT("FString"), TEXT("") },
+			{ TEXT("ClassName"), TEXT("FString"), TEXT("") },
+			{ TEXT("ClassSourceId"), TEXT("FString"), TEXT("") },
+			{ TEXT("BaseName"), TEXT("FString"), TEXT("") },
+			{ TEXT("BaseSourceId"), TEXT("FString"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eSpellAvailability"), &FDnd5eSpellAvailability::StaticStruct, {
+			{ TEXT("Provider"), TEXT("FDnd5eSpellAvailabilityProvider"), TEXT("") },
+			{ TEXT("bIsVariant"), TEXT("bool"), TEXT("false") },
+			{ TEXT("bHasUnqualifiedDefinition"), TEXT("bool"), TEXT("false") },
+			{ TEXT("DefinedInSources"), TEXT("TArray<FString>"), TEXT("") },
+			{ TEXT("Subgroups"), TEXT("TArray<FString>"), TEXT("") },
+			{ TEXT("FeatureTypes"), TEXT("TArray<FString>"), TEXT("") },
+			{ TEXT("Provenance"), TEXT("FDnd5eRecordProvenance"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eSpellQuery"), &FDnd5eSpellQuery::StaticStruct, {
+			{ TEXT("DatasetNamespace"), TEXT("FString"), TEXT("") },
+			{ TEXT("SourceId"), TEXT("FString"), TEXT("") },
+			{ TEXT("Name"), TEXT("FString"), TEXT("") },
+			{ TEXT("Level"), TEXT("int32"), TEXT("-1") },
+			{ TEXT("Schools"), TEXT("FGameplayTagContainer"), TEXT("") },
+			{ TEXT("Traits"), TEXT("FGameplayTagContainer"), TEXT("") },
+			{ TEXT("bIncludeAliases"), TEXT("bool"), TEXT("true") },
+			{ TEXT("bRequireAvailability"), TEXT("bool"), TEXT("false") },
+			{ TEXT("AvailabilityProvider"), TEXT("FDnd5eSpellAvailabilityProvider"), TEXT("") },
+			{ TEXT("AvailabilitySubgroup"), TEXT("FString"), TEXT("") },
+			{ TEXT("AvailabilityDefinedInSource"), TEXT("FString"), TEXT("") },
+			{ TEXT("bIncludeVariantAvailability"), TEXT("bool"), TEXT("true") },
+		} },
+		{ TEXT("FDnd5eJsonDocument"), &FDnd5eJsonDocument::StaticStruct, {
+			{ TEXT("JsonText"), TEXT("FString"), TEXT("") },
+			{ TEXT("Context"), TEXT("FDnd5eJsonReadContext"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellAvailabilityReadRequest"), &FDnd5eJsonSpellAvailabilityReadRequest::StaticStruct, {
+			{ TEXT("Document"), TEXT("FDnd5eJsonDocument"), TEXT("") },
+			{ TEXT("SpellName"), TEXT("FString"), TEXT("") },
+			{ TEXT("SpellSourceId"), TEXT("FString"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellAvailabilityReadResult"), &FDnd5eJsonSpellAvailabilityReadResult::StaticStruct, {
+			{ TEXT("Status"), TEXT("EDnd5eJsonReadStatus"), TEXT("EDnd5eJsonReadStatus::NotAttempted") },
+			{ TEXT("bHasEntry"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Availability"), TEXT("TArray<FDnd5eSpellAvailability>"), TEXT("") },
+			{ TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellCatalogBuildRequest"), &FDnd5eJsonSpellCatalogBuildRequest::StaticStruct, {
+			{ TEXT("SpellDocuments"), TEXT("TArray<FDnd5eJsonDocument>"), TEXT("") },
+			{ TEXT("bHasAvailabilityLookup"), TEXT("bool"), TEXT("false") },
+			{ TEXT("AvailabilityLookup"), TEXT("FDnd5eJsonDocument"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellCatalogBuildResult"), &FDnd5eJsonSpellCatalogBuildResult::StaticStruct, {
+			{ TEXT("Status"), TEXT("EDnd5eJsonReadStatus"), TEXT("EDnd5eJsonReadStatus::NotAttempted") },
+			{ TEXT("SpellCount"), TEXT("int32"), TEXT("0") },
+			{ TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonReadContext"), &FDnd5eJsonReadContext::StaticStruct, {
+			{ TEXT("DatasetNamespace"), TEXT("FString"), TEXT("") },
+			{ TEXT("RelativeFilePath"), TEXT("FString"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellReadRequest"), &FDnd5eJsonSpellReadRequest::StaticStruct, {
+			{ TEXT("JsonText"), TEXT("FString"), TEXT("") },
+			{ TEXT("Context"), TEXT("FDnd5eJsonReadContext"), TEXT("") },
+			{ TEXT("SpellIndex"), TEXT("int32"), TEXT("-1") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellReadResult"), &FDnd5eJsonSpellReadResult::StaticStruct, {
+			{ TEXT("Status"), TEXT("EDnd5eJsonReadStatus"), TEXT("EDnd5eJsonReadStatus::NotAttempted") },
+			{ TEXT("Spell"), TEXT("FDnd5eSpell"), TEXT("") },
+			{ TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
 	};
 	return Cases;
 }

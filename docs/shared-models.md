@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current implemented shared declarations and remaining logical contracts. Verification update, 2026-10-29: the [129-test automation suite](testing.md) passed, including all 45 exported model schemas/defaults, populated copy/serialization probes, and all Content helpers. Earlier batch notes below retain their historical verification dates; they do not replace this current result. Semantic validation and importing remain unimplemented.
+Status: current shared declarations and remaining logical contracts. The [252-case standard suite](testing.md) covers all 59 public model schemas/defaults and 264 reflected fields, populated copy/serialization, Content helpers, the expanded [JSON spell reader](json-spell-reader.md), and [spell availability/catalog operations](spell-catalog.md). Opt-in source-file auditing is recorded separately. Earlier batch notes retain their historical verification dates. Complete semantic rule interpretation, general reference resolution, and editor dataset loading remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -14,6 +14,7 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Record header](#record-header)
     - [Record ID](#record-id)
     - [Record relationships](#record-relationships)
+- [Diagnostics](#diagnostics)
 - [Reusable values](#reusable-values)
     - [Dice expression](#dice-expression)
     - [Numeric value](#numeric-value)
@@ -80,7 +81,7 @@ Identity and shared record-header contracts for independently identifiable domai
 
 ### Record header
 
-Implemented: exported, Blueprint-visible `FDnd5eRecordProvenance` and `FDnd5eRecordHeader` are declared in `Source/Dnd5e/Public/Records/Dnd5eRecordHeader.h`. Primary domain records compose this header; embedded values need a header only when independently identifiable. Source-reviewed and compiled in the host editor target on 2026-10-29 using the temporary `-DisablePlugin=Fab` override. Storage declarations are implemented; semantic validation and source conversion remain unimplemented. Tests were not run.
+Implemented: exported, Blueprint-visible `FDnd5eRecordProvenance` and `FDnd5eRecordHeader` are declared in [Dnd5eRecordHeader.h](../Source/Dnd5e/Public/Records/Dnd5eRecordHeader.h). Primary domain records compose this header; embedded values need a header only when independently identifiable. The spell reader populates identity/name/provenance and retained metadata; the catalog checks its indexing requirements. The current automation suite covers storage/copy and those operations. General cross-domain semantic validation remains pending.
 
 FDnd5eRecordHeader fields:
 
@@ -92,7 +93,7 @@ FDnd5eRecordHeader fields:
 | Classification | `FGameplayTagContainer`, empty | Supported record classifications, keeping distinct roles in their own tag branches |
 | Provenance | `TArray<FDnd5eRecordProvenance>`, empty | Primary origin followed by any contributing origins |
 
-Identity remains dataset namespace, category, and an opaque category-specific source key. Display names, aliases, file paths, and dataset release versions do not replace identity. Category is stored in RecordId.Category. Source-key construction, namespace assignment, equality/hashing, and cross-dataset resolution require separate contracts; this storage does not implement a catalog.
+Identity remains dataset namespace, category, and an opaque category-specific source key. Display names, aliases, file paths, and dataset release versions do not replace identity. Category is stored in RecordId.Category. The spell adapter defines its source-key construction, the caller assigns the namespace, and the core implements exact equality/hashing below. Cross-dataset reference resolution remains pending; the header itself owns no catalog.
 
 Classification tags must distinguish declared edition, source generation, and source-provided SRD/Basic Rules membership. Missing edition does not imply both editions; publication generation must not be substituted for an explicit declared edition. Preserve original values and the basis of documented derivations. Unknown imported strings must not automatically become native tags.
 
@@ -114,7 +115,7 @@ The three JSON strings optionally retain valid JSON objects containing metadata,
 
 ### Record ID
 
-Implemented: `FDnd5eRecordId` is an exported, Blueprint-visible value in `Source/Dnd5e/Public/Records/Dnd5eRecordId.h`. This type is shared by domain relationships, queries, and content references; it is not a content payload. Its integration compiled successfully in the host editor target on 2026-10-28. Runtime validation and catalog indexing remain future work.
+Implemented: `FDnd5eRecordId` is an exported, Blueprint-visible value in [Dnd5eRecordId.h](../Source/Dnd5e/Public/Records/Dnd5eRecordId.h), with equality/hash definitions in [Dnd5eRecordId.cpp](../Source/Dnd5e/Private/Records/Dnd5eRecordId.cpp). This type is shared by domain relationships, queries, and content references. The [spell catalog](spell-catalog.md) uses it as an exact index key.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -122,13 +123,13 @@ Implemented: `FDnd5eRecordId` is an exported, Blueprint-visible value in `Source
 | Category | `FGameplayTag`, invalid | Record category, such as spell or class feature |
 | SourceKey | `FString`, empty | Opaque category-specific identity produced by the adapter |
 
-A complete ID requires a nonempty namespace, a recognized record-category tag, and a nonempty source key. An empty default value represents no ID. Strings preserve spelling and case; do not apply universal trimming, lowercasing, or name-plus-source concatenation in this core type. The adapter must define category-specific canonicalization before it produces IDs. Equality, hashing, namespace assignment, and cross-dataset resolution require subsequent design before catalog indexing is implemented.
+A complete ID requires a nonempty namespace, a recognized record-category tag, and a nonempty source key. An empty default value represents no ID. Strings preserve spelling and case; do not apply universal trimming, lowercasing, or name-plus-source concatenation in this core type. The adapter defines category-specific canonicalization before producing IDs. C++ ==/!= and reflected struct equality compare the full namespace/source-key code units case-sensitively and the category tag exactly. GetTypeHash follows the same equality contract, including string length; its process-local value is not a persisted identifier or cross-platform stable hash. There is no wildcard/ancestor matching in ID equality. The [spell key policy](json-spell-reader.md#identity-and-provenance) does not define identity for other domains.
 
-The implemented initial native category is `Dnd5e::Category::Spell`, with tag `Dnd5e.Category.Spell`. This classifies the target record; `Dnd5e.Content.Inline.Reference` identifies the content payload. Other category names remain pending. Declaring a spell category does not implement a spell record or its importer.
+Native categories are Dnd5e::Category::{Spell, Class, Subclass, Species, Background, Feat, OptionalFeature, CharacterOption, Reward}. They classify record/provider domains; Dnd5e.Content.Inline.Reference identifies a content payload. The eight non-spell categories support source availability selectors and do not establish implemented domain records, importers, or their normalized ID policies.
 
 ### Record relationships
 
-Implemented: exported, Blueprint-visible `FDnd5eRecordRelationship` is declared in [Dnd5eRecordRelationship.h](../Source/Dnd5e/Public/Records/Dnd5eRecordRelationship.h). It was source-reviewed and compiled with the standard host editor build on 2026-10-29. This is a directed record link, separate from an inline Content reference with display text. Source conversion, target lookup, and consistency validation are not implemented.
+Implemented: exported, Blueprint-visible `FDnd5eRecordRelationship` is declared in [Dnd5eRecordRelationship.h](../Source/Dnd5e/Public/Records/Dnd5eRecordRelationship.h). This is a directed record link, separate from inline Content references with display text and spell availability associations. The spell reader retains reprintedAs strings as unresolved relationships. Automatic target normalization/resolution and general relationship consistency validation remain pending.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -143,6 +144,26 @@ The containing record is the origin. Kind currently uses Dnd5e::Record::Relation
 Despite its shortened name, bHasTargetRecord means a complete normalized target ID has been produced, not that a target record is loaded or resolved. False leaves TargetRecordId default-constructed; true requires a namespace, category, and source key under the shared ID contract. A retained source reference can be meaningful before normalization succeeds. A usable relationship needs a recognized Kind and either a complete target ID or a source reference with a declared syntax.
 
 A supplied SourceReference requires SourceFormat; the initial syntax identifier is 5etools. Preserve the original reference even after normalizing its target ID. A programmatically authored relationship with a complete target ID can omit both source fields. Do not universally split or rewrite source references, infer category-specific source defaults, or invent a name-plus-source ID format in this value. Those remain adapter/catalog responsibilities. Editor EditCondition metadata controls authoring visibility only.
+
+## Diagnostics
+
+Implemented: EDnd5eDiagnosticSeverity and exported, Blueprint-visible FDnd5eDiagnostic are declared in [Dnd5eDiagnostic.h](../Source/Dnd5e/Public/Diagnostics/Dnd5eDiagnostic.h). The core owns this shared value so validation/catalog code need not depend on the JSON adapter. Its five fields are reflected with EditAnywhere/BlueprintReadWrite; the implemented property category is Dnd5eDiagnostic. Declarations and the expanded 141-test suite passed on 2026-10-29.
+
+EDnd5eDiagnosticSeverity is a Blueprint-visible uint8 enum: Unspecified, Info, Warning, Error. Unspecified is the empty/default state, not an emitted severity. A producer should supply a real severity, controlled non-None code, and nonempty message for an emitted diagnostic. These requirements are not enforced by the value's constructor.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Severity | `EDnd5eDiagnosticSeverity = EDnd5eDiagnosticSeverity::Unspecified` | Severity of an emitted diagnostic |
+| Code | `FName`, None | Stable program-defined identifier, independent of message wording |
+| Message | `FString`, empty | Human-readable explanation |
+| RelativeFilePath | `FString`, empty | Logical source file relative to the selected external dataset root |
+| JsonPointer | `FString`, empty | JSON source location when known |
+
+Code is a controlled program identifier, not a Gameplay Tag or arbitrary source string to intern. Callers/tests should compare Code/Severity rather than English message wording. The default Code is NAME_None. Diagnostic creation, categorization, and logging policies belong to the producer/caller, not this value declaration.
+
+RelativeFilePath is source context, not a file to open. JsonPointer is opaque location text in the core, matching existing provenance conventions; no JSON parser dependency is introduced. An empty pointer identifies no narrower known location, including a whole-document problem. Do not invent a record ID when input fails before identity can be established. No diagnostic emitter, source validation, logging side effect, or UI is implemented by this struct.
+
+The JSON adapter composes arrays of this type into [FDnd5eJsonSpellReadResult](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h) and its [availability/catalog results](spell-catalog.md). Core catalog operations also return these diagnostics without depending on Dnd5eJson.
 
 ## Reusable values
 
@@ -446,11 +467,11 @@ Decision: organize content as an ordered tree. A document contains an ordered ar
 
 Ordinary blocks and inline items do not require catalog record IDs. Links to independently identifiable content continue to use the record-reference model. Source-provided anchors are stored in Metadata.AnchorId; document scoping and resolution remain adapter/catalog responsibilities.
 
-The reflected declarations implement an owned ordered tree rather than a graph of shared catalog records. A future loader must validate nesting and enforce a depth limit. Allowed child-kind rules, the numeric depth limit, and enforcement remain to be specified; storage ownership alone does not implement those checks.
+The reflected declarations implement an owned ordered tree rather than a graph of shared catalog records. The spell reader checks supported source shapes and enforces Content/inline depth 64 and converted-value budgets during conversion. This does not supply a general validator for arbitrarily authored reflected trees; complete recursive child-kind/semantic validation remains pending.
 
 ### Content metadata
 
-Decision: compose shared `FDnd5eContentMetadata` into both `FDnd5eContentBlock` and `FDnd5eInlineContent`, alongside Kind and Payload. It preserves source-local identity and provenance without turning ordinary content nodes into catalog records. The metadata/page types and their composition are implemented and compiled; automatic source population remains future adapter work.
+Decision: compose shared `FDnd5eContentMetadata` into both `FDnd5eContentBlock` and `FDnd5eInlineContent`, alongside Kind and Payload. It preserves source-local identity and provenance without turning ordinary content nodes into catalog records. The metadata/page types are implemented; the spell reader populates checked/inherited source identifiers, explicit pages/anchors, file labels, and pointers under its [documented policy](json-spell-reader.md#content-inline-tokens-and-fallback-behavior).
 
 Supporting source nodes that do not have a wrapper can use the same metadata type when needed. In particular, source list items can carry id/source/page fields, and `FDnd5eListItemContent` now also contains a Metadata member. This is a source-driven follow-up to the wrapper decision, not a requirement to attach metadata to every numeric value struct.
 
@@ -741,7 +762,7 @@ The plugin preserves formatting information; a consuming UI determines its visua
 
 #### Annotation content
 
-Implemented: exported, Blueprint-visible `FDnd5eAnnotationContent` is declared in `Dnd5eContentType.h`, after the inline wrapper. An annotation adds semantic information to its display content. Its kind selects a typed value, allowing different annotation families without adding unrelated optional fields to one struct. Storage, native tags, and the two extraction helpers were source-reviewed and compiled in the host editor target on 2026-10-28. No automated tests were added or run for this batch.
+Implemented: exported, Blueprint-visible `FDnd5eAnnotationContent` is declared in `Dnd5eContentType.h`, after the inline wrapper. An annotation adds semantic information to its display content. Its kind selects a typed value, allowing different annotation families without adding unrelated optional fields to one struct. Storage, native tags, typed extraction, copy/reset behavior, serialization, and dice/damage token conversion are covered by the current [automation suite](testing.md). The [reader coverage](json-spell-reader.md#current-annotation-coverage) distinguishes the two implemented annotation kinds from remaining families.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -753,9 +774,9 @@ Implemented: exported, Blueprint-visible `FDnd5eAnnotationContent` is declared i
 
 The implemented enclosing kind is `Dnd5e::Content::Inline::Annotation`, backed by `Dnd5e.Content.Inline.Annotation`. The initial semantic kinds are `Dnd5e::Content::Annotation::DiceRoll` and `DamageRoll`, backed by `Dnd5e.Content.Annotation.DiceRoll` and `Dnd5e.Content.Annotation.DamageRoll`. Both require Value to contain exactly `FDnd5eDiceExpression`.
 
-The two tags describe different levels: the inline kind chooses the content payload, while the annotation kind describes the meaning of its value. Additional annotation families can introduce their own typed values later. Do not encode their fields in JSON strings as a replacement for a future supported type. Unknown constructs must use the later unsupported-content policy rather than pretending to be a supported DiceRoll annotation.
+The two tags describe different levels: the inline kind chooses the content payload, while the annotation kind describes the meaning of its value. Additional annotation families can introduce their own typed values later. Do not encode their fields in JSON strings as a replacement for a future supported type. Unmodeled constructs use the implemented unsupported-content policy rather than pretending to be a supported DiceRoll annotation.
 
-For initial source mappings, `@dice` maps to DiceRoll and `@damage` maps to DamageRoll. Retain the full token, parse its expression argument into the shared value, and preserve explicit display content or derive the source-defined label independently. The original token retains additional label/name/damage-type arguments even before dedicated normalized fields are designed. This is an initial mapping, not full annotation support. `@autodice`, `@hit`, `@d20`, `@dc`, `@dcYourSpellSave`, chance, recharge, scaling, ability/check annotations, and legacy dice objects remain planned semantic coverage. Each needs an appropriate typed contract and verified mapping; fallback may preserve it during development but does not complete that work. Never infer a damage type from the DamageRoll kind alone.
+The implemented reader maps `@dice` to DiceRoll and `@damage` to DamageRoll. It stores the first argument as FDnd5eDiceExpression.Expression with Syntax=`5etools`, retains the complete token, and reads the explicit nonempty display argument or the expression into Display. Formula grammar validation and evaluation are not implemented; storing the typed unevaluated expression fulfills its reference-data role. Additional arguments remain in SourceAnnotation until their normalized contracts exist. `@autodice`, `@hit`, `@d20`, `@dc`, `@dcYourSpellSave`, chance, recharge, scaling, ability/check annotations, and legacy dice objects remain planned typed coverage. Each needs an appropriate contract and verified mapping; the reader currently preserves unmodeled tokens as Unsupported with warnings. Never infer a damage type from the DamageRoll kind alone.
 
 The implemented APIs on `UDnd5eContentLibrary` are:
 
@@ -859,7 +880,7 @@ This is a compatibility mechanism for incomplete versions, unknown extensions, a
 
 Issue a diagnostic instead of silently discarding the construct. Consumers can show available text or an unsupported-content placeholder; preservation does not imply semantic support. Original fragments are opaque source data, not executable content, and follow the external-content storage and distribution boundaries.
 
-Unsupported data that prevents interpretation of a required structural field still fails validation under the catalog-loading policy. The fallback is not a blanket exemption from validation failures. The enum, shared payload, two native tags, and both typed extractors below are implemented, source-reviewed, and compiled in the host editor target on 2026-10-28. No automated tests were added or run for this batch. Source capture, diagnostics, validation, and resource-limit enforcement remain later work.
+Unsupported data that prevents interpretation of a required structural field still fails validation under the catalog-loading policy. The fallback is not a blanket exemption from validation failures. The enum, shared payload, two native tags, and both typed extractors below were implemented on 2026-10-28. The expanded [spell reader](json-spell-reader.md#content-inline-tokens-and-fallback-behavior) now retains unmodeled JSON Content nodes and inline tokens with warnings; malformed known structures fail. Full semantic validation remains pending.
 
 #### Fallback payload
 
@@ -908,4 +929,4 @@ A future adapter may create a fallback for an unknown source kind or an unsuppor
 
 Malformed selected JSON, invalid required identity fields, and unsupported required structural relationships remain load failures. Fallback must not make corrupt known payloads, missing mandatory references, or invalid required data appear valid. Specific child contracts, such as a gallery admitting an explicit unsupported placeholder, require an intentional rule; a fallback is not permission for arbitrary nesting.
 
-Before source import is enabled, establish configurable per-fragment and aggregate retention limits, depth limits, and diagnostic behavior. Exact defaults belong to the validation/loading milestone. Exceeding a limit must not silently truncate a fragment and claim full preservation. This storage batch adds no truncation flag, parser, loader, cache, or limit enforcement.
+The [spell reader](json-spell-reader.md#limits-and-diagnostics) enforces fixed input/depth/value limits plus shared Content conversion and table-expansion budgets. Broader loading still needs configurable retention/loading policies. Exceeding a limit must not silently truncate a fragment and claim full preservation. The shared storage types themselves add no parser, loader, cache, or limit enforcement.

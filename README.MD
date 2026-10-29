@@ -4,15 +4,19 @@ An Unreal Engine plugin being developed to represent user-supplied fifth-edition
 
 ## Status
 
-Early development. The runtime module contains shared record-ID, dice-expression, numeric, and media-reference values, content structs, and read-only extraction helpers for sections, paragraphs, text, formatted spans, record references, external links, document-local anchor links, annotations, numbers, lists, tables, quotes, insets, images, and galleries. DiceRoll and DamageRoll annotations preserve expressions without evaluating them. Image/gallery storage retains media locations and descriptive metadata without loading files or fetching URLs. Reference/link storage retains display content and destinations; parsing, target lookup, and navigation are not implemented. Dataset importing, catalog loading, and complete format coverage are not implemented. The capabilities below describe the intended scope.
+Early development. The runtime module contains shared identity, provenance, measurements, costs, dice-expression, media, spell, and structured Content values with read-only extraction helpers and an in-memory spell catalog. The JSON adapter reads supplied spell documents, optionally joins a supplied availability lookup, and retains unmodeled Content with warnings. General reference resolution, navigation, execution, media loading, and complete rule semantics remain pending.
 
-Record headers/provenance, casting times, distances/ranges, areas, time spans/durations, money, components, and spell-area/duration associations are also implemented as Blueprint-visible storage. The first FDnd5eSpell record and directed record relationships are implemented with role-specific classification fields and shared native tags. JSON source conversion, target resolution, and semantic validation remain pending.
+The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, selected references, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
 
-The editor automation suite passed all 129 tests on 2026-10-29, covering the implemented storage/reflection, Content helpers, native tags, and synthetic spell composition. See [Automated tests](docs/testing.md) for coverage and limits.
+The standard editor automation suite has 252 passing cases on 2026-10-29. The combined opt-in run passed 271 cases, converted all 969 records across the supplied snapshot's 18 spell files, and joined 14,448 availability associations. See [Automated tests](docs/testing.md) for evidence and limits.
+
+The [JSON spell reader](docs/json-spell-reader.md) accepts supplied text and an explicit spell-array index. It constructs identity/provenance and typed values, retains supported metadata and fallbacks, and returns diagnostics. Unknown required top-level values fail with a default output spell. The runtime reader performs no file or network access.
 
 The development host project uses Unreal Engine 5.8. Compatibility with other versions has not been established.
 
-Unsupported block and inline payloads can retain source fragments and optional plain display text. Their typed extraction helpers are implemented; automatic source capture and diagnostics are not. Preservation does not establish semantic rule support.
+Unsupported block/inline payloads retain whole JSON nodes or inline token fragments when typed mapping is incomplete. Successful source acceptance with fallback warnings does not establish full semantic rule support.
+
+Annotation infrastructure is implemented: `@dice` and `@damage` become typed DiceRoll/DamageRoll annotations containing unevaluated dice expressions, display content, and their original tokens. Other annotation kinds currently remain preserved fallbacks. See [current annotation coverage](docs/json-spell-reader.md#current-annotation-coverage); extending typed representation does not require implementing gameplay execution.
 
 ## Planned capabilities
 
@@ -44,6 +48,8 @@ Local dataset configuration and import instructions will be documented when thos
 ## Documentation
 
 - [Automated tests](docs/testing.md): coverage, running the development suite, fixtures, and verification limits.
+- [JSON spell reader](docs/json-spell-reader.md): implemented text-to-spell API, accepted subset, identity, preservation, limits, and diagnostics.
+- [Spell availability and catalog](docs/spell-catalog.md): supplied-document builds, availability joins, atomic replacement, exact-ID lookup, and read-only filters.
 - [Source-format compatibility](docs/source-format-compatibility.md): verified source mappings, normalization requirements, and known gaps for the audited dataset snapshot.
 - [Shared models](docs/shared-models.md): reusable metadata, measurements, money, components, and structured content.
 - [Spell model](docs/spell-model.md): implemented spell fields, classification roles, relationships, and spell-specific area/duration context.

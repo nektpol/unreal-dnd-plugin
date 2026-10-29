@@ -1,8 +1,8 @@
 # Spell model
 
-Status: FDnd5eSpell, its shared relationship value, supporting structs, and revised native tags are implemented as in-memory storage. Source review and the standard host editor build passed on 2026-10-29. The subsequent [automation suite](testing.md) passed all 129 tests on the same date, including the spell contract, populated reflected round trip, contextual associations, and nested copy isolation. JSON importing, catalog loading, normalization, and semantic validation remain unimplemented.
+Status: FDnd5eSpell and its supporting values are implemented, including typed level-based dice scaling and supplementary availability associations. The [JSON spell reader](json-spell-reader.md) maps the inspected primary spell fields and structured Content. The [catalog builder and query API](spell-catalog.md) join a supplied availability lookup and index normalized spells. Unmodeled Content is retained with warnings. General reference resolution and complete rule semantics remain pending. See [automated verification](testing.md) for current build/test evidence.
 
-The exported, Blueprint-visible record is declared in [Dnd5eSpell.h](../Source/Dnd5e/Public/Spells/Dnd5eSpell.h). Its two spell-context wrappers are in [Dnd5eSpellTypes.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellTypes.h). These declarations represent reference data; consumers own character state and gameplay execution. [Source-format compatibility](source-format-compatibility.md) distinguishes storage from implemented source support.
+The exported, Blueprint-visible record is declared in [Dnd5eSpell.h](../Source/Dnd5e/Public/Spells/Dnd5eSpell.h). Its area/duration associations and two level-scaling structs are in [Dnd5eSpellTypes.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellTypes.h). These declarations represent reference data; consumers own character state and gameplay execution. [Source-format compatibility](source-format-compatibility.md) distinguishes storage, mapped input, preservation, and semantic support.
 
 ## Contents
 
@@ -12,6 +12,8 @@ The exported, Blueprint-visible record is declared in [Dnd5eSpell.h](../Source/D
 - [Shared tag ownership](#shared-tag-ownership)
 - [Spell-area association](#spell-area-association)
 - [Spell-duration association](#spell-duration-association)
+- [Level-based dice scaling](#level-based-dice-scaling)
+- [Spell availability](#spell-availability)
 - [Classification and relationship mappings](#classification-and-relationship-mappings)
 - [Remaining design work](#remaining-design-work)
 
@@ -23,7 +25,7 @@ Local inspection found 969 records in the supplied 5etools 2.39.0 spells-*.json 
 
 ## Implemented fields
 
-All 22 fields are reflected with EditAnywhere/BlueprintReadWrite in category Dnd5e|Spell. Strings, tags, arrays, and nested structs use default construction; Level explicitly defaults to -1. The table follows declaration order.
+All 25 fields are reflected with EditAnywhere/BlueprintReadWrite in category Dnd5e|Spell. Strings, tags, arrays, and nested structs use default construction; Level explicitly defaults to -1 and bHasAvailabilityData to false. The table follows declaration order.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -49,6 +51,9 @@ All 22 fields are reflected with EditAnywhere/BlueprintReadWrite in category Dnd
 | AttackTypes | `FGameplayTagContainer`, empty | Melee/ranged spell-attack classifications |
 | AffectedCreatureTypes | `FGameplayTagContainer`, empty | Source-provided affected creature-type classifications |
 | Relationships | `TArray<FDnd5eRecordRelationship>`, empty | Directed relationships, initially source reprints |
+| LevelScaling | `TArray<FDnd5eSpellLevelScaling>`, empty | Ordered labeled groups of source-provided character-level dice entries |
+| bHasAvailabilityData | `bool = false` | A matching supplementary lookup entry was supplied and converted |
+| Availability | `TArray<FDnd5eSpellAvailability>`, empty | Source associations with classes, subclasses, species, and other providers |
 
 A valid standard supplied level is 0–9; zero means cantrip, while -1 means unspecified. Default construction creates an incomplete authoring value, not a validated spell. Header.RecordId.Category is supplied as Category::Spell by the author/adapter; there is no constructor that automatically selects it. Header holds the record name and provenance, avoiding duplicate Name/source/page fields.
 
@@ -78,7 +83,7 @@ Reusable types have one canonical definition in [Shared models](shared-models.md
 
 Native tag namespaces describe concepts, not their first consuming model. CastingTimes.Unit uses shared Activation::Time designations; Schools uses Magic::School; AttackTypes uses Attack::Mode::{Melee,Ranged}. The field retains its implemented name AttackTypes, but the stored axis is mode, independent of weapon/spell origin. These indexes are not a full attack definition.
 
-Spell::Trait::Ritual means the spell supports ritual casting. It does not choose a casting mode, add a renderer-generated time entry to CastingTimes, or calculate extra time/cost. Trait::Concentration is shared with other contexts and can appear in Traits as a derived filter summary of represented requirements. Keep the detailed requirement association described below; no automatic summary builder is implemented.
+Spell::Trait::Ritual means the spell supports ritual casting. It does not choose a casting mode, add a renderer-generated time entry to CastingTimes, or calculate extra time/cost. Trait::Concentration is shared with other contexts. The spell reader derives its Traits filter summary from represented duration requirements while preserving the detailed association below. Manually edited values have no automatic observer that keeps this summary synchronized.
 
 Damage, condition, ability-score, creature, range, area, and relationship concepts also use shared identities. Preserve role through its field rather than flattening all tags into Header.Classification or a generic effect list. Header.Classification is for record-level metadata roles under a supported classification contract. Its complete edition/membership vocabulary and derivation policy are pending.
 
@@ -107,9 +112,64 @@ Requirements uses shared Dnd5e::Trait::Concentration, with tag Dnd5e.Trait.Conce
 
 Concentration during casting needs its own future contextual rule contract. A Minute/Hour timing designation does not itself implement or fully express those rules. This storage does not maintain concentration or end effects.
 
+## Level-based dice scaling
+
+These spell-specific values are declared in Dnd5eSpellTypes.h and exported with DND5E_API. They reuse the shared [dice-expression value](shared-models.md#dice-expression); expressions remain unevaluated.
+
+FDnd5eSpellLevelScalingEntry:
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Level | `int32 = 0` | Supplied character-level threshold; zero is an unspecified authoring default |
+| Dice | `FDnd5eDiceExpression`, default-constructed | Original expression with source syntax identifier |
+
+FDnd5eSpellLevelScaling:
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Label | `TArray<FDnd5eInlineContent>`, empty | Source-supplied label, including supported formatting or retained fallback tokens |
+| Entries | `TArray<FDnd5eSpellLevelScalingEntry>`, empty | Positive level keys sorted numerically within this group |
+
+The reader accepts scalingLevelDice as one object or an array of objects, each containing required string label and scaling object. Scaling keys must be positive int32 digit strings; values must be nonempty expression strings. Imported Dice.Syntax is `5etools`. Group order is preserved, level entries are sorted, and missing levels are not invented. An absent level-one entry remains absent. This is structured reference data, not a leveling system, dice evaluator, interpolation rule, or universal representation of every higher-level effect.
+
+## Spell availability
+
+The exported, Blueprint-visible structs below are declared in [Dnd5eSpellAvailability.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellAvailability.h), with EditAnywhere/BlueprintReadWrite fields in Dnd5e|SpellAvailability. They represent source associations, separately from generic directed reprint relationships and from character eligibility or gameplay grants.
+
+FDnd5eSpellAvailabilityProvider:
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Category | `FGameplayTag`, invalid | Provider category, such as Class or Subclass |
+| Name | `FString`, empty | Provider name; full name for a subclass |
+| SourceId | `FString`, empty | Provider publication identifier |
+| ShortName | `FString`, empty | Subclass short name retained from its lookup key |
+| ClassName | `FString`, empty | Parent class name for a subclass |
+| ClassSourceId | `FString`, empty | Parent class publication identifier |
+| BaseName | `FString`, empty | Base species name when supplied |
+| BaseSourceId | `FString`, empty | Base species publication identifier when supplied |
+
+This is a source selector. No normalized class/subclass/species record ID is fabricated before those domain adapters define identity. Empty optional context stays empty; a matching name alone does not prove provider identity across publications or parent classes.
+
+FDnd5eSpellAvailability:
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Provider | `FDnd5eSpellAvailabilityProvider`, default-constructed | Linked source provider selector |
+| bIsVariant | `bool = false` | Association came from the classVariant branch |
+| bHasUnqualifiedDefinition | `bool = false` | Source includes a declaration without a definition-source qualifier |
+| DefinedInSources | `TArray<FString>`, empty | Explicit definition-publication qualifiers, preserving order |
+| Subgroups | `TArray<FString>`, empty | Source subSubclasses qualifiers on this subclass association |
+| FeatureTypes | `TArray<FString>`, empty | Raw optional-feature type codes; no arbitrary tag registration |
+| Provenance | `FDnd5eRecordProvenance`, default-constructed | Supplementary lookup origin and retained identity evidence |
+
+bHasAvailabilityData=false with an empty Availability array means unknown or not supplied. True with an empty array means the supplied lookup explicitly contains an empty entry. True with associations means known links; it does not assert complete character rules. Nonempty links with a false presence flag are inconsistent and rejected by the catalog. The primary ReadSpell operation leaves availability unknown; the optional catalog join populates it.
+
+Unqualified declarations and explicit DefinedInSources can coexist. Unqualified does not mean defined in every publication. Class variants remain distinct links; subclass full/short names, parent context, and subgroup lists remain associated. Provider.SourceId is a publication selector; Provenance.SourceId stays empty for the generated lookup, which has no single publication. The [catalog reference](spell-catalog.md#availability-source-mapping) defines source shapes, ordering, matching, and failure behavior.
+
 ## Classification and relationship mappings
 
-This table records intended source mappings, not implemented parser behavior. Native identities are declared in [Native tag declarations](../Source/Dnd5e/Public/Dnd5eTags.h).
+This table records intended source mappings. The [reader's accepted subset](json-spell-reader.md#accepted-spell-subset) identifies which mappings are actually implemented; the full table is not a coverage claim. Native identities are declared in [Native tag declarations](../Source/Dnd5e/Public/Dnd5eTags.h).
 
 | Source field | Stored field/role | Native branch |
 | --- | --- | --- |
@@ -129,12 +189,16 @@ This table records intended source mappings, not implemented parser behavior. Na
 
 Damage/condition indexes do not establish an unconditional effect, amount, target, timing, or exception. SavingThrowAbilities does not encode a DC, success/failure outcome, or save sequence. AbilityCheckAbilities does not imply a skill proficiency. Creature-type indexes are not complete eligibility predicates. Preserve full descriptions until the corresponding typed rule models exist.
 
-The retained field spellings ConditionInflicted and bHasTargetRecord follow the implementation. Reprint links do not make records equivalent, automatically choose a newer edition, or implement target lookup. Source-key normalization and category-specific defaults require an adapter contract before IDs can be constructed reliably.
+The retained field spellings ConditionInflicted and bHasTargetRecord follow the implementation. Reprint links do not make records equivalent, automatically choose a newer edition, or implement target lookup. The [reader identity contract](json-spell-reader.md#identity-and-provenance) now defines versioned spell keys from explicit name/source; other categories and omitted-source references need their own policies.
+
+The JSON module supplies [FDnd5eJsonSpellReadRequest](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadRequest.h), [FDnd5eJsonSpellReadResult](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h), and the [ReadSpell operation](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReader.h). The operation enforces its documented Success/Failure contract; manually authored result values are ordinary mutable storage.
 
 ## Remaining design work
 
-Storage for the first spell record is complete; source importing and complete spell/rule semantics are not. The focused reader still needs an accepted input/Content subset, category-specific ID construction, provenance/classification mapping, unknown-field preservation/diagnostics, and validation behavior.
+Storage for the first spell record and the limited text-to-spell reader are complete. Full source importing and spell/rule semantics are not. The reader rejects unhandled required forms; it does not silently fill the corresponding fields with defaults and claim success.
 
-Further contracts are required for scalingLevelDice, complete areaTags/miscTags meaning, publication/membership metadata, supplemental fluff/media loading, and spell-list availability from the separate generated lookup. Do not use header metadata JSON as a generic replacement for unmodeled rule data, or treat absence of inline class lists as absence of class availability. Unknown attack labels, schools, and other values need explicit handling rather than a guessed native tag.
+The reader maps scalingLevelDice, known combat classifications, and selected publication/membership metadata. The catalog builder additionally joins the separate generated availability lookup when supplied. Complete areaTags/miscTags meaning and supplemental fluff/media loading remain pending. Do not use header metadata JSON as a replacement for unmodeled rule data, or treat absence of inline class lists as absence of class availability. Unknown attack labels, schools, and other required values fail explicitly rather than producing guessed tags.
 
-The next slice reads a deliberately limited external source record into this in-memory shape. Expanding it to every source record, 2014/2024 rules, supplementary files, and all semantics expressed in prose remains subsequent work. Reference data and classification storage do not implement casting, combat, or character progression.
+Further work includes more typed inline/rule semantics, provider/general reference resolution, additional supplementary files, complete document/media support, explicit edition policy, and comprehensive 2014/2024 rule coverage. Acceptance with retained fallbacks does not establish full semantic interpretation. Reference data and classifications do not implement casting, combat, or character progression.
+
+Annotation work is an expansion of existing support: the reader already creates typed DiceRoll and DamageRoll annotations with unevaluated FDnd5eDiceExpression values. [Other annotation families](json-spell-reader.md#current-annotation-coverage) still need typed contracts/mappings. The goal remains structured reference data; rolling expressions or applying their effects is consumer-owned.

@@ -1,5 +1,13 @@
 // Frozen native vocabulary from the reviewed public tag contract.
 { &Dnd5e::Content::Block::Unsupported, TEXT("Dnd5e.Content.Block.Unsupported") },
+{ &Dnd5e::Category::Class, TEXT("Dnd5e.Category.Class") },
+{ &Dnd5e::Category::Subclass, TEXT("Dnd5e.Category.Subclass") },
+{ &Dnd5e::Category::Species, TEXT("Dnd5e.Category.Species") },
+{ &Dnd5e::Category::Background, TEXT("Dnd5e.Category.Background") },
+{ &Dnd5e::Category::Feat, TEXT("Dnd5e.Category.Feat") },
+{ &Dnd5e::Category::OptionalFeature, TEXT("Dnd5e.Category.OptionalFeature") },
+{ &Dnd5e::Category::CharacterOption, TEXT("Dnd5e.Category.CharacterOption") },
+{ &Dnd5e::Category::Reward, TEXT("Dnd5e.Category.Reward") },
 { &Dnd5e::Content::Block::Section, TEXT("Dnd5e.Content.Block.Section") },
 { &Dnd5e::Content::Block::Paragraph, TEXT("Dnd5e.Content.Block.Paragraph") },
 { &Dnd5e::Content::Block::List, TEXT("Dnd5e.Content.Block.List") },

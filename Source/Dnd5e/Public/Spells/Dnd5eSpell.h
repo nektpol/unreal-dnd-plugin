@@ -10,6 +10,7 @@
 #include "Values/Dnd5eRange.h"
 #include "Values/Dnd5eComponents.h"
 #include "Spells/Dnd5eSpellTypes.h"
+#include "Spells/Dnd5eSpellAvailability.h"
 #include "Content/Dnd5eContentType.h"
 #include "Dnd5eSpell.generated.h"
 
@@ -83,4 +84,13 @@ struct DND5E_API FDnd5eSpell
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Spell")
 	TArray<FDnd5eRecordRelationship> Relationships; 
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Spell")
+	TArray<FDnd5eSpellLevelScaling> LevelScaling;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Spell")
+	bool bHasAvailabilityData = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Spell")
+	TArray<FDnd5eSpellAvailability> Availability;
 };

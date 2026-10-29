@@ -63,6 +63,10 @@ namespace Dnd5eTests
 			{
 				Test.TestTrue(*Label, String->GetPropertyValue(Value).IsEmpty());
 			}
+			else if (const FNameProperty* Name = CastField<FNameProperty>(Property))
+			{
+				Test.TestTrue(*Label, Name->GetPropertyValue(Value).IsNone());
+			}
 			else if (const FArrayProperty* Array = CastField<FArrayProperty>(Property))
 			{
 				Test.TestEqual(*Label, FScriptArrayHelper(Array, Value).Num(), 0);
@@ -114,6 +118,11 @@ namespace Dnd5eTests
 			{
 				String->SetPropertyValue(Value, FString::Printf(TEXT("Synthetic %d: Ω 雪 \"quoted\"\nsecond line"), Seed));
 			}
+			else if (FNameProperty* Name = CastField<FNameProperty>(Property))
+			{
+				// Controlled names only: never intern arbitrary fixture/source text.
+				Name->SetPropertyValue(Value, FName(TEXT("Dnd5e.Tests.StorageProbe")));
+			}
 			else if (FArrayProperty* Array = CastField<FArrayProperty>(Property))
 			{
 				FScriptArrayHelper Items(Array, Value);
@@ -160,6 +169,11 @@ namespace Dnd5eTests
 			if (FStrProperty* String = CastField<FStrProperty>(Property))
 			{
 				String->SetPropertyValue(Value, String->GetPropertyValue(Value) + TEXT(" / changed"));
+				return true;
+			}
+			if (FNameProperty* Name = CastField<FNameProperty>(Property))
+			{
+				Name->SetPropertyValue(Value, FName(TEXT("Dnd5e.Tests.ChangedProbe")));
 				return true;
 			}
 			if (FArrayProperty* Array = CastField<FArrayProperty>(Property))

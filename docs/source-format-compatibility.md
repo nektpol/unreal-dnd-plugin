@@ -2,7 +2,7 @@
 
 Status: source-structure audit, 2026-10-28. Reference snapshot: 5etools 2.39.0. This document distinguishes implemented storage types from importer support.
 
-Current runtime verification, 2026-10-29: all 129 tests in the [automation suite](testing.md) passed for implemented storage, reflection, extraction, tags, and synthetic composition. This runtime suite does not load the external source snapshot and does not establish source-parser coverage. Historical audit/batch notes below retain their original verification scope.
+Current runtime verification, 2026-10-29: the [252-case standard suite](testing.md) covers the expanded [JSON spell reader](json-spell-reader.md), [availability reader, catalog builder, and queries](spell-catalog.md). The combined 271-case run converts all 969 spell records across 18 files and joins 14,448 availability associations. Historical audit/batch notes retain their original scope. Acceptance with fallback/reference warnings is not full typed rule interpretation or broad compatibility with every content category.
 
 ## Scope and conclusion
 
@@ -10,7 +10,25 @@ The audit parsed all 519 JSON files under the supplied snapshot's data directory
 
 The implemented structs are broadly suitable as a normalized Unreal content model. They are not direct JSON equivalents: the source uses short discriminators, strings containing inline markup, CSS-class strings, and several alternate object shapes. A format adapter must translate those representations into the typed tree.
 
-No importer is implemented or exercised by this audit. Complete or lossless source-format coverage is not established. No runtime tests or compilation were performed for this audit. Only structure, numeric characteristics, and code behavior were inspected; source passages were not copied into the documentation.
+The original structural audit did not implement or exercise an importer, compile runtime code, or run automation. Later reader work is recorded separately below. Complete or lossless source-format coverage is not established; source passages were not copied into the documentation.
+
+## First text-to-spell reader
+
+The [ReadSpell API](json-spell-reader.md) converts an explicitly selected object from supplied text. It now maps material/royalty components, exact copper costs and consumption, point/area/special ranges, all four duration kinds, combat indexes, level-dice scaling, recursive sections/lists/tables/quotes/insets, and selected inline tokens. Unknown required top-level properties and malformed known structures fail. Unmodeled Content nodes/tokens are retained explicitly with warnings; no complete semantic interpretation is claimed.
+
+The source check corrected an earlier design assumption: referenceSources is a string array, while otherSources/additionalSources are source/page object arrays. The reader validates and retains those distinct forms. The local source filter and renderer also treat referenceSources as a string list. No source default, rules-edition classification, geometry from areaTags, or catalog target is inferred.
+
+The remaining tables describe the broader model/source relationship. They are not an exhaustive list of imported forms; use the implemented reader reference for current acceptance behavior.
+
+The first reader batch passed a single selected 2014 PHB smoke case. The expansion audits all primary spell files in the supplied 2.39.0 snapshot, including PHB/XPHB sources. That audit exposed the roll-cell zero convention: matching bounds convert zero to 100 while display 0/00 is retained, without altering ordinary numeric cells. Source files/content and real-data reports remain outside Git. Supplementary availability is verified separately below; fluff/media files and future/custom source forms are not covered by primary-record acceptance.
+
+## Supplementary spell availability and catalog
+
+The [availability mapping](spell-catalog.md#availability-source-mapping) was checked against the local generated lookup and its consuming code in js/utils.js. The optional build joins data/generated/gendata-spell-source-lookup.json to primary spells by source/name selectors. Every one of the 969 supplied primary records matched a lookup entry; 14,448 leaf associations were represented. This establishes the inspected join and source associations, not character eligibility or complete casting rules.
+
+Class/classVariant preserve true declarations and definition-publication qualifiers, including null unqualified entries. Subclasses retain parent class publication/name, subclass publication/short/full names, and subSubclasses qualifiers. Race links use Category::Species with optional base identity; optional-feature links retain featureType codes. Background, feat, and reward links are supported and observed. The upstream charoption branch is supported with synthetic coverage but absent from this snapshot. False leaves, unknown selected metadata, malformed supported forms, and case-colliding keys fail explicitly.
+
+Missing lookup entries remain unknown, distinct from explicit empty entries. The core indexes exact, case-sensitive record IDs while source lookup selection uses Unreal case-insensitive string matching; no universal cross-category ID scheme, JavaScript Unicode-folding equivalence, omitted-source default, or edition preference is asserted. Availability providers remain source selectors until their own domain adapters define normalized identities. Catalog replacement is all-or-nothing; required-reference resolution is not implemented by these indexing checks.
 
 ## Mapping of implemented types
 
@@ -39,7 +57,7 @@ Storage update, 2026-10-29: 14 supporting structs, six enums, and 31 native tags
 
 Aggregate inspection of 969 spell source records found 971 casting-time entries; condition and note are separate strings where present. Observed measured ranges and duration amounts are integral. Material costs are integer copper values, up to 2,500,000 in this snapshot. The shared FDnd5eNumber representation preserves the distinction between integer, decimal, and retained numeric literals. These are source-shape observations, not successful import results.
 
-| Implemented representation | Source mapping constraint; adapter not implemented |
+| Implemented representation | Broader source mapping constraint; see reader reference for implemented subset |
 | --- | --- |
 | FDnd5eRecordHeader / FDnd5eRecordProvenance | Name, source/page, category-specific identity inputs and contributing origins require explicit assembly. Classification evidence remains separate from declared edition; no inspected spell has an explicit edition field. |
 | FDnd5eCastingTime | time[].number/unit; bonus maps to BonusAction. condition and note remain separate Content documents. Renderer-generated ritual entries are not source casting times. |
@@ -52,11 +70,17 @@ The source parser additionally supports inches/yards, same-plane unlimited range
 
 ## Spell record storage
 
-On 2026-10-29, the completed FDnd5eSpell and FDnd5eRecordRelationship declarations were reviewed and the standard host editor build passed with Fab disabled in project configuration. All 22 spell fields and five relationship fields match the [Spell model](spell-model.md) and [shared relationship contract](shared-models.md#record-relationships). Current runtime public declarations contain 45 exported structs, 12 enums, 121 native tags, and 18 Content extraction helpers. These counts describe code shapes, not imported records or rule-coverage percentages. No automated tests were run.
+On 2026-10-29, the completed FDnd5eSpell and FDnd5eRecordRelationship declarations were reviewed and the standard host editor build passed with Fab disabled in project configuration. All 22 spell fields and five relationship fields match the [Spell model](spell-model.md) and [shared relationship contract](shared-models.md#record-relationships). At that storage batch, runtime public declarations contained 45 exported structs, 12 enums, 121 native tags, and 18 Content extraction helpers. These counts describe code shapes, not imported records or rule-coverage percentages. No automated tests were run.
 
-The spell retains separate school, activation, duration, description, damage/condition role, ability-score, attack-mode, creature-type, and relationship values. The implemented names are ConditionInflicted and bHasTargetRecord. The relationship flag means target-ID availability, not successful catalog resolution. Reprint strings can be retained before normalization; importing or resolving them is still unimplemented.
+The spell retains separate school, activation, duration, description, damage/condition role, ability-score, attack-mode, creature-type, and relationship values. The implemented names are ConditionInflicted and bHasTargetRecord. The relationship flag means target-ID availability, not successful catalog resolution. The reader now imports reprint strings as unresolved relationships; target normalization/resolution remains pending.
 
-This completes the first in-memory record declaration, not a complete spell adapter. Scaling expressions, full classification vocabularies, availability lookups, metadata assembly, source normalization, and prose-rule semantics remain pending. The supported input subset and preservation/diagnostic behavior must be specified before the focused reader is implemented.
+The storage batch completed an in-memory record declaration. The expanded reader adds the inspected spell classifications, typed level/dice scaling, metadata/identity assembly, and recursive document conversion. The later catalog batch adds availability joins and read-only queries. Omitted-source/category resolution, complete inline semantics, and prose-rule interpretation remain pending.
+
+## JSON read-value declarations
+
+The shared FDnd5eDiagnostic and Dnd5eJson context/request/result declarations were compiled and verified in their original 141-test batch across 49 public structs/215 fields. The current suite also includes the later reader/scaling expansion; see [Automated tests](testing.md). The original value cases check controlled FName codes, correct module ownership/exports, raw request preservation, and complete result-value replacement.
+
+These value declarations alone do not parse source records or enforce result consistency. The actual [request](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadRequest.h) and [result](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h) headers declare their fields/defaults. The later [reader operation](json-spell-reader.md) now emits diagnostics, constructs identity, and enforces its producer contract; file selection/loading and catalog construction remain outside that runtime operation.
 
 ## Native tag taxonomy review
 
@@ -250,7 +274,7 @@ Supplied width and height each occurred 17,048 times and were positive integers:
 
 Long-term support requires [semantic coverage](shared-models.md#semantic-coverage) across all fifth-edition rules in scope, including semantics expressed in prose. The structural audit below covers source forms and storage mappings; it is not an exhaustive inventory or verification of D&D rules. Fallback preservation can support partial releases while semantic models are incomplete, but does not mark the corresponding rules supported. Difficulty-class forms such as `@dc` and `@dcYourSpellSave` are examples of unfinished typed work, with no special priority established by their use as examples.
 
-The implemented [fallback storage contract](shared-models.md#fallback-payload) uses one shared FDnd5eUnsupportedContent payload for distinct block/inline Unsupported kinds. It distinguishes retained Text from Json fragments and leaves source kind/location on wrapper Metadata. The enum, payload, tags, and both extractors were source-reviewed and compiled in the host editor target on 2026-10-28. Source capture, diagnostics, resource limits, and semantic validation remain future work. Retaining a fragment does not count as verified interpretation of its rule semantics.
+The implemented [fallback storage contract](shared-models.md#fallback-payload) uses one shared payload for distinct block/inline Unsupported kinds. The expanded spell reader captures complete unmodeled JSON Content nodes and individual unmodeled inline tokens, preserving source metadata and numeric tokens under input/conversion budgets. Recursive semantic validation remains future work. Retaining a fragment does not count as verified interpretation of its rule semantics.
 
 The implemented link-storage contracts distinguish [external destinations](shared-models.md#external-link-content) from [anchors in the owning document](shared-models.md#document-local-anchor-link-content). Their payloads, native kinds, and extractors are source-reviewed and compiled. Source `@link` and external typed hrefs inform the first mapping; `@area` informs current-document anchors. Source normalization, parsing, lookup, and navigation are unimplemented. Cross-document book/adventure selectors and website-internal routes require separate contracts or fallback.
 

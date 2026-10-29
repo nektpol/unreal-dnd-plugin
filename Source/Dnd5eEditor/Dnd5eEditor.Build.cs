@@ -14,6 +14,7 @@ public class Dnd5eEditor : ModuleRules
 			"GameplayTags",
 			"Dnd5e",
 			"Dnd5eJson",
+			"Json",
 			"UnrealEd"
 		});
 	}

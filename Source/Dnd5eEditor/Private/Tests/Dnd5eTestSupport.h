@@ -9,6 +9,13 @@
 #include "Spells/Dnd5eSpell.h"
 #include "Values/Dnd5eMoney.h"
 #include "Values/Dnd5eTimeSpan.h"
+#include "Diagnostics/Dnd5eDiagnostic.h"
+#include "Readers/Dnd5eJsonReadContext.h"
+#include "Readers/Dnd5eJsonSpellReadRequest.h"
+#include "Readers/Dnd5eJsonSpellReadResult.h"
+#include "Readers/Dnd5eJsonSpellAvailabilityReader.h"
+#include "Readers/Dnd5eJsonSpellCatalogBuilder.h"
+#include "Catalog/Dnd5eSpellCatalog.h"
 #include "UObject/UnrealType.h"
 
 namespace Dnd5eTests
@@ -25,6 +32,7 @@ namespace Dnd5eTests
 		const TCHAR* Name;
 		UScriptStruct* (*Type)();
 		TArray<FFieldContract> Fields;
+		const TCHAR* Module = TEXT("/Script/Dnd5e");
 	};
 
 	// These are frozen expectations reviewed against the public model contract,

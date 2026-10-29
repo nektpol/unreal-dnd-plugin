@@ -57,6 +57,14 @@ namespace Dnd5e
 	namespace Category
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Spell, "Dnd5e.Category.Spell", "Tag for spell content");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Class, "Dnd5e.Category.Class", "Class record category");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Subclass, "Dnd5e.Category.Subclass", "Subclass record category; parent class is part of its source identity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Species, "Dnd5e.Category.Species", "Species record category, including source-format race selectors");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Background, "Dnd5e.Category.Background", "Background record category");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Feat, "Dnd5e.Category.Feat", "Feat record category");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(OptionalFeature, "Dnd5e.Category.OptionalFeature", "Optional feature record category");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(CharacterOption, "Dnd5e.Category.CharacterOption", "Character creation option record category");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Reward, "Dnd5e.Category.Reward", "Reward record category");
 	}
 
 	namespace Activation::Time

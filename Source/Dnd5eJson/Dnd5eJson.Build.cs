@@ -4,13 +4,20 @@ public class Dnd5eJson : ModuleRules
 {
 	public Dnd5eJson(ReadOnlyTargetRules Target) : base(Target)
 	{
+
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+
+		PublicDependencyModuleNames.AddRange(new string[]
+		{
+			"Core",
+			"CoreUObject",
+			"Dnd5e",
+		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"Core",
-			"Dnd5e",
-			"Json"
+			"Json",
+			"GameplayTags",
 		});
 	}
 }
