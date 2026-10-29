@@ -6,7 +6,7 @@ This document is the canonical definition of reusable value and content types. D
 
 The record-header contract below defines the identity, classification, and provenance concepts used by these models. The [Spell model](spell-model.md) explains how spells compose these shared types.
 
-The implemented Content types are a normalized model, not the source JSON schema. [Source-format compatibility](source-format-compatibility.md) records verified mappings and known gaps from 5etools 2.39.0. Structure and field-type compatibility do not establish an implemented importer or full dataset coverage.
+The implemented Content and supporting value types are a normalized model, not the source JSON schema. [Source-format compatibility](source-format-compatibility.md) records verified mappings and known gaps from 5etools 2.39.0. Structure and field-type compatibility do not establish an implemented importer or full dataset coverage.
 
 ## Contents
 
@@ -29,6 +29,7 @@ The implemented Content types are a normalized model, not the source JSON schema
     - [Money](#money)
     - [Components](#components)
         - [Material component](#material-component)
+    - [Supporting value tags](#supporting-value-tags)
 - [Shared structured content](#shared-structured-content)
     - [Semantic coverage](#semantic-coverage)
     - [Structure and storage](#structure-and-storage)
@@ -47,6 +48,11 @@ The implemented Content types are a normalized model, not the source JSON schema
         - [Tables](#tables)
             - [Table-cell base fields](#table-cell-base-fields)
             - [Table field contract](#table-field-contract)
+                - [FDnd5eTableRollRange](#fdnd5etablerollrange)
+                - [FDnd5eTableCellContent additions](#fdnd5etablecellcontent-additions)
+                - [FDnd5eTableRowContent](#fdnd5etablerowcontent)
+                - [FDnd5eTableColumnContent](#fdnd5etablecolumncontent)
+                - [FDnd5eTableContent](#fdnd5etablecontent)
         - [Quotes](#quotes)
         - [Insets](#insets)
     - [Media content](#media-content)
@@ -72,17 +78,37 @@ Identity and shared record-header contracts for independently identifiable domai
 
 ### Record header
 
-Decision: primary domain records contain an `FDnd5eRecordHeader` through composition. The header contains record identity, display name, classification Gameplay Tags, and provenance. Exact header field declarations remain pending; the supporting record-ID value is implemented, but the header is not.
+Implemented: exported, Blueprint-visible `FDnd5eRecordProvenance` and `FDnd5eRecordHeader` are declared in `Source/Dnd5e/Public/Records/Dnd5eRecordHeader.h`. Primary domain records compose this header; embedded values need a header only when independently identifiable. Source-reviewed and compiled in the host editor target on 2026-10-29 using the temporary `-DisablePlugin=Fab` override. Storage declarations are implemented; semantic validation and source conversion remain unimplemented. Tests were not run.
 
-Supporting values do not require headers unless they are independently identifiable records. This shared header avoids duplicated metadata definitions without requiring inheritance between domain records.
+FDnd5eRecordHeader fields:
 
-The shared record concepts have these agreed meanings:
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| RecordId | `FDnd5eRecordId`, default-constructed | Shared namespace/category/source-key identity |
+| DisplayName | `FString`, empty | Human-readable record name |
+| Aliases | `TArray<FString>`, empty | Additional source-provided names |
+| Classification | `FGameplayTagContainer`, empty | Supported record classifications, keeping distinct roles in their own tag branches |
+| Provenance | `TArray<FDnd5eRecordProvenance>`, empty | Primary origin followed by any contributing origins |
 
-- **Identity:** dataset namespace, content category, and a category-specific source key. The namespace identifies a logical collection independently of its local directory. The format adapter constructs the source key; the core treats it as opaque. A display name alone is insufficient to identify a record. File paths and dataset release versions are not identity components.
-- **Classification:** Gameplay Tags describe categories and other supported classifications; they do not identify individual records. Declared edition, source-generation classification, and source-provided SRD/Basic Rules membership remain separate. Missing edition metadata does not imply both editions. Preserve original values and distinguish explicit metadata from documented derivation. Unknown imported strings must not automatically become native tags.
-- **Provenance:** retain the publication/source identifier, numeric or textual page reference, dataset-relative file path, source locator, and original identity fields where available. Preserve contributing origins when a record is assembled from multiple inputs. Absolute dataset roots belong to local catalog configuration. Provenance and membership flags do not establish licensing permission.
+Identity remains dataset namespace, category, and an opaque category-specific source key. Display names, aliases, file paths, and dataset release versions do not replace identity. Category is stored in RecordId.Category. Source-key construction, namespace assignment, equality/hashing, and cross-dataset resolution require separate contracts; this storage does not implement a catalog.
 
-Source-key construction, cross-dataset resolution, classification vocabularies, and the concrete provenance/header declarations still require detailed contracts. These concepts do not imply an implemented catalog or importer.
+Classification tags must distinguish declared edition, source generation, and source-provided SRD/Basic Rules membership. Missing edition does not imply both editions; publication generation must not be substituted for an explicit declared edition. Preserve original values and the basis of documented derivations. Unknown imported strings must not automatically become native tags.
+
+FDnd5eRecordProvenance fields:
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| SourceId | `FString`, empty | Original publication/source identifier |
+| Page | `FDnd5ePageReference`, default-constructed | Numeric/textual page reference when supplied |
+| RelativeFilePath | `FString`, empty | File relative to the selected external dataset root |
+| JsonPointer | `FString`, empty | Source record locator in that file |
+| IdentityFieldsJson | `FString`, empty | Optional JSON object retaining original category-specific identity fields |
+| ClassificationEvidenceJson | `FString`, empty | Optional JSON object retaining original classification values and the basis of any derived tags |
+| AdditionalMetadataJson | `FString`, empty | Optional JSON object retaining other record metadata not otherwise represented |
+
+When available, Provenance[0] is the primary source record; subsequent entries retain contributing origins in deterministic order. Ordering does not itself define inheritance or override precedence. The adapter must define assembly rules. Per-record provenance complements per-node Content Metadata.
+
+The three JSON strings optionally retain valid JSON objects containing metadata, identity inputs, and classification evidence. Empty means no retained object. They are not a second copy of a spell body or a replacement for typed rule relationships. Absolute dataset roots and release configuration belong outside these values in untracked local configuration. Source identifiers and membership metadata do not establish licensing permission.
 
 ### Record ID
 
@@ -154,127 +180,150 @@ The inspected renderer supports both internal and external media hrefs. All imag
 
 ## Measurements and timing
 
-Reusable measurements, geometry, and timing definitions. Domain-specific context remains in its owning model.
+Reusable measurements, geometry, and timing values. All declarations below are exported and Blueprint-visible. Source-reviewed and compiled in the host editor target on 2026-10-29 using the temporary `-DisablePlugin=Fab` override. Storage declarations are implemented; semantic validation and source conversion remain unimplemented. Tests were not run.
 
 ### Distance
 
-Decision: introduce reusable `FDnd5eDistance` for measured distances, shared by range and area representations.
+`EDnd5eDistanceUnit : uint8` and `FDnd5eDistance` are in `Values/Dnd5eDistance.h` under the runtime public directory. Enum members: Unspecified, Inches, Feet, Yards, Miles.
 
-| Field | Meaning |
-| --- | --- |
-| Amount | Numeric magnitude of the measurement |
-| Unit | Distance-unit enum |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Amount | `FDnd5eNumber`, default-constructed | Numeric magnitude, separate from unit |
+| Unit | `EDnd5eDistanceUnit = EDnd5eDistanceUnit::Unspecified` | Supplied measurement unit |
 
-Exact numeric storage and supported enum members remain to be agreed. Preserve the measurement's unit; do not implicitly convert source measurements into Unreal world units.
-
-Self, Touch, Sight, and other non-measured range concepts remain Gameplay Tags on the range representation, not distance-unit enum members.
+Amount uses the existing numeric value: select Integer for the observed integral spell measurements; preserve decimal/literal representations under the numeric contract when needed. An unspecified amount is not zero. Supplied distances require a finite nonnegative amount and a known unit; context may impose stricter constraints. Preserve units rather than converting to Unreal centimeters. Self, Touch, Sight, and Unlimited remain range classifications, not measurement units.
 
 ### Range
 
-Decision: introduce reusable `FDnd5eRange` separately from area geometry.
+`FDnd5eRange` is in `Values/Dnd5eRange.h`. Kind uses the Range::Kind tags in [Supporting value tags](#supporting-value-tags).
 
-| Field | Meaning |
-| --- | --- |
-| Kind | Gameplay Tag identifying measured distance, Self, Touch, Sight, Unlimited, Special, or another supported range concept |
-| Distance | Optional FDnd5eDistance, present for a measured range |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Kind | `FGameplayTag`, invalid | Distance, Self, Touch, Sight, Unlimited, UnlimitedSamePlane, or Special |
+| bHasDistance | `bool = false` | Whether Distance is supplied |
+| Distance | `FDnd5eDistance`, default-constructed | Measurement when the kind requires it |
+| Description | `TArray<FDnd5eContentBlock>`, empty | Optional source explanation or special range details |
 
-Area shape and dimensions belong to `FDnd5eArea`. A source-defined self-originating cone maps to a Self range and a separate area describing the cone and its length. Do not interpret an area's size as the targeting range.
-
-Exact tag names, representation of optional fields in Unreal reflection, and detailed validation remain pending. No corresponding structs have been implemented.
+Distance kind requires bHasDistance and a meaningful Distance. Non-measured kinds leave the flag false and the nested value default-constructed. Description preserves special explanations. Area geometry is separate: a source-defined self-originating cone has Self range plus an area measurement, not a targeting range equal to the cone length. No targeting execution is introduced.
 
 ### Area
 
-Decision: introduce reusable `FDnd5eArea` to describe geometry independently of range and origin context.
+`FDnd5eArea` and its dimension value are in `Values/Dnd5eArea.h`. Shape uses Area::Shape tags.
 
-| Field | Meaning |
-| --- | --- |
-| Shape | Gameplay Tag identifying cone, sphere, cube, line, or another supported shape |
-| Dimensions | `TArray<FDnd5eAreaDimension>` for named measurements such as radius, length, width, height, or edge length |
-| Description | Optional structured descriptive content for details not expressed by the measurements |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Shape | `FGameplayTag`, invalid | Supported shape/area-form classification |
+| Dimensions | `TArray<FDnd5eAreaDimension>`, empty | Named dimensions explicitly available from source |
+| Description | `TArray<FDnd5eContentBlock>`, empty | Remaining source explanation |
 
-Dimensions are optional. Unspecified dimensions must remain distinguishable from zero; do not invent dimensions from shape classification alone. Shape-specific validation rules remain to be detailed.
-
-Area origin, such as self or a selected point, belongs to separate context rather than the geometry struct. This permits geometry reuse across spells, creatures, items, and other content.
+Preserve partial geometry when measurements are not supplied. Radius and Emanation are distinct source area forms, not instructions to infer a collision shape or merge them into Sphere. Origin belongs to the owning domain context, such as FDnd5eSpellArea. The values contain no actors, collision components, or affected-target calculations.
 
 #### Named dimensions
 
-Decision: store dimensions as an array of reusable `FDnd5eAreaDimension` entries.
+`EDnd5eAreaDimensionKind : uint8` has members Unspecified, Radius, Diameter, Length, Width, Height, EdgeLength, Extent. `FDnd5eAreaDimension` uses this enum to interpret its measurement.
 
-| Field | Meaning |
-| --- | --- |
-| Kind | Gameplay Tag identifying radius, length, width, height, edge length, or another supported dimension kind |
-| Measurement | `FDnd5eDistance` |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Kind | `EDnd5eAreaDimensionKind = EDnd5eAreaDimensionKind::Unspecified` | Measurement role |
+| Measurement | `FDnd5eDistance`, default-constructed | Value and its original unit |
 
-An absent dimension has no array entry. Validate duplicate dimension kinds and combinations that contradict the shape. Preserve partial geometry when source data leaves dimensions unspecified, rather than filling missing measurements with zero. Exact tag names and the per-shape validation matrix remain pending. No structs have been implemented.
+An absent dimension has no array entry. Extent retains a source-defined outward measure without asserting a radius from a point. Duplicate dimension kinds and incompatible shape/dimension combinations require future validation. Do not invent line widths, cylinder heights, or zero dimensions to fill absent source values.
 
 ### Time measurement
 
-Decision: introduce reusable `FDnd5eTimeSpan` containing a numeric amount and a time-unit enum. Units include round, minute, hour, day, and other supported time units; the exact enum vocabulary and numeric representation remain pending.
+`EDnd5eTimeUnit : uint8` and `FDnd5eTimeSpan` are in `Values/Dnd5eTimeSpan.h`. Enum members: Unspecified, Turn, Round, Minute, Hour, Day, Week, Month, Year.
 
-`FDnd5eDuration.Time` optionally contains this type. Preserve the supplied unit without automatically converting rounds into seconds. Casting time remains a separate type because action-economy units and casting conditions have different semantics. This type represents reference data, not a running timer.
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Amount | `FDnd5eNumber`, default-constructed | Number of time units |
+| Unit | `EDnd5eTimeUnit = EDnd5eTimeUnit::Unspecified` | Measurement unit |
+
+A supplied duration measurement requires a meaningful positive amount and known unit. Preserve Turn versus Round; do not convert them into seconds. This value is reference data, not FTimespan or a running timer. Casting time has a separate contract because it includes action-economy units and casting conditions.
 
 ### Duration
 
-Decision: introduce reusable `FDnd5eDuration` independently of spell-specific concentration requirements.
+`EDnd5eDurationKind : uint8` and `FDnd5eDuration` are in `Values/Dnd5eDuration.h`. Enum members: Unspecified, Instantaneous, Timed, Permanent, Special.
 
-| Field | Meaning |
-| --- | --- |
-| Kind | Gameplay Tag identifying instantaneous, timed, permanent, special, or another supported duration category |
-| Time | Optional FDnd5eTimeSpan |
-| Is maximum | Indicates up to the specified time |
-| Ending conditions | Gameplay Tag Container for source-defined ending conditions such as dispelled or triggered |
-| Description | Optional structured descriptive content for additional details |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Kind | `EDnd5eDurationKind = EDnd5eDurationKind::Unspecified` | Duration representation |
+| bHasTime | `bool = false` | Whether Time is supplied |
+| Time | `FDnd5eTimeSpan`, default-constructed | Meaningful for a timed duration |
+| bIsMaximum | `bool = false` | Source says up to the supplied time |
+| EndingConditions | `FGameplayTagContainer`, empty | Explicit source endings such as dispelled, triggered, or discharged |
+| Description | `TArray<FDnd5eContentBlock>`, empty | Remaining source duration explanation |
 
-The local source stores duration entries in arrays, distinguishes these four kinds, and includes optional concentration, ending conditions, and an up-to qualifier on timed measurements. Preserve these distinctions without implementing timers or ending effects.
-
-Concentration belongs to the spell-specific duration entry alongside the reusable duration, not to the shared geometry or time measurement types. Exact tags, optional-value representation, and validation remain pending. This design introduces no implementation.
+Timed requires bHasTime and meaningful Time; other kinds retain no fabricated time. bIsMaximum qualifies a supplied timed measurement. EndingConditions uses Duration::Ending tags for explicit source endings. Permanent is not an enormous timer, and absent endings do not imply an invented ending rule. Concentration belongs to the associated FDnd5eSpellDuration, rather than this reusable value. Validation and effect-ending execution are not implemented.
 
 ### Casting time
 
-Decision: use the reusable name `FDnd5eCastingTime`, not `FDnd5eSpellCastingTime`.
+`FDnd5eCastingTime` is in `Values/Dnd5eCastingTime.h`. Its reusable name is retained; it describes spell casting and uses Spell::CastingTime::Unit tags. Casting time describes performing the casting, while duration describes the resulting effect.
 
-| Field | Meaning |
-| --- | --- |
-| Quantity | Number of time units |
-| Unit | Gameplay Tag identifying action, bonus action, reaction, minute, hour, or another supported unit |
-| Condition | Optional structured descriptive content specifying when the casting time applies |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Quantity | `int32 = 0` | Number of units; supplied casting times require a positive quantity |
+| Unit | `FGameplayTag`, invalid | One of the casting-time unit tags below |
+| Condition | `TArray<FDnd5eContentBlock>`, empty | Source condition, including any supported markup |
+| Note | `TArray<FDnd5eContentBlock>`, empty | Separate source note |
 
-Conditions are descriptive reference content; the plugin does not evaluate triggers. Concrete field declarations and validation remain to be specified. Reuse the type where the same semantics apply; introduce a separate specialized type only if requirements differ.
+Quantity must be positive for a supplied casting-time entry; zero is its empty authoring default. Condition and Note are separate structured documents, each represented by Content blocks. They do not evaluate triggers. A spell can hold multiple casting-time entries. Renderer-generated ritual display entries are not imported as source casting-time units.
 
 ## Costs and components
 
-Reusable monetary and component descriptions.
+Reusable monetary and component requirements. The declarations are exported and Blueprint-visible and compiled on 2026-10-29 with the temporary Fab exclusion. Storage does not implement inventory, payment, substitution, or consumption.
 
 ### Money
 
-Decision: introduce reusable `FDnd5eMoney`, containing a numeric amount and a currency enum for copper, silver, electrum, gold, and platinum. Concrete numeric storage and enum declarations remain pending.
+`EDnd5eCurrency : uint8` and `FDnd5eMoney` are in `Values/Dnd5eMoney.h`. Enum members: Unspecified, Copper, Silver, Electrum, Gold, Platinum.
 
-A cost is represented as an optional array of these entries so it can express mixed denominations. Preserve supplied denominations rather than automatically converting or combining them. The adapter produces one copper entry for the inspected 5etools material-cost field, which stores a single copper-denominated value. Currency conversion is a separate utility; this value type does not represent a wallet or implement payment.
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Amount | `FDnd5eNumber`, default-constructed | Nonnegative monetary amount when supplied |
+| Currency | `EDnd5eCurrency = EDnd5eCurrency::Unspecified` | Denomination of that amount |
+
+Supplied amounts must be nonnegative and have a known denomination. Zero is an explicit amount; Unspecified is different. Costs hold arrays of these values so mixed denominations remain separate, such as five gold and one copper. Preserve denominations without automatic combining or conversion. The inspected spell material-cost field maps to one Copper entry. This is not a wallet.
 
 ### Components
 
-Decision: use reusable `FDnd5eComponents` to separate component classification from associated material details.
+`FDnd5eComponents` is in `Values/Dnd5eComponents.h`. Types uses Component::Type tags.
 
-| Field | Meaning |
-| --- | --- |
-| Types | Gameplay Tag Container identifying required component kinds |
-| Material | Optional FDnd5eMaterialComponent containing material requirements |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Types | `FGameplayTagContainer`, empty | Required component classifications |
+| bHasMaterial | `bool = false` | Whether material details are supplied |
+| Material | `FDnd5eMaterialComponent`, default-constructed | Optional material details |
+| Description | `TArray<FDnd5eContentBlock>`, empty | Additional component requirements/explanation |
 
-Material requirements need their description, cost when supplied, and consumption information preserved. Component classifications do not implement payment, inventory checks, substitution, or consumption. No corresponding structs have been implemented.
+Types identifies requirements; bHasMaterial identifies whether detail data is supplied. The source-supported m=true form can require Material with no detail object. A supplied material string/object supplies details and sets bHasMaterial. Present details require the Material classification. Description preserves additional requirements. Royalty is a separate source component flag; retain its classification without calculating its level-based display fee or adding it to material cost. Full rule mapping remains future work.
 
 #### Material component
 
-Decision: use `FDnd5eMaterialComponent` with the following information:
+`EDnd5eMaterialConsumption : uint8` has members Unspecified, Consumed, Optional, NotConsumed. It and `FDnd5eMaterialComponent` are declared before FDnd5eComponents in the same header.
 
-| Field | Meaning |
-| --- | --- |
-| Description | Structured descriptive content containing the material requirements |
-| Cost | Optional `TArray<FDnd5eMoney>`, allowing mixed denominations; presence representation pending |
-| Consumption | Gameplay Tag describing the source's consumption classification |
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Description | `TArray<FDnd5eContentBlock>`, empty | Material requirement text with supported structure preserved |
+| bHasCost | `bool = false` | Whether a cost is supplied |
+| Cost | `TArray<FDnd5eMoney>`, empty | One or more amounts/denominations when present |
+| Consumption | `EDnd5eMaterialConsumption = EDnd5eMaterialConsumption::Unspecified` | Supplied consumption classification |
 
-Inspection of the local 5etools 2.39.0 spell editor confirms material costs are specified in copper pieces. Its spell filters distinguish consumed and optionally consumed materials. These are reference metadata; preserve the full description for requirements not captured by the structured fields.
+bHasCost=false means no supplied cost and an empty Cost array; true requires at least one valid money entry. An absent cost does not mean zero or free materials. Missing consumption remains Unspecified. Source true maps to Consumed, optional to Optional, and supported explicit false to NotConsumed; omission must not be treated as false. Retain the full description for requirements beyond these fields. Consistency validation and consumption execution are unimplemented.
 
-Absent cost remains unspecified, rather than becoming zero. Missing consumption metadata must not automatically produce a not-consumed tag. Exact tag names, unknown-value handling details, and consistency validation remain to be specified. This type does not execute inventory checks, payment, or material consumption.
+### Supporting value tags
+
+The 31 native tags below are declared and defined in Dnd5eTags.h/.cpp. Namespaces mirror the tag hierarchy; every symbol appends its exact spelling to the listed prefix. Area-dimension kind, duration kind, and consumption use enums because they select fixed structural interpretations. Tags retain extensible rule classifications. A field's number of selections alone does not determine its representation.
+
+| C++ namespace under Dnd5e | Tag-string prefix | Symbols |
+| --- | --- | --- |
+| Spell::CastingTime::Unit | `Dnd5e.Spell.CastingTime.Unit.` | Action, BonusAction, Reaction, Minute, Hour |
+| Range::Kind | `Dnd5e.Range.Kind.` | Distance, Self, Touch, Sight, Unlimited, UnlimitedSamePlane, Special |
+| Area::Shape | `Dnd5e.Area.Shape.` | Cone, Line, Cube, Radius, Sphere, Hemisphere, Cylinder, Emanation |
+| Area::Origin | `Dnd5e.Area.Origin.` | Self, SelectedPoint, Target |
+| Duration::Ending | `Dnd5e.Duration.Ending.` | Dispelled, Triggered, Discharged |
+| Component::Type | `Dnd5e.Component.Type.` | Verbal, Somatic, Material, Royalty |
+| Spell::Duration::Requirement | `Dnd5e.Spell.Duration.Requirement.` | Concentration |
+
+For example, Dnd5e::Spell::CastingTime::Unit::Action corresponds to Dnd5e.Spell.CastingTime.Unit.Action. Range::Kind::Self and Area::Origin::Self classify different fields. Unknown source strings require explicit adapter preservation and diagnostics, not automatic native-tag registration. The spell-duration requirement is applied to each associated duration entry.
 
 ## Shared structured content
 

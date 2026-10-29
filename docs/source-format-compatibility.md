@@ -31,9 +31,26 @@ No importer is implemented or exercised by this audit. Complete or lossless sour
 
 All content arrays in these mappings contain the element types declared in [Shared models](shared-models.md). Presentation containers hold normalized classifications. They must not be treated as arbitrary source CSS or as substitutes for missing source metadata.
 
+## Spell supporting values
+
+Storage update, 2026-10-29: 14 supporting structs, six enums, and 31 native tags are source-reviewed and compiled in the host editor target with the temporary `-DisablePlugin=Fab` override. Fab has since been disabled explicitly in the development host .uproject, and a standard editor build succeeded without that command-line override. The installed-engine mismatch itself remains unrepaired. Existing tests compiled but were not run. This update does not add FDnd5eSpell, a JSON adapter, record assembly, or semantic validation.
+
+Aggregate inspection of 969 spell source records found 971 casting-time entries; condition and note are separate strings where present. Observed measured ranges and duration amounts are integral. Material costs are integer copper values, up to 2,500,000 in this snapshot. The shared FDnd5eNumber representation preserves the distinction between integer, decimal, and retained numeric literals. These are source-shape observations, not successful import results.
+
+| Implemented representation | Source mapping constraint; adapter not implemented |
+| --- | --- |
+| FDnd5eRecordHeader / FDnd5eRecordProvenance | Name, source/page, category-specific identity inputs and contributing origins require explicit assembly. Classification evidence remains separate from declared edition; no inspected spell has an explicit edition field. |
+| FDnd5eCastingTime | time[].number/unit; bonus maps to BonusAction. condition and note remain separate Content documents. Renderer-generated ritual entries are not source casting times. |
+| FDnd5eDistance / FDnd5eRange | Measured point ranges use Distance kind. Self/touch/sight/unlimited/plane/special use distinct non-measured classifications; plane maps to UnlimitedSamePlane. |
+| FDnd5eAreaDimension / FDnd5eArea / FDnd5eSpellArea | Preserve explicit area range forms separately from targeting range. Source parser renders non-point area ranges as Self. Cone/line use Length, cube EdgeLength, radial forms Radius, and emanation Extent. Cylinder secondary height is supported by parser code. No missing dimensions or point-range areas are invented. |
+| FDnd5eTimeSpan / FDnd5eDuration / FDnd5eSpellDuration | instant/timed/permanent/special map to enum kinds. Preserve amount/unit/upTo, explicit endings and each entry's concentration requirement. |
+| FDnd5eMoney / FDnd5eMaterialComponent / FDnd5eComponents | Preserve verbal/somatic/material/royalty classification. m may be a boolean, string, or detail object. Detail presence is separate from requirement presence. cost maps to Copper money entries; consume true/optional/explicit false differs from omission. Royalty is not folded into material cost. |
+
+The source parser additionally supports inches/yards, same-plane unlimited ranges, cylinders, additional time units, and discharged endings; these are not all observed in the 969 records. Source-derived field contracts do not establish complete effect semantics, unknown-value handling, school/classification mappings, spell relationships, or complete spell import. See [Shared models](shared-models.md) and [Spell model](spell-model.md).
+
 ## Source vocabulary inventory
 
-Status: structural follow-up inventory of the same local 2.39.0 snapshot. All 519 JSON files were scanned again, along with the renderer dispatch and literal tag declarations. The public headers currently expose 29 exported structs and 18 extraction helpers; these counts describe code shapes, not compatibility or semantic-coverage percentages.
+Status: structural follow-up inventory of the same local 2.39.0 snapshot. All 519 JSON files were scanned again, along with the renderer dispatch and literal tag declarations. After the 2026-10-29 supporting-value batch, the public headers expose 43 exported structs and 18 extraction helpers; these counts describe code shapes, not compatibility or semantic-coverage percentages.
 
 The inventory separates three questions: whether storage exists, whether a source mapping is implemented, and whether the rule meaning is represented. Source importing/tokenization, reference resolution, and recursive semantic validation remain unimplemented. Generic fallback storage exists, but automatic capture and diagnostics do not. No row below means a source form is already imported successfully.
 
