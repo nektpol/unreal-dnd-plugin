@@ -372,6 +372,13 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("SpellCount"), TEXT("int32"), TEXT("0") },
 			{ TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
 		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellCatalogLoadRequest"), &FDnd5eJsonSpellCatalogLoadRequest::StaticStruct, {
+			{ TEXT("DatasetRoot"), TEXT("FString"), TEXT("") },
+			{ TEXT("DatasetNamespace"), TEXT("FString"), TEXT("") },
+			{ TEXT("SpellFiles"), TEXT("TArray<FString>"), TEXT("") },
+			{ TEXT("bHasAvailabilityLookup"), TEXT("bool"), TEXT("false") },
+			{ TEXT("AvailabilityFile"), TEXT("FString"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
 		{ TEXT("FDnd5eJsonReadContext"), &FDnd5eJsonReadContext::StaticStruct, {
 			{ TEXT("DatasetNamespace"), TEXT("FString"), TEXT("") },
 			{ TEXT("RelativeFilePath"), TEXT("FString"), TEXT("") },

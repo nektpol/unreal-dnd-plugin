@@ -119,6 +119,9 @@ bool FDnd5eBlueprintCatalogReflectionTest::RunTest(const FString& Parameters)
 	CheckFunction(*this, Library, TEXT("BuildSpellCatalog"), false, false, true, {
 		{TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*")}, {TEXT("Request"), TEXT("FDnd5eJsonSpellCatalogBuildRequest"), false, true},
 		{TEXT("ReturnValue"), TEXT("FDnd5eJsonSpellCatalogBuildResult"), false, false, true}});
+	CheckFunction(*this, Library, TEXT("LoadSpellCatalog"), false, false, true, {
+		{TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*")}, {TEXT("Request"), TEXT("FDnd5eJsonSpellCatalogLoadRequest"), false, true},
+		{TEXT("ReturnValue"), TEXT("FDnd5eJsonSpellCatalogBuildResult"), false, false, true}});
 	return !HasAnyErrors();
 }
 

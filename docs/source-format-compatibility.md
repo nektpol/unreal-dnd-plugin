@@ -2,7 +2,7 @@
 
 Status: source-structure audit, 2026-10-28. Reference snapshot: 5etools 2.39.0. This document distinguishes implemented storage types from importer support.
 
-Current runtime verification, 2026-10-29: the [257-case standard suite](testing.md) covers the expanded [JSON spell reader](json-spell-reader.md), [availability reader, native/Blueprint catalog construction, and queries](spell-catalog.md). The combined 276-case run converts all 969 spell records across 18 files and joins 14,448 availability associations. Blueprint wrappers preserve the existing source mappings; they add no new source forms or domain schemas. Historical audit/batch notes retain their original scope. Acceptance with fallback/reference warnings is not full typed rule interpretation or broad compatibility with every content category.
+Current runtime verification, 2026-10-30: the [290-case standard suite](testing.md) covers the expanded [JSON spell reader](json-spell-reader.md), [availability/native/Blueprint catalogs](spell-catalog.md), and [bounded file loading](json-spell-file-loader.md). The combined 310-case run converts all 969 spell records across 18 files, joins 14,448 availability associations, and loads all selected spell files through the filesystem API. Wrappers/loading preserve the existing source mappings; they add no new source forms or domain semantics. Historical audit/batch notes retain their original scope. Acceptance with fallback/reference warnings is not full typed rule interpretation or broad compatibility with every content category.
 
 ## Scope and conclusion
 

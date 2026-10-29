@@ -15,6 +15,7 @@
 #include "Readers/Dnd5eJsonSpellReadResult.h"
 #include "Readers/Dnd5eJsonSpellAvailabilityReader.h"
 #include "Readers/Dnd5eJsonSpellCatalogBuilder.h"
+#include "Readers/Dnd5eJsonSpellCatalogLoader.h"
 #include "Catalog/Dnd5eSpellCatalog.h"
 #include "UObject/UnrealType.h"
 

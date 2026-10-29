@@ -57,6 +57,8 @@ if (Result.Status == EDnd5eJsonReadStatus::Success)
 
 The application handles both build and query diagnostics. A successful operation can return warnings. Omitting the lookup leaves availability unknown; it does not prevent ordinary name/level/school queries.
 
+For explicitly selected filenames rather than supplied text, use the separate [JSON spell-file loader](json-spell-file-loader.md). Its LoadSpellCatalog Blueprint node reads bounded external files and delegates to this builder. The text operations described here still open no files.
+
 ## Blueprint ownership and operations
 
 UDnd5eSpellCatalogObject is an exported UCLASS(BlueprintType, Transient) derived from UObject. It owns one private native FDnd5eSpellCatalog and introduces no duplicate reflected spell storage. Each constructed object has its own initially empty catalog. The consumer chooses the lifetime and scope; there is no automatically shared singleton or default dataset.
@@ -75,7 +77,7 @@ Querying and copying are explicit execution nodes even though they are const. Th
 
 UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(CatalogObject, Request) is a static BlueprintCallable function returning the existing FDnd5eJsonSpellCatalogBuildResult. It uses the target's native catalog and forwards the builder result unchanged. A null or invalid object returns Failure, SpellCount=0, and one Error with code Dnd5e.Json.InvalidCatalogObject and empty source location. The library owns no catalog and never clears a valid target before building.
 
-The Blueprint flow is:
+For supplied text, the Blueprint flow is:
 
 1. Construct and retain a catalog object.
 2. Obtain document text through the consuming application's explicit loading flow. JsonText holds the content, not a file path.
@@ -230,4 +232,4 @@ Availability provenance retains the lookup label and escaped provider JSON Point
 
 The [automation suite](testing.md) covers all new value contracts, exact identity/reflected equality, copy-out, atomic failures, availability shapes/presence/qualification, joins, and query behavior. The explicitly selected external snapshot build produced 969 spells with 969 matched lookup entries and 14,448 associations. No source records, passages, lookup file, or real-data reports are bundled in the repository.
 
-Editor loading, provider-record resolution, omitted-source/ambiguous reference policy, media/fluff loading, explicit edition policy, and complete typed rule semantics remain pending. Blueprint construction/query wrappers are implemented; a consuming project's local file-reading helper is outside the plugin's API. Catalog availability is a reference-data index and does not implement a character's spell selection or casting system.
+Editor selection/settings/inspection, provider-record resolution, omitted-source/ambiguous reference policy, media/fluff loading, explicit edition policy, and complete typed rule semantics remain pending. Blueprint construction/query wrappers and the separate [explicit file loader](json-spell-file-loader.md) are implemented. A consuming project's earlier prototype file-reading helper remains outside the plugin API. Catalog availability is a reference-data index and does not implement a character's spell selection or casting system.

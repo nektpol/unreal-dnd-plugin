@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Dnd5eJsonSpellCatalogBuilder.h"
+#include "Dnd5eJsonSpellCatalogLoader.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Dnd5eJsonSpellCatalogLibrary.generated.h"
 
@@ -19,4 +20,7 @@ class DND5EJSON_API UDnd5eJsonSpellCatalogLibrary : public UBlueprintFunctionLib
 public:
 	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Json|SpellCatalog")
 	static FDnd5eJsonSpellCatalogBuildResult BuildSpellCatalog(UDnd5eSpellCatalogObject* CatalogObject, const FDnd5eJsonSpellCatalogBuildRequest& Request);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Json|SpellCatalog")
+	static FDnd5eJsonSpellCatalogBuildResult LoadSpellCatalog(UDnd5eSpellCatalogObject* CatalogObject, const FDnd5eJsonSpellCatalogLoadRequest& Request);
 };
