@@ -4,7 +4,7 @@ Status: agreed logical definitions; concrete declarations and implementation cov
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
-The record-header contract below defines the identity, classification, and provenance concepts used by these models. The [Spell model](spell-model.md) explains how spells compose these shared types.
+The record-header contract below defines the identity, classification, and provenance concepts used by these models. The [Spell model](spell-model.md) explains how spells compose these shared types. [Gameplay Tag vocabulary](gameplay-tags.md) defines current concept ownership, matching rules, and migration from early names.
 
 The implemented Content and supporting value types are a normalized model, not the source JSON schema. [Source-format compatibility](source-format-compatibility.md) records verified mappings and known gaps from 5etools 2.39.0. Structure and field-type compatibility do not establish an implemented importer or full dataset coverage.
 
@@ -13,6 +13,7 @@ The implemented Content and supporting value types are a normalized model, not t
 - [Record identity](#record-identity)
     - [Record header](#record-header)
     - [Record ID](#record-id)
+    - [Record relationships](#record-relationships)
 - [Reusable values](#reusable-values)
     - [Dice expression](#dice-expression)
     - [Numeric value](#numeric-value)
@@ -35,6 +36,7 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Structure and storage](#structure-and-storage)
         - [Blocks and inline content](#blocks-and-inline-content)
         - [Block payload storage](#block-payload-storage)
+        - [Typed extraction API](#typed-extraction-api)
         - [Inline payload representation](#inline-payload-representation)
         - [Ordered content tree](#ordered-content-tree)
     - [Content metadata](#content-metadata)
@@ -123,6 +125,24 @@ Implemented: `FDnd5eRecordId` is an exported, Blueprint-visible value in `Source
 A complete ID requires a nonempty namespace, a recognized record-category tag, and a nonempty source key. An empty default value represents no ID. Strings preserve spelling and case; do not apply universal trimming, lowercasing, or name-plus-source concatenation in this core type. The adapter must define category-specific canonicalization before it produces IDs. Equality, hashing, namespace assignment, and cross-dataset resolution require subsequent design before catalog indexing is implemented.
 
 The implemented initial native category is `Dnd5e::Category::Spell`, with tag `Dnd5e.Category.Spell`. This classifies the target record; `Dnd5e.Content.Inline.Reference` identifies the content payload. Other category names remain pending. Declaring a spell category does not implement a spell record or its importer.
+
+### Record relationships
+
+Implemented: exported, Blueprint-visible `FDnd5eRecordRelationship` is declared in [Dnd5eRecordRelationship.h](../Source/Dnd5e/Public/Records/Dnd5eRecordRelationship.h). It was source-reviewed and compiled with the standard host editor build on 2026-10-29. This is a directed record link, separate from an inline Content reference with display text. Source conversion, target lookup, and consistency validation are not implemented.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Kind | `FGameplayTag`, invalid | Directed relationship classification; initially ReprintedAs |
+| bHasTargetRecord | `bool = false` | Whether a complete normalized identity has been produced |
+| TargetRecordId | `FDnd5eRecordId`, default-constructed | Target identity when the flag is true |
+| SourceFormat | `FString`, empty | Syntax identifier for SourceReference; initially 5etools |
+| SourceReference | `FString`, empty | Original source reference string, without rewriting its spelling or arguments |
+
+The containing record is the origin. Kind currently uses Dnd5e::Record::Relationship::ReprintedAs, with string Dnd5e.Record.Relationship.ReprintedAs. It means the containing record has a reprint at the target; it does not assert identical rules, bidirectional identity, automatic replacement, or a preferred edition.
+
+Despite its shortened name, bHasTargetRecord means a complete normalized target ID has been produced, not that a target record is loaded or resolved. False leaves TargetRecordId default-constructed; true requires a namespace, category, and source key under the shared ID contract. A retained source reference can be meaningful before normalization succeeds. A usable relationship needs a recognized Kind and either a complete target ID or a source reference with a declared syntax.
+
+A supplied SourceReference requires SourceFormat; the initial syntax identifier is 5etools. Preserve the original reference even after normalizing its target ID. A programmatically authored relationship with a complete target ID can omit both source fields. Do not universally split or rewrite source references, infer category-specific source defaults, or invent a name-plus-source ID format in this value. Those remain adapter/catalog responsibilities. Editor EditCondition metadata controls authoring visibility only.
 
 ## Reusable values
 
@@ -253,20 +273,20 @@ A supplied duration measurement requires a meaningful positive amount and known 
 | EndingConditions | `FGameplayTagContainer`, empty | Explicit source endings such as dispelled, triggered, or discharged |
 | Description | `TArray<FDnd5eContentBlock>`, empty | Remaining source duration explanation |
 
-Timed requires bHasTime and meaningful Time; other kinds retain no fabricated time. bIsMaximum qualifies a supplied timed measurement. EndingConditions uses Duration::Ending tags for explicit source endings. Permanent is not an enormous timer, and absent endings do not imply an invented ending rule. Concentration belongs to the associated FDnd5eSpellDuration, rather than this reusable value. Validation and effect-ending execution are not implemented.
+Timed requires bHasTime and meaningful Time; other kinds retain no fabricated time. bIsMaximum qualifies a supplied timed measurement. EndingConditions uses Duration::Ending tags for explicit source endings. Permanent is not an enormous timer, and absent endings do not imply an invented ending rule. The shared Trait::Concentration tag retains its source association on FDnd5eSpellDuration.Requirements when the requirement belongs to that entry. It is not owned by Duration or Spell in the tag hierarchy. Validation and effect-ending execution are not implemented.
 
 ### Casting time
 
-`FDnd5eCastingTime` is in `Values/Dnd5eCastingTime.h`. Its reusable name is retained; it describes spell casting and uses Spell::CastingTime::Unit tags. Casting time describes performing the casting, while duration describes the resulting effect.
+`FDnd5eCastingTime` is in `Values/Dnd5eCastingTime.h`. Its name remains appropriate for the spell context; Unit now consumes shared Activation::Time tags. A future non-spell activation value can reuse those identities without being called casting time. Casting time describes performing the casting, while duration describes the resulting effect.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
 | Quantity | `int32 = 0` | Number of units; supplied casting times require a positive quantity |
-| Unit | `FGameplayTag`, invalid | One of the casting-time unit tags below |
+| Unit | `FGameplayTag`, invalid | Shared activation timing designation; numeric forms use a quantity |
 | Condition | `TArray<FDnd5eContentBlock>`, empty | Source condition, including any supported markup |
 | Note | `TArray<FDnd5eContentBlock>`, empty | Separate source note |
 
-Quantity must be positive for a supplied casting-time entry; zero is its empty authoring default. Condition and Note are separate structured documents, each represented by Content blocks. They do not evaluate triggers. A spell can hold multiple casting-time entries. Renderer-generated ritual display entries are not imported as source casting-time units.
+Quantity must be positive for a supplied numeric timing form; zero is its empty authoring default. Activation::Time::Special does not imply a fabricated quantity. Special/free-form import and a possible generalized activation value require later contracts. Condition and Note are separate structured documents, each represented by Content blocks. They do not evaluate triggers. A spell can hold multiple casting-time entries. Renderer-generated ritual display entries are not imported as source casting-time units.
 
 ## Costs and components
 
@@ -311,19 +331,19 @@ bHasCost=false means no supplied cost and an empty Cost array; true requires at 
 
 ### Supporting value tags
 
-The 31 native tags below are declared and defined in Dnd5eTags.h/.cpp. Namespaces mirror the tag hierarchy; every symbol appends its exact spelling to the listed prefix. Area-dimension kind, duration kind, and consumption use enums because they select fixed structural interpretations. Tags retain extensible rule classifications. A field's number of selections alone does not determine its representation.
+The supporting subset below now contains 33 native tags after adding shared Round/Special timing designations. The complete 121-tag registry and its migration contract are in [Gameplay Tag vocabulary](gameplay-tags.md). Namespaces mirror the tag hierarchy; every symbol appends its exact spelling to the listed prefix. Area-dimension kind, duration kind, and consumption use enums because they select fixed structural interpretations. Tags retain extensible rule classifications. A field's number of selections alone does not determine its representation.
 
 | C++ namespace under Dnd5e | Tag-string prefix | Symbols |
 | --- | --- | --- |
-| Spell::CastingTime::Unit | `Dnd5e.Spell.CastingTime.Unit.` | Action, BonusAction, Reaction, Minute, Hour |
+| Activation::Time | `Dnd5e.Activation.Time.` | Action, BonusAction, Reaction, Round, Minute, Hour, Special |
 | Range::Kind | `Dnd5e.Range.Kind.` | Distance, Self, Touch, Sight, Unlimited, UnlimitedSamePlane, Special |
 | Area::Shape | `Dnd5e.Area.Shape.` | Cone, Line, Cube, Radius, Sphere, Hemisphere, Cylinder, Emanation |
 | Area::Origin | `Dnd5e.Area.Origin.` | Self, SelectedPoint, Target |
 | Duration::Ending | `Dnd5e.Duration.Ending.` | Dispelled, Triggered, Discharged |
 | Component::Type | `Dnd5e.Component.Type.` | Verbal, Somatic, Material, Royalty |
-| Spell::Duration::Requirement | `Dnd5e.Spell.Duration.Requirement.` | Concentration |
+| Trait | `Dnd5e.Trait.` | Concentration |
 
-For example, Dnd5e::Spell::CastingTime::Unit::Action corresponds to Dnd5e.Spell.CastingTime.Unit.Action. Range::Kind::Self and Area::Origin::Self classify different fields. Unknown source strings require explicit adapter preservation and diagnostics, not automatic native-tag registration. The spell-duration requirement is applied to each associated duration entry.
+For example, Dnd5e::Activation::Time::Action corresponds to Dnd5e.Activation.Time.Action. Range::Kind::Self and Area::Origin::Self classify different fields. Unknown source strings require explicit adapter preservation and diagnostics, not automatic native-tag registration. The shared concentration trait is applied to the context carrying the requirement, including each applicable spell-duration entry. A spell-level trait index can summarize those requirements, but must not become an independent conflicting source of truth.
 
 ## Shared structured content
 
@@ -358,15 +378,50 @@ Decision: separate shared content into two logical layers:
 | Blocks | Paragraphs, named sections, lists, tables, quotes, and insets |
 | Inline content | Text, emphasis, record references, and annotations within text-bearing blocks or table cells |
 
-Preserve ordering and nesting at both layers where the source provides them. This division describes content semantics, not a specific widget or rendering format. A paragraph or table cell can contain ordinary text and record references in sequence. Storage and reference policies are described below; full payload declarations and node vocabulary remain pending.
+Preserve ordering and nesting at both layers where the source provides them. This division describes content semantics, not a specific widget or rendering format. A paragraph or table cell can contain ordinary text and record references in sequence. The initial wrappers and payload declarations are implemented; the remaining source-node vocabulary and its rule contracts remain pending.
 
 #### Block payload storage
 
 Decision: the shared block representation contains a kind Gameplay Tag and an `FInstancedStruct` holding its concrete payload. Paragraphs, tables, sections, and other block kinds retain distinct payload structs.
 
-Validate that the kind tag matches the actual payload type. Consumers retrieve the expected concrete type before accessing its fields. Provide typed access helpers for C++ and Blueprint consumers as the API is designed, with explicit failure on mismatched or absent payloads.
+The implemented wrappers FDnd5eContentBlock and FDnd5eInlineContent have the same three reflected fields:
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Kind | `FGameplayTag`, invalid | Exact payload discriminator |
+| Payload | `FInstancedStruct`, empty | Concrete payload storage |
+| Metadata | `FDnd5eContentMetadata`, default-constructed | Source-local metadata and provenance |
+
+Consumers retrieve the expected concrete type before accessing fields. The implemented helpers explicitly reject mismatched kinds, wrong payload types, or absent payloads. Full recursive validation is separate.
 
 Unreal provides Blueprint operations for creating and retrieving instanced struct values; see [Epic's Blueprint instanced struct library](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/UBlueprintInstancedStructLibrary). Typed helpers for section, paragraph, text, formatted content, reference, external link, anchor link, annotation, number, list, table, quote, inset, image, gallery, and unsupported blocks/inline items are implemented, along with the inner dice-expression annotation extractor. Their wrapper checks do not recursively validate payload contents or prove source-format coverage. The remaining payload vocabulary and helper APIs are still to be completed.
+
+#### Typed extraction API
+
+The exported UDnd5eContentLibrary in [Dnd5eContentLibrary.h](../Source/Dnd5e/Public/Content/Dnd5eContentLibrary.h) exposes these 18 BlueprintCallable/BlueprintPure static functions. Each returns bool, takes a const input reference, and fills an output reference of the listed type.
+
+| Function | Input type | Output type |
+| --- | --- | --- |
+| TryGetSection | `FDnd5eContentBlock` | `FDnd5eSectionContent` |
+| TryGetParagraph | `FDnd5eContentBlock` | `FDnd5eParagraphContent` |
+| TryGetInlineText | `FDnd5eInlineContent` | `FDnd5eTextContent` |
+| TryGetFormatted | `FDnd5eInlineContent` | `FDnd5eFormattedContent` |
+| TryGetList | `FDnd5eContentBlock` | `FDnd5eListContent` |
+| TryGetTable | `FDnd5eContentBlock` | `FDnd5eTableContent` |
+| TryGetQuote | `FDnd5eContentBlock` | `FDnd5eQuoteContent` |
+| TryGetInset | `FDnd5eContentBlock` | `FDnd5eInsetContent` |
+| TryGetReference | `FDnd5eInlineContent` | `FDnd5eReferenceContent` |
+| TryGetAnnotation | `FDnd5eInlineContent` | `FDnd5eAnnotationContent` |
+| TryGetNumber | `FDnd5eInlineContent` | `FDnd5eNumberContent` |
+| TryGetAnnotationDiceExpression | `FDnd5eAnnotationContent` | `FDnd5eDiceExpression` |
+| TryGetExternalLink | `FDnd5eInlineContent` | `FDnd5eExternalLinkContent` |
+| TryGetAnchorLink | `FDnd5eInlineContent` | `FDnd5eAnchorLinkContent` |
+| TryGetImage | `FDnd5eContentBlock` | `FDnd5eImageContent` |
+| TryGetGallery | `FDnd5eContentBlock` | `FDnd5eGalleryContent` |
+| TryGetUnsupportedBlock | `FDnd5eContentBlock` | `FDnd5eUnsupportedContent` |
+| TryGetUnsupportedInline | `FDnd5eInlineContent` | `FDnd5eUnsupportedContent` |
+
+Wrapper helpers check the exact native Kind, valid FInstancedStruct storage, and exact UScriptStruct payload type. Success copies the payload into the output and returns true; failure resets the output to its default and returns false. They do not mutate the input, traverse children, log expected extraction failures, resolve references, or validate a payload's rule semantics. TryGetAnnotationDiceExpression instead checks the inner annotation Kind for DiceRoll or DamageRoll and extracts an exact FDnd5eDiceExpression from Annotation.Value with the same copy/reset contract.
 
 #### Inline payload representation
 
@@ -391,7 +446,7 @@ Decision: organize content as an ordered tree. A document contains an ordered ar
 
 Ordinary blocks and inline items do not require catalog record IDs. Links to independently identifiable content continue to use the record-reference model. Source-provided anchors are stored in Metadata.AnchorId; document scoping and resolution remain adapter/catalog responsibilities.
 
-Validate nesting and enforce a loading-depth limit to handle malformed input. Concrete reflected declarations, allowed child-kind rules, and the numeric depth limit remain to be specified. This decision describes owned ordered content rather than a graph of shared catalog records and adds no implementation.
+The reflected declarations implement an owned ordered tree rather than a graph of shared catalog records. A future loader must validate nesting and enforce a depth limit. Allowed child-kind rules, the numeric depth limit, and enforcement remain to be specified; storage ownership alone does not implement those checks.
 
 ### Content metadata
 
@@ -447,7 +502,7 @@ Decision: use distinct supporting types for block content rather than one oversi
 | Quote | Content and optional attribution |
 | Inset | Optional heading and child blocks |
 
-A shared block representation identifies its kind with a Gameplay Tag and associates it with the appropriate typed payload. Preserve list styles and table metadata when present; detailed payload fields and validation remain pending. The following sections specify payload storage and nesting; exact Blueprint helper APIs still require review.
+A shared block representation identifies its kind with a Gameplay Tag and associates it with the appropriate typed payload. The typed payload fields and extraction helpers below are implemented and compiled. Source style/metadata normalization, full recursive validation, and remaining presentation vocabulary are pending. Exact kind/type checks do not validate the contents of a successfully extracted payload.
 
 #### Text, paragraphs, and sections
 
@@ -507,7 +562,7 @@ Decision: decompose table content into distinct supporting types:
 
 Cells contain ordered blocks, allowing paragraphs, lists, and other supported content. Inline formatting remains within text-bearing blocks. Header rows and body rows remain distinct, and multiple header rows must be representable.
 
-The inspected source's cell width represents a column span, not a pixel width. Preserve optional exact-result and result-range metadata for rollable cells without implementing dice rolling. The supporting types, table kind, and accessor described below are implemented and source-reviewed; source-format mappings, presentation vocabulary, and full content validation remain separate work. This status does not claim compilation or test verification of the table addition.
+The inspected source's cell width represents a column span, not a pixel width. Preserve optional exact-result and result-range metadata for rollable cells without implementing dice rolling. The supporting types, table kind, and accessor described below are implemented and source-reviewed; source-format mappings, presentation vocabulary, and full content validation remain separate work. The table declarations and accessor are included in the successful standard editor build on 2026-10-29. Automated test execution for this batch remains deferred.
 
 ##### Table-cell base fields
 

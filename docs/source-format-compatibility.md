@@ -48,9 +48,27 @@ Aggregate inspection of 969 spell source records found 971 casting-time entries;
 
 The source parser additionally supports inches/yards, same-plane unlimited ranges, cylinders, additional time units, and discharged endings; these are not all observed in the 969 records. Source-derived field contracts do not establish complete effect semantics, unknown-value handling, school/classification mappings, spell relationships, or complete spell import. See [Shared models](shared-models.md) and [Spell model](spell-model.md).
 
+## Spell record storage
+
+On 2026-10-29, the completed FDnd5eSpell and FDnd5eRecordRelationship declarations were reviewed and the standard host editor build passed with Fab disabled in project configuration. All 22 spell fields and five relationship fields match the [Spell model](spell-model.md) and [shared relationship contract](shared-models.md#record-relationships). Current runtime public declarations contain 45 exported structs, 12 enums, 121 native tags, and 18 Content extraction helpers. These counts describe code shapes, not imported records or rule-coverage percentages. No automated tests were run.
+
+The spell retains separate school, activation, duration, description, damage/condition role, ability-score, attack-mode, creature-type, and relationship values. The implemented names are ConditionInflicted and bHasTargetRecord. The relationship flag means target-ID availability, not successful catalog resolution. Reprint strings can be retained before normalization; importing or resolving them is still unimplemented.
+
+This completes the first in-memory record declaration, not a complete spell adapter. Scaling expressions, full classification vocabularies, availability lookups, metadata assembly, source normalization, and prose-rule semantics remain pending. The supported input subset and preservation/diagnostic behavior must be specified before the focused reader is implemented.
+
+## Native tag taxonomy review
+
+On 2026-10-29, the native vocabulary was reviewed across spells, non-spell actions, psionic modes, attack labels, and source parser behavior. It now contains 121 tags; see [Gameplay Tag vocabulary](gameplay-tags.md). The standard host editor build succeeded with Fab disabled in the host project configuration. Existing tests compiled but were not run; the taxonomy review itself did not add an adapter or complete the then-unfinished spell record. The later storage completion is recorded above.
+
+Non-spell action entries reuse number/unit timing shapes, so timing identities now live under Activation::Time rather than Spell::CastingTime::Unit. The source parser additionally recognizes Round and Special. Concentration occurs in psionic modes and during longer casting, so its identity is shared Trait::Concentration. Source duration[].concentration still attaches the requirement to its own duration entry; a spell-level trait summary does not replace that association.
+
+Melee/ranged attack modes are independent of weapon/spell origin. They now live under Attack::Mode. School identity lives under Magic::School, while Ritual retains the narrow spell-capability meaning Spell::Trait::Ritual. Damage and condition roles remain separate collections even though each reuses shared identity tags. This hierarchy is a normalized design decision, not a claim that source JSON uses these namespaces.
+
+The review corrected invalid Fire/Necrotic tag prefixes, Restrained and Aberration spellings, and missing Exhaustion, Fiend, and parser-supported Psionic classifications. The host config contains redirects for 22 legacy leaf identities. This does not migrate arbitrary old parent queries or automatically rewrite C++ callers/assets. The school label Psionic does not assert a standard ninth school or that all psionic content is magical.
+
 ## Source vocabulary inventory
 
-Status: structural follow-up inventory of the same local 2.39.0 snapshot. All 519 JSON files were scanned again, along with the renderer dispatch and literal tag declarations. After the 2026-10-29 supporting-value batch, the public headers expose 43 exported structs and 18 extraction helpers; these counts describe code shapes, not compatibility or semantic-coverage percentages.
+Status: structural follow-up inventory of the same local 2.39.0 snapshot. All 519 JSON files were scanned again, along with the renderer dispatch and literal tag declarations. At completion of the 2026-10-29 supporting-value batch, the public headers exposed 43 exported structs and 18 extraction helpers; these counts describe code shapes, not compatibility or semantic-coverage percentages.
 
 The inventory separates three questions: whether storage exists, whether a source mapping is implemented, and whether the rule meaning is represented. Source importing/tokenization, reference resolution, and recursive semantic validation remain unimplemented. Generic fallback storage exists, but automatic capture and diagnostics do not. No row below means a source form is already imported successfully.
 

@@ -6,7 +6,7 @@ An Unreal Engine plugin being developed to represent user-supplied fifth-edition
 
 Early development. The runtime module contains shared record-ID, dice-expression, numeric, and media-reference values, content structs, and read-only extraction helpers for sections, paragraphs, text, formatted spans, record references, external links, document-local anchor links, annotations, numbers, lists, tables, quotes, insets, images, and galleries. DiceRoll and DamageRoll annotations preserve expressions without evaluating them. Image/gallery storage retains media locations and descriptive metadata without loading files or fetching URLs. Reference/link storage retains display content and destinations; parsing, target lookup, and navigation are not implemented. Dataset importing, catalog loading, and complete format coverage are not implemented. The capabilities below describe the intended scope.
 
-Record headers/provenance, casting times, distances/ranges, areas, time spans/durations, money, components, and spell-area/duration associations are also implemented as Blueprint-visible storage. The main spell record and source conversion remain pending.
+Record headers/provenance, casting times, distances/ranges, areas, time spans/durations, money, components, and spell-area/duration associations are also implemented as Blueprint-visible storage. The first FDnd5eSpell record and directed record relationships are implemented with role-specific classification fields and shared native tags. JSON source conversion, target resolution, and semantic validation remain pending.
 
 The development host project uses Unreal Engine 5.8. Compatibility with other versions has not been established.
 
@@ -41,9 +41,10 @@ Local dataset configuration and import instructions will be documented when thos
 
 ## Documentation
 
+- [Gameplay Tag vocabulary](docs/gameplay-tags.md): native groups, shared concept ownership, matching rules, and migration from early names.
 - [Source-format compatibility](docs/source-format-compatibility.md): verified source mappings, normalization requirements, and known gaps for the audited dataset snapshot.
 - [Shared models](docs/shared-models.md): reusable metadata, measurements, money, components, and structured content.
-- [Spell model](docs/spell-model.md): spell composition and spell-specific area/duration context.
+- [Spell model](docs/spell-model.md): implemented spell fields, classification roles, relationships, and spell-specific area/duration context.
 
 ## License
 
