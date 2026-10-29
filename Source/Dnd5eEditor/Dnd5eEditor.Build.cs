@@ -10,6 +10,8 @@ public class Dnd5eEditor : ModuleRules
 		{
 			"Core",
 			"CoreUObject",
+			"Engine",
+			"GameplayTags",
 			"Dnd5e",
 			"Dnd5eJson",
 			"UnrealEd"

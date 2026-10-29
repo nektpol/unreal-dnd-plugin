@@ -2,6 +2,8 @@
 
 Status: source-structure audit, 2026-10-28. Reference snapshot: 5etools 2.39.0. This document distinguishes implemented storage types from importer support.
 
+Current runtime verification, 2026-10-29: all 129 tests in the [automation suite](testing.md) passed for implemented storage, reflection, extraction, tags, and synthetic composition. This runtime suite does not load the external source snapshot and does not establish source-parser coverage. Historical audit/batch notes below retain their original verification scope.
+
 ## Scope and conclusion
 
 The audit parsed all 519 JSON files under the supplied snapshot's data directory, including generated files, and inspected the relevant renderer, tag handling, and column stylesheet. All files parsed successfully. Structural occurrence counts are not unique content records or compatibility percentages. Homebrew repositories and the separate 2014 application distribution were not independently audited.
@@ -58,7 +60,7 @@ This completes the first in-memory record declaration, not a complete spell adap
 
 ## Native tag taxonomy review
 
-On 2026-10-29, the native vocabulary was reviewed across spells, non-spell actions, psionic modes, attack labels, and source parser behavior. It now contains 121 tags; see [Gameplay Tag vocabulary](gameplay-tags.md). The standard host editor build succeeded with Fab disabled in the host project configuration. Existing tests compiled but were not run; the taxonomy review itself did not add an adapter or complete the then-unfinished spell record. The later storage completion is recorded above.
+On 2026-10-29, the native vocabulary was reviewed across spells, non-spell actions, psionic modes, attack labels, and source parser behavior. It now contains 121 tags; see the [native tag declarations](../Source/Dnd5e/Public/Dnd5eTags.h). The standard host editor build succeeded with Fab disabled in the host project configuration. Existing tests compiled but were not run; the taxonomy review itself did not add an adapter or complete the then-unfinished spell record. The later storage completion is recorded above.
 
 Non-spell action entries reuse number/unit timing shapes, so timing identities now live under Activation::Time rather than Spell::CastingTime::Unit. The source parser additionally recognizes Round and Special. Concentration occurs in psionic modes and during longer casting, so its identity is shared Trait::Concentration. Source duration[].concentration still attaches the requirement to its own duration entry; a spell-level trait summary does not replace that association.
 

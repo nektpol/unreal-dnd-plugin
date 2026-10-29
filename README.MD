@@ -8,6 +8,8 @@ Early development. The runtime module contains shared record-ID, dice-expression
 
 Record headers/provenance, casting times, distances/ranges, areas, time spans/durations, money, components, and spell-area/duration associations are also implemented as Blueprint-visible storage. The first FDnd5eSpell record and directed record relationships are implemented with role-specific classification fields and shared native tags. JSON source conversion, target resolution, and semantic validation remain pending.
 
+The editor automation suite passed all 129 tests on 2026-10-29, covering the implemented storage/reflection, Content helpers, native tags, and synthetic spell composition. See [Automated tests](docs/testing.md) for coverage and limits.
+
 The development host project uses Unreal Engine 5.8. Compatibility with other versions has not been established.
 
 Unsupported block and inline payloads can retain source fragments and optional plain display text. Their typed extraction helpers are implemented; automatic source capture and diagnostics are not. Preservation does not establish semantic rule support.
@@ -41,7 +43,7 @@ Local dataset configuration and import instructions will be documented when thos
 
 ## Documentation
 
-- [Gameplay Tag vocabulary](docs/gameplay-tags.md): native groups, shared concept ownership, matching rules, and migration from early names.
+- [Automated tests](docs/testing.md): coverage, running the development suite, fixtures, and verification limits.
 - [Source-format compatibility](docs/source-format-compatibility.md): verified source mappings, normalization requirements, and known gaps for the audited dataset snapshot.
 - [Shared models](docs/shared-models.md): reusable metadata, measurements, money, components, and structured content.
 - [Spell model](docs/spell-model.md): implemented spell fields, classification roles, relationships, and spell-specific area/duration context.

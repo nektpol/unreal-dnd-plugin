@@ -1,10 +1,10 @@
 # Shared models
 
-Status: agreed logical definitions; concrete declarations and implementation coverage vary by type.
+Status: current implemented shared declarations and remaining logical contracts. Verification update, 2026-10-29: the [129-test automation suite](testing.md) passed, including all 45 exported model schemas/defaults, populated copy/serialization probes, and all Content helpers. Earlier batch notes below retain their historical verification dates; they do not replace this current result. Semantic validation and importing remain unimplemented.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
-The record-header contract below defines the identity, classification, and provenance concepts used by these models. The [Spell model](spell-model.md) explains how spells compose these shared types. [Gameplay Tag vocabulary](gameplay-tags.md) defines current concept ownership, matching rules, and migration from early names.
+The record-header contract below defines the identity, classification, and provenance concepts used by these models. The [Spell model](spell-model.md) explains how spells compose these shared types. Native names are declared in [Dnd5eTags.h](../Source/Dnd5e/Public/Dnd5eTags.h) and defined in [Dnd5eTags.cpp](../Source/Dnd5e/Private/Dnd5eTags.cpp); shared ownership and role-specific use are described below.
 
 The implemented Content and supporting value types are a normalized model, not the source JSON schema. [Source-format compatibility](source-format-compatibility.md) records verified mappings and known gaps from 5etools 2.39.0. Structure and field-type compatibility do not establish an implemented importer or full dataset coverage.
 
@@ -331,7 +331,7 @@ bHasCost=false means no supplied cost and an empty Cost array; true requires at 
 
 ### Supporting value tags
 
-The supporting subset below now contains 33 native tags after adding shared Round/Special timing designations. The complete 121-tag registry and its migration contract are in [Gameplay Tag vocabulary](gameplay-tags.md). Namespaces mirror the tag hierarchy; every symbol appends its exact spelling to the listed prefix. Area-dimension kind, duration kind, and consumption use enums because they select fixed structural interpretations. Tags retain extensible rule classifications. A field's number of selections alone does not determine its representation.
+The supporting subset below now contains 33 native tags after adding shared Round/Special timing designations. The complete 121-tag runtime registry is declared in [Dnd5eTags.h](../Source/Dnd5e/Public/Dnd5eTags.h) and defined in [Dnd5eTags.cpp](../Source/Dnd5e/Private/Dnd5eTags.cpp). Early serialized names require host-side redirects; the current namespaces below are authoritative for these shared values. Namespaces mirror the tag hierarchy; every symbol appends its exact spelling to the listed prefix. Area-dimension kind, duration kind, and consumption use enums because they select fixed structural interpretations. Tags retain extensible rule classifications. A field's number of selections alone does not determine its representation.
 
 | C++ namespace under Dnd5e | Tag-string prefix | Symbols |
 | --- | --- | --- |

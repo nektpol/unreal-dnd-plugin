@@ -1,6 +1,6 @@
 # Spell model
 
-Status: FDnd5eSpell, its shared relationship value, supporting structs, and revised native tags are implemented as in-memory storage. Source review and the standard host editor build passed on 2026-10-29. Tests were not run. JSON importing, catalog loading, normalization, and semantic validation remain unimplemented.
+Status: FDnd5eSpell, its shared relationship value, supporting structs, and revised native tags are implemented as in-memory storage. Source review and the standard host editor build passed on 2026-10-29. The subsequent [automation suite](testing.md) passed all 129 tests on the same date, including the spell contract, populated reflected round trip, contextual associations, and nested copy isolation. JSON importing, catalog loading, normalization, and semantic validation remain unimplemented.
 
 The exported, Blueprint-visible record is declared in [Dnd5eSpell.h](../Source/Dnd5e/Public/Spells/Dnd5eSpell.h). Its two spell-context wrappers are in [Dnd5eSpellTypes.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellTypes.h). These declarations represent reference data; consumers own character state and gameplay execution. [Source-format compatibility](source-format-compatibility.md) distinguishes storage from implemented source support.
 
@@ -72,7 +72,7 @@ Reusable types have one canonical definition in [Shared models](shared-models.md
 | Material cost entries | [FDnd5eMoney](shared-models.md#money) |
 | Duration/time measurement | [FDnd5eDuration](shared-models.md#duration) and [FDnd5eTimeSpan](shared-models.md#time-measurement) |
 | Structured descriptions | [Shared Content](shared-models.md#shared-structured-content) |
-| Native classifications | [Gameplay Tag vocabulary](gameplay-tags.md) |
+| Native classifications | [Native tag declarations](../Source/Dnd5e/Public/Dnd5eTags.h) |
 
 ## Shared tag ownership
 
@@ -109,7 +109,7 @@ Concentration during casting needs its own future contextual rule contract. A Mi
 
 ## Classification and relationship mappings
 
-This table records intended source mappings, not implemented parser behavior. Native identities are declared in [Gameplay Tag vocabulary](gameplay-tags.md).
+This table records intended source mappings, not implemented parser behavior. Native identities are declared in [Native tag declarations](../Source/Dnd5e/Public/Dnd5eTags.h).
 
 | Source field | Stored field/role | Native branch |
 | --- | --- | --- |
