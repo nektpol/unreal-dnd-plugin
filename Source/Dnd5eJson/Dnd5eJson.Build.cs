@@ -12,6 +12,7 @@ public class Dnd5eJson : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Dnd5e",
+			"Engine",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
