@@ -85,6 +85,8 @@ UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(CatalogObject, Request) is a st
 
 The same JSON library also exposes [NormalizeSpellReference](spell-reference-normalization.md) for explicitly reconciling one retained inline spell token with loaded canonical IDs. It returns its own normalization status and a copied reference; it performs no build/replacement.
 
+Its [ReportSpellReferences](spell-reference-report.md) operation combines Content collection and both original/normalized lookup routes into a detached per-spell diagnostic report. Collection success is separate from per-entry target resolution; it never replaces the input record.
+
 For supplied text, the Blueprint flow is:
 
 1. Construct and retain a catalog object.

@@ -4,6 +4,21 @@ const TArray<FModelContract>& ModelContracts()
 {
 	static const TArray<FModelContract> Cases =
 	{
+		{ TEXT("FDnd5eJsonSpellReferenceReportEntry"), &FDnd5eJsonSpellReferenceReportEntry::StaticStruct, {
+			{ TEXT("Occurrence"), TEXT("FDnd5eContentReferenceOccurrence"), TEXT("") },
+			{ TEXT("OriginalResolutionStatus"), TEXT("EDnd5eReferenceResolveStatus"), TEXT("EDnd5eReferenceResolveStatus::NotAttempted") },
+			{ TEXT("OriginalResolutionDiagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+			{ TEXT("NormalizationStatus"), TEXT("EDnd5eJsonSpellReferenceNormalizeStatus"), TEXT("EDnd5eJsonSpellReferenceNormalizeStatus::NotAttempted") },
+			{ TEXT("NormalizedReference"), TEXT("FDnd5eReferenceContent"), TEXT("") },
+			{ TEXT("NormalizationDiagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+			{ TEXT("NormalizedResolutionStatus"), TEXT("EDnd5eReferenceResolveStatus"), TEXT("EDnd5eReferenceResolveStatus::NotAttempted") },
+			{ TEXT("NormalizedResolutionDiagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
+		{ TEXT("FDnd5eJsonSpellReferenceReport"), &FDnd5eJsonSpellReferenceReport::StaticStruct, {
+			{ TEXT("bCollected"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Entries"), TEXT("TArray<FDnd5eJsonSpellReferenceReportEntry>"), TEXT("") },
+			{ TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT("") },
+		}, TEXT("/Script/Dnd5eJson") },
 		{ TEXT("FDnd5eContentReferenceOccurrence"), &FDnd5eContentReferenceOccurrence::StaticStruct, {
 			{ TEXT("ContentPath"), TEXT("FString"), TEXT("") },
 			{ TEXT("Reference"), TEXT("FDnd5eReferenceContent"), TEXT("") },

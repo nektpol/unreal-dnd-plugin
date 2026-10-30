@@ -42,6 +42,8 @@ Traversal keeps internal pointers temporarily and copies reference values only a
 
 ## Using the results
 
+The separate [spell reference reporter](spell-reference-report.md) combines collection, original lookup, normalization, and normalized lookup into one detached diagnostic result. It preserves the independent stage outcomes and performs no rewrite.
+
 After true, inspect each occurrence's Reference.SourceReference and ContentPath. The separate [retained-reference normalizer](spell-reference-normalization.md) can reconcile a supported spell token against a loaded catalog under its explicit namespace/source policy. The [exact reference resolver](spell-catalog.md#spell-reference-resolution) can retrieve a declared loaded target. Neither operation is invoked automatically by collection.
 
 Tests and the opt-in external audit are described in [Automated tests](testing.md). The external collection audit counts typed references present in converted models; it does not establish complete parsing of references hidden in preserved text.

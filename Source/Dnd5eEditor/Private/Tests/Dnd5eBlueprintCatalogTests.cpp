@@ -139,6 +139,9 @@ bool FDnd5eBlueprintCatalogReflectionTest::RunTest(const FString& Parameters)
 	const auto* Normalize = Library->FindFunctionByName(TEXT("NormalizeSpellReference"));
 	const auto* Namespace = Normalize ? FindFProperty<FStrProperty>(Normalize, TEXT("DatasetNamespace")) : nullptr;
 	TestTrue(TEXT("Namespace preserves native const input metadata"), Namespace && Namespace->HasMetaData(TEXT("NativeConst")));
+	CheckFunction(*this, Library, TEXT("ReportSpellReferences"), false, false, true, {
+		{TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*")}, {TEXT("Spell"), TEXT("FDnd5eSpell"), false, true},
+		{TEXT("ReturnValue"), TEXT("FDnd5eJsonSpellReferenceReport"), false, false, true}});
 	return !HasAnyErrors();
 }
 
@@ -495,6 +498,38 @@ bool FDnd5eBlueprintCollectReferencesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Reflected failure clears prior output"), !*Success && Out->IsEmpty() && Diagnostics->Num() == 1);
 	*Spell = {}; Call.Invoke();
 	TestTrue(TEXT("Reflected empty success clears diagnostics"), *Success && Out->IsEmpty() && Diagnostics->IsEmpty());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBlueprintReferenceReportTest, "Dnd5e.Blueprint.SpellCatalog.ReferenceReport", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBlueprintReferenceReportTest::RunTest(const FString& Parameters)
+{
+	TStrongObjectPtr<UDnd5eSpellCatalogObject> Catalog(NewObject<UDnd5eSpellCatalogObject>());
+	auto Request = BlueprintBuildRequest();
+	Request.SpellDocuments[0].JsonText = Request.SpellDocuments[0].JsonText.Replace(TEXT("An invented light uses {@dice 1d4}."), TEXT("See {@spell Invented Lantern|SYN}."));
+	const auto Build = UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(Catalog.Get(), Request);
+	if (!TestEqual(TEXT("Build actual reader fixture"), Build.Status, EDnd5eJsonReadStatus::Success)) { return false; }
+	FBlueprintInvocation Call(*this, GetMutableDefault<UDnd5eJsonSpellCatalogLibrary>(), TEXT("ReportSpellReferences"));
+	auto* CatalogInput = Call.Parameter<UDnd5eSpellCatalogObject*>(TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*"));
+	auto* Spell = Call.Parameter<FDnd5eSpell>(TEXT("Spell"), TEXT("FDnd5eSpell"));
+	auto* Report = Call.Parameter<FDnd5eJsonSpellReferenceReport>(TEXT("ReturnValue"), TEXT("FDnd5eJsonSpellReferenceReport"));
+	if (!CatalogInput || !Spell || !Report) { return false; }
+	if (!TestTrue(TEXT("Retrieve owning spell"), Catalog->TryGetSpell(Catalog->GetSpellIds()[0], *Spell))) { return false; }
+	const auto Before = *Spell;
+	Call.Invoke();
+	TestTrue(TEXT("Invalid object returns uncollected empty report"), !Report->bCollected && Report->Entries.IsEmpty() && Report->Diagnostics.Num() == 1 && Report->Diagnostics[0].Code == FName(TEXT("Dnd5e.Json.InvalidCatalogObject")));
+	*CatalogInput = Catalog.Get(); Call.Invoke();
+	if (TestTrue(TEXT("Valid object replaces failed report"), Report->bCollected && Report->Entries.Num() == 1 && Report->Diagnostics.IsEmpty()))
+	{
+		const auto& Entry = Report->Entries[0];
+		TestTrue(TEXT("Reader-to-report both lookup routes succeed"), Entry.OriginalResolutionStatus == EDnd5eReferenceResolveStatus::Resolved && Entry.NormalizationStatus == EDnd5eJsonSpellReferenceNormalizeStatus::Normalized && Entry.NormalizedResolutionStatus == EDnd5eReferenceResolveStatus::Resolved);
+		Report->Entries[0].Occurrence.Reference.SourceReference = TEXT("edited output");
+	}
+	TestTrue(TEXT("Report output cannot edit source spell"), Equal(FDnd5eSpell::StaticStruct(), Spell, &Before));
+	Spell->HigherLevelDescription.AddDefaulted(); Call.Invoke();
+	TestTrue(TEXT("Reflected structural failure replaces successful report"), !Report->bCollected && Report->Entries.IsEmpty() && Report->Diagnostics.Num() == 1);
+	*Spell = {}; Call.Invoke();
+	TestTrue(TEXT("Empty report recovers without stale errors"), Report->bCollected && Report->Entries.IsEmpty() && Report->Diagnostics.IsEmpty());
 	return !HasAnyErrors();
 }
 

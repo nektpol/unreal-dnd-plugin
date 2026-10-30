@@ -7,6 +7,7 @@
 #include "Dnd5eJsonSpellCatalogLoader.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
+#include "Readers/Dnd5eJsonSpellReferenceReporter.h"
 #include "Dnd5eJsonSpellCatalogLibrary.generated.h"
 
 class UDnd5eSpellCatalogObject;
@@ -36,4 +37,9 @@ public:
 		const FDnd5eReferenceContent& Reference,
 		FDnd5eReferenceContent& NormalizedReference,
 		TArray<FDnd5eDiagnostic>& Diagnostics);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Json|SpellCatalog")
+	static FDnd5eJsonSpellReferenceReport ReportSpellReferences(
+		UDnd5eSpellCatalogObject* CatalogObject,
+		const FDnd5eSpell& Spell);
 };

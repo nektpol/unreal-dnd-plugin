@@ -44,6 +44,8 @@ On every outcome, NormalizedReference begins as an independent value copy of the
 
 ## Consumption and limits
 
+For a combined per-spell diagnostic view, use the separate [reference report API](spell-reference-report.md). It keeps original and normalized lookup outcomes separate rather than automatically replacing the original reference.
+
 The core [spell Content collector](spell-content-references.md) can first obtain typed references and model locations from both description trees. Collection and normalization remain separate explicit operations.
 
 After Normalized, pass the output to [ResolveSpellReference](spell-catalog.md#spell-reference-resolution) on the same catalog to retrieve the actual spell. Normalization does not return or mutate the spell itself. Catalog replacement can change later normalization results; synchronize shared catalog access as for other catalog operations.

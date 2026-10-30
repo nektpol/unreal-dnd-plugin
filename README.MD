@@ -8,7 +8,7 @@ Early development. The runtime module contains shared identity, provenance, meas
 
 The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, selected references, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
 
-The standard editor automation suite has 449 passing cases on 2026-10-30. The combined opt-in run passed 471 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading, the spell browser, selector matching, reference/relationship lookup, and 389 audited reprint targets. See [Automated tests](docs/testing.md) for evidence and limits.
+The standard editor automation suite has 471 passing cases on 2026-10-30. The combined opt-in run passed 494 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading, the spell browser, selector matching, reference/relationship lookup, and 389 audited reprint targets. See [Automated tests](docs/testing.md) for evidence and limits.
 
 The [JSON spell reader](docs/json-spell-reader.md) accepts supplied text and an explicit spell-array index. It constructs identity/provenance and typed values, retains supported metadata and fallbacks, and returns diagnostics. Unknown required top-level values fail with a default output spell. The runtime reader performs no file or network access.
 
@@ -17,6 +17,8 @@ For Blueprint use, construct and retain a [spell catalog object](docs/spell-cata
 [MatchSpellSelector](docs/spell-catalog.md#spell-selector-matching) matches loaded canonical names/primary publications case-insensitively within an exact namespace, returning stored IDs. It reports MissingSource even for one name candidate, and Ambiguous for multiple explicit-source candidates. It does not choose a default source or change exact-ID lookup or existing query semantics.
 
 The development host project uses Unreal Engine 5.8. Compatibility with other versions has not been established.
+
+[ReportSpellReferences](docs/spell-reference-report.md) combines located occurrences, original-ID lookup, retained-token normalization, and normalized lookup into a detached report. It preserves independent outcomes and diagnostics, including conflicting valid targets, without rewriting the spell or catalog.
 
 [CollectSpellReferences](docs/spell-content-references.md) walks both spell description trees and returns independent typed reference occurrences with model locations. It enforces structural/size limits and warns when preserved fallback content remains opaque. Collection does not resolve or rewrite references.
 
@@ -58,6 +60,7 @@ The [file loader reference](docs/json-spell-file-loader.md) documents runtime/Bl
 ## Documentation
 
 - [Automated tests](docs/testing.md): coverage, running the development suite, fixtures, and verification limits.
+- [Spell reference reports](docs/spell-reference-report.md): located original/normalized references, independent lookup outcomes, stage diagnostics, and detached snapshots.
 - [Spell Content reference collection](docs/spell-content-references.md): bounded traversal, copied occurrences/model locations, failures, and opaque-fallback warnings.
 - [Retained spell-reference normalization](docs/spell-reference-normalization.md): explicit token-to-canonical-ID reconciliation against a loaded catalog, statuses, preservation, and limits.
 - [JSON spell reader](docs/json-spell-reader.md): implemented text-to-spell API, accepted subset, identity, preservation, limits, and diagnostics.
