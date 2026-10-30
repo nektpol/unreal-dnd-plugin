@@ -48,7 +48,7 @@ Field names and discriminator strings are case-sensitive. Missing required field
 | Optional `basicRules`, `basicRules2024`, `hasFluff`, `hasFluffImages` | Boolean metadata |
 | Optional `otherSources`, `additionalSources` | Arrays of objects with required nonempty string source and optional page, retained as metadata |
 | Optional `referenceSources` | Array of nonempty source-ID strings, retained as metadata |
-| Optional `reprintedAs` | Ordered nonempty strings retained as directed, unresolved relationships, with warnings |
+| Optional `reprintedAs` | Ordered nonempty strings retained as directed relationships; supported explicit `name|source` selectors receive target IDs, other nonempty selector spellings remain unresolved with warnings |
 | Optional damage/condition/ability/attack/creature indexes | Known strings mapped to their separate role-specific tag containers; unknown strings fail |
 | Optional `scalingLevelDice` | One object or ordered object array → typed labeled level/dice groups, with numeric level ordering |
 
@@ -82,7 +82,11 @@ Paths, array indices, and dataset release names do not alter SourceKey. Changes 
 
 Header.Provenance has one primary entry with original SourceId, optional Page, supplied RelativeFilePath, and `/spell/<index>` JsonPointer. IdentityFieldsJson retains original name/source. ClassificationEvidenceJson retains school, supplied meta, miscTags, and areaTags. AdditionalMetadataJson retains only the documented metadata fields. Reference-source arrays are not expanded into additional provenance origins in this batch.
 
-Retained JSON preserves value types and numeric token spelling; property order and formatting may change. It is not a second whole-spell snapshot. Aliases remain typed header values. Reprint relationships retain source syntax `5etools` and the complete reference with bHasTargetRecord=false; no target identity or newest-version preference is invented.
+Retained JSON preserves value types and numeric token spelling; property order and formatting may change. It is not a second whole-spell snapshot. Aliases remain typed header values. Reprint relationships retain source syntax `5etools` and their complete original selector. Exactly two pipe-separated components with usable explicit name/source normalize to the existing spell ID in the caller's dataset namespace. Component edge whitespace is trimmed for the ID while raw SourceReference stays unchanged. Headers, inline spell references, and reprints share the same private ID constructor; the v1 format and existing IDs are unchanged.
+
+Missing/blank components, extra pipe-separated fields, or unusable identity text leave bHasTargetRecord=false and a default target ID, with one located UnresolvedReference warning. The outer field must still be an array of nonempty strings; object/non-string entries and empty strings retain their existing structural failures. No default source, case-folded identity, source inheritance, redirect, or preferred edition is selected.
+
+A normalized reprint sets bHasTargetRecord=true without requiring a loaded target or emitting the old unconditional reprint warning. Call [ResolveSpellRelationship](spell-catalog.md#spell-reference-resolution) separately to follow the declared ID in a selected catalog. A target absent from a subset returns TargetNotFound; reading does not fetch missing files, merge reprints, or recursively follow chains.
 
 ## Content, inline tokens, and fallback behavior
 
@@ -137,7 +141,7 @@ Codes are fixed FNames with prefix `Dnd5e.Json.`:
 | SerializationFailure | Error | Could not serialize retained metadata |
 | PreservedUnsupportedContent | Warning | Complete unmodeled inline token or JSON Content node retained as Unsupported |
 | PreservedUnsupportedMetadata | Warning | Presentation metadata retained without complete typed layout support |
-| UnresolvedReference | Warning | Complete reprint reference retained without normalized target |
+| UnresolvedReference | Warning | Omitted-source/unsupported-category inline reference, or unsupported nonempty reprint selector, retained without a normalized target |
 
 Every diagnostic includes severity, code, message, supplied RelativeFilePath, and the most specific known JsonPointer. Request/whole-document/preflight errors may use an empty pointer. Pointer property segments escape `~` as `~0` and `/` as `~1`. The reader does not turn arbitrary property names into FNames or register new tags from input.
 

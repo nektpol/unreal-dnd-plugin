@@ -48,8 +48,11 @@ namespace Dnd5eJsonReader
 	bool ReadOptionalBool(const FJsonObject& Object, const TCHAR* FieldName, const FString& ObjectPointer, bool& OutValue, FReadState& State);
 	bool ReadRequiredInteger(const FJsonObject& Object, const TCHAR* FieldName, const FString& ObjectPointer, int32 Minimum, int32 Maximum, int32& OutInteger, FString& OutLiteral, FReadState& State);
 	bool CheckAllowedKeys(const FJsonObject& Object, std::initializer_list<const TCHAR*> AllowedKeys, const FString& ObjectPointer, FReadState& State);
+	bool IsValidIdentityText(const FString& Text);
 	bool ValidateIdentityText(const FString& Text, const FString& Pointer, FReadState& State);
 	FString EscapeIdentityComponent(const FString& Text);
+	FDnd5eRecordId MakeSpellRecordId(const FString& Name, const FString& Source, const FString& DatasetNamespace);
+	bool TryNormalizeSpellUid(const FString& Uid, const FString& DatasetNamespace, FDnd5eRecordId& RecordId);
 	bool ReadPage(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, FDnd5ePageReference& OutPage, FReadState& State);
 	FDnd5eContentMetadata MakeContentMetadata(const FString& Pointer, const FReadState& State);
 	bool ReadNumberValue(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, FDnd5eNumber& OutNumber, FReadState& State);

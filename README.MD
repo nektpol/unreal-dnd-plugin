@@ -8,7 +8,7 @@ Early development. The runtime module contains shared identity, provenance, meas
 
 The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, selected references, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
 
-The standard editor automation suite has 329 passing cases on 2026-10-30. The combined opt-in run passed 349 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading, the spell browser, and normalized-reference lookup. See [Automated tests](docs/testing.md) for evidence and limits.
+The standard editor automation suite has 348 passing cases on 2026-10-30. The combined opt-in run passed 369 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading, the spell browser, normalized-reference/relationship lookup, and 389 audited reprint targets. See [Automated tests](docs/testing.md) for evidence and limits.
 
 The [JSON spell reader](docs/json-spell-reader.md) accepts supplied text and an explicit spell-array index. It constructs identity/provenance and typed values, retains supported metadata and fallbacks, and returns diagnostics. Unknown required top-level values fail with a default output spell. The runtime reader performs no file or network access.
 
@@ -30,6 +30,8 @@ Annotation infrastructure is implemented: `@dice` and `@damage` become typed Dic
 - Answer reference queries such as what a class gains at a given level or which level corresponds to an XP total.
 
 The consuming project manages character state, resolves choices, and applies gameplay changes. This plugin does not implement a leveling system, combat system, or automated rules engine.
+
+Explicit `name|source` spell reprints now receive normalized target IDs while retaining their original selectors. ResolveSpellRelationship retrieves a chosen loaded target without merging editions, replacing the original record, or following chains. Omitted-source and extended selectors remain separate policy/coverage work.
 
 ## External data
 

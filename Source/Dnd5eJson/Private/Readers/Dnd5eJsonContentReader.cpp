@@ -175,9 +175,7 @@ namespace Dnd5eJsonReader
 				const FString Source = Parts[1].TrimStartAndEnd();
 				if (!ValidateIdentityText(Name, Pointer, State) || !ValidateIdentityText(Source, Pointer, State)) { return false; }
 				Reference.bHasTargetRecordId = true;
-				Reference.TargetRecordId.DatasetNamespace = State.Context.DatasetNamespace;
-				Reference.TargetRecordId.Category = Dnd5e::Category::Spell;
-				Reference.TargetRecordId.SourceKey = TEXT("5etools:spell:v1:") + EscapeIdentityComponent(Name) + TEXT("|") + EscapeIdentityComponent(Source);
+				Reference.TargetRecordId = MakeSpellRecordId(Name, Source, State.Context.DatasetNamespace);
 			}
 			else { AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, Pointer, TEXT("Reference retained without inventing an omitted source or unsupported category identity.")); }
 			Inlines.Add(MakeInline(Dnd5e::Content::Inline::Reference, Reference, Metadata));

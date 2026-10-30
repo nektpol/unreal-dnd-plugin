@@ -361,12 +361,10 @@ bool FDnd5eJsonSpellRetentionTest::RunTest(const FString& Parameters)
 	const auto Result = FDnd5eJsonSpellReader::ReadSpell(MakeRequest(Spell));
 	if (!TestTrue(TEXT("Retained limitations are accepted"), Result.Status == EDnd5eJsonReadStatus::Success)) { return false; }
 	const auto& Output = Result.Spell;
-	if (!TestEqual(TEXT("Fallback warnings then reprint warnings"), Result.Diagnostics.Num(), 4)) { return false; }
+	if (!TestEqual(TEXT("Only unsupported inline fallbacks need warnings"), Result.Diagnostics.Num(), 2)) { return false; }
 	TestEqual(TEXT("First retained fragment location"), Result.Diagnostics[0].JsonPointer, FString(TEXT("/spell/0/entries/1")));
 	TestEqual(TEXT("Higher-level retained fragment location"), Result.Diagnostics[1].JsonPointer, FString(TEXT("/spell/0/entriesHigherLevel/0")));
-	TestEqual(TEXT("Reprint warning location"), Result.Diagnostics[2].JsonPointer, FString(TEXT("/spell/0/reprintedAs/0")));
 	TestEqual(TEXT("Fallback warning code"), Result.Diagnostics[0].Code, FName(TEXT("Dnd5e.Json.PreservedUnsupportedContent")));
-	TestEqual(TEXT("Unresolved reference warning code"), Result.Diagnostics[2].Code, FName(TEXT("Dnd5e.Json.UnresolvedReference")));
 	for (const auto& Diagnostic : Result.Diagnostics) { TestTrue(TEXT("Accepted diagnostics are warnings"), Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning); }
 	FDnd5eUnsupportedContent Unsupported;
 	FDnd5eParagraphContent Paragraph;
@@ -391,7 +389,7 @@ bool FDnd5eJsonSpellRetentionTest::RunTest(const FString& Parameters)
 	const auto Identity = ParseFixture(Output.Header.Provenance[0].IdentityFieldsJson)->AsObject();
 	TestEqual(TEXT("Original identity evidence"), Identity->GetStringField(TEXT("name")), FString(TEXT("Clockwork Spark")));
 	TestEqual(TEXT("Both directed relationships retained"), Output.Relationships.Num(), 2);
-	TestTrue(TEXT("No invented resolved target"), !Output.Relationships[0].bHasTargetRecord && Output.Relationships[0].TargetRecordId.SourceKey.IsEmpty());
+	TestTrue(TEXT("Source-explicit reprints normalize without requiring a loaded target"), Output.Relationships[0].bHasTargetRecord && Output.Relationships[0].TargetRecordId.DatasetNamespace == TEXT("synthetic") && Output.Relationships[0].TargetRecordId.SourceKey == TEXT("5etools:spell:v1:New%20Invented%20Spark|SYNTH2"));
 	TestEqual(TEXT("Original reprint reference"), Output.Relationships[0].SourceReference, FString(TEXT("New Invented Spark|SYNTH2")));
 	Spell->SetField(TEXT("basicRules"), MakeShared<FJsonValueNull>());
 	ExpectFailure(*this, MakeRequest(Spell), TEXT("InvalidFieldValue"), TEXT("/spell/0/basicRules"), 3);

@@ -109,6 +109,20 @@ bool FDnd5eReferenceFailureTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("A useful message has no invented referring location"), !Diagnostics[0].Message.IsEmpty() && Diagnostics[0].RelativeFilePath.IsEmpty() && Diagnostics[0].JsonPointer.IsEmpty());
 	}
 	TestTrue(TEXT("The reference's raw/display/identity values remain unchanged"), Equal(FDnd5eReferenceContent::StaticStruct(), &Case->Reference, &BeforeReference));
+	FDnd5eRecordRelationship Relationship;
+	Relationship.Kind = Dnd5e::Record::Relationship::ReprintedAs;
+	Relationship.bHasTargetRecord = Case->Reference.bHasTargetRecordId;
+	Relationship.TargetRecordId = Case->Reference.TargetRecordId;
+	Relationship.SourceFormat = TEXT("synthetic"); Relationship.SourceReference = TEXT("original relationship evidence");
+	const auto BeforeRelationship = Relationship;
+	Output = Target; Diagnostics.AddDefaulted(2);
+	TestEqual(TEXT("Relationship lookup forwards the same failure status"), Catalog.ResolveSpellRelationship(Relationship, Output, Diagnostics), Case->Status);
+	TestTrue(TEXT("Relationship failure also resets output"), Equal(FDnd5eSpell::StaticStruct(), &Output, &Default));
+	if (TestEqual(TEXT("Relationship failure has exactly one diagnostic"), Diagnostics.Num(), 1))
+	{
+		TestTrue(TEXT("Diagnostic code/severity and empty referring location are forwarded"), Diagnostics[0].Code == Case->Code && Diagnostics[0].Severity == Case->Severity && Diagnostics[0].RelativeFilePath.IsEmpty() && Diagnostics[0].JsonPointer.IsEmpty());
+	}
+	TestTrue(TEXT("Relationship evidence is immutable"), Equal(FDnd5eRecordRelationship::StaticStruct(), &Relationship, &BeforeRelationship));
 	TestTrue(TEXT("Failure preserves catalog identity/order"), Catalog.GetSpellIds() == BeforeIds);
 	if (!Case->bEmptyCatalog)
 	{

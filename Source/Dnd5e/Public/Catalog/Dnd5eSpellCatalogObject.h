@@ -27,6 +27,9 @@ public:
 	EDnd5eReferenceResolveStatus ResolveSpellReference(const FDnd5eReferenceContent& Reference, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|SpellCatalog")
+	EDnd5eReferenceResolveStatus ResolveSpellRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|SpellCatalog")
 	bool QuerySpellIds(const FDnd5eSpellQuery& Query, TArray<FDnd5eRecordId>& Ids, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 
 	UFUNCTION(BlueprintPure, Category = "Dnd5e|SpellCatalog")

@@ -111,6 +111,9 @@ bool FDnd5eBlueprintCatalogReflectionTest::RunTest(const FString& Parameters)
 	CheckFunction(*this, Catalog, TEXT("ResolveSpellReference"), false, true, false, {
 		{TEXT("Reference"), TEXT("FDnd5eReferenceContent"), false, true}, {TEXT("Spell"), TEXT("FDnd5eSpell"), true},
 		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("EDnd5eReferenceResolveStatus"), false, false, true}});
+	CheckFunction(*this, Catalog, TEXT("ResolveSpellRelationship"), false, true, false, {
+		{TEXT("Relationship"), TEXT("FDnd5eRecordRelationship"), false, true}, {TEXT("Spell"), TEXT("FDnd5eSpell"), true},
+		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("EDnd5eReferenceResolveStatus"), false, false, true}});
 	CheckFunction(*this, Catalog, TEXT("QuerySpellIds"), false, true, false, {
 		{TEXT("Query"), TEXT("FDnd5eSpellQuery"), false, true}, {TEXT("Ids"), TEXT("TArray<FDnd5eRecordId>"), true},
 		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("bool"), false, false, true}});
@@ -335,6 +338,48 @@ bool FDnd5eBlueprintReferenceResolveTest::RunTest(const FString& Parameters)
 	*Reference = Before;
 	Call.Invoke();
 	TestTrue(TEXT("Success clears the preceding failure diagnostic"), *Status == EDnd5eReferenceResolveStatus::Resolved && Diagnostics->IsEmpty());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBlueprintRelationshipTest, "Dnd5e.Blueprint.SpellCatalog.ResolveRelationship", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBlueprintRelationshipTest::RunTest(const FString& Parameters)
+{
+	TStrongObjectPtr<UDnd5eSpellCatalogObject> Catalog(NewObject<UDnd5eSpellCatalogObject>());
+	const auto Target = SyntheticSpell();
+	TArray<FDnd5eDiagnostic> Setup;
+	if (!TestTrue(TEXT("Install a synthetic relationship target"), Catalog->ReplaceSpells({Target}, Setup))) { return false; }
+	FBlueprintInvocation Call(*this, Catalog.Get(), TEXT("ResolveSpellRelationship"));
+	auto* Input = Call.Parameter<FDnd5eRecordRelationship>(TEXT("Relationship"), TEXT("FDnd5eRecordRelationship"));
+	auto* Output = Call.Parameter<FDnd5eSpell>(TEXT("Spell"), TEXT("FDnd5eSpell"));
+	auto* Diagnostics = Call.Parameter<TArray<FDnd5eDiagnostic>>(TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"));
+	auto* Status = Call.Parameter<EDnd5eReferenceResolveStatus>(TEXT("ReturnValue"), TEXT("EDnd5eReferenceResolveStatus"));
+	if (!Input || !Output || !Diagnostics || !Status) { return false; }
+	Input->Kind = Dnd5e::Record::Relationship::ReprintedAs;
+	Input->SourceFormat = TEXT("synthetic"); Input->SourceReference = TEXT("retained-selector");
+	Input->bHasTargetRecord = true; Input->TargetRecordId = Target.Header.RecordId;
+	const auto Original = *Input;
+	Diagnostics->AddDefaulted();
+	Call.Invoke();
+	TestTrue(TEXT("Reflected relationship lookup returns an independent full spell"), *Status == EDnd5eReferenceResolveStatus::Resolved && Diagnostics->IsEmpty() && Equal(FDnd5eSpell::StaticStruct(), Output, &Target));
+	TestTrue(TEXT("The relationship remains unchanged"), Equal(FDnd5eRecordRelationship::StaticStruct(), Input, &Original));
+	Output->Description.Reset(); Call.Invoke();
+	TestTrue(TEXT("Nested output mutations cannot affect the catalog"), Equal(FDnd5eSpell::StaticStruct(), Output, &Target));
+	for (int32 Case = 0; Case < 4; ++Case)
+	{
+		*Input = Original; *Output = Target; Diagnostics->AddDefaulted();
+		EDnd5eReferenceResolveStatus Expected;
+		if (Case == 0) { Input->bHasTargetRecord = false; Expected = EDnd5eReferenceResolveStatus::MissingTargetId; }
+		else if (Case == 1) { Input->TargetRecordId.SourceKey.Reset(); Expected = EDnd5eReferenceResolveStatus::InvalidTargetId; }
+		else if (Case == 2) { Input->TargetRecordId.Category = Dnd5e::Category::Class; Expected = EDnd5eReferenceResolveStatus::UnsupportedCategory; }
+		else { Input->TargetRecordId.SourceKey = TEXT("absent"); Expected = EDnd5eReferenceResolveStatus::TargetNotFound; }
+		const auto Before = *Input;
+		Call.Invoke();
+		const FDnd5eSpell Default;
+		TestTrue(TEXT("Every reflected relationship failure clears output and returns one diagnostic"), *Status == Expected && Diagnostics->Num() == 1 && Equal(FDnd5eSpell::StaticStruct(), Output, &Default));
+		TestTrue(TEXT("Failure preserves the relationship"), Equal(FDnd5eRecordRelationship::StaticStruct(), Input, &Before));
+	}
+	*Input = Original; Call.Invoke();
+	TestTrue(TEXT("Success clears a previous warning"), *Status == EDnd5eReferenceResolveStatus::Resolved && Diagnostics->IsEmpty());
 	return !HasAnyErrors();
 }
 

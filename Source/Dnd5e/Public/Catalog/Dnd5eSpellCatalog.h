@@ -7,6 +7,7 @@
 #include "Diagnostics/Dnd5eDiagnostic.h"
 #include "Content/Dnd5eContentType.h"
 #include "Records/Dnd5eReferenceResolution.h"
+#include "Records/Dnd5eRecordRelationship.h"
 #include "Dnd5eSpellCatalog.generated.h"
 
 USTRUCT(BlueprintType)
@@ -50,6 +51,7 @@ public:
 	int32 GetSpellCount() const { return Spells.Num(); }
 	TArray<FDnd5eRecordId> GetSpellIds() const { return OrderedIds; }
 	EDnd5eReferenceResolveStatus ResolveSpellReference(const FDnd5eReferenceContent& Reference, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
+	EDnd5eReferenceResolveStatus ResolveSpellRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 
 private:
 	TMap<FDnd5eRecordId, FDnd5eSpell> Spells;

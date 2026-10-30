@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [329-case standard suite](testing.md) covers all 60 runtime model schemas/defaults and 269 reflected fields, copy/serialization, 15 enums, Content helpers, spell readers/catalogs/loading/reference lookup, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference resolution, and rich Content rendering remain pending.
+Status: current shared declarations and remaining logical contracts. The [348-case standard suite](testing.md) covers all 60 runtime model schemas/defaults and 269 reflected fields, copy/serialization, 15 enums, Content helpers, spell readers/catalogs/loading/reference lookup, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference resolution, and rich Content rendering remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -130,7 +130,7 @@ Native categories are Dnd5e::Category::{Spell, Class, Subclass, Species, Backgro
 
 ### Record relationships
 
-Implemented: exported, Blueprint-visible `FDnd5eRecordRelationship` is declared in [Dnd5eRecordRelationship.h](../Source/Dnd5e/Public/Records/Dnd5eRecordRelationship.h). This is a directed record link, separate from inline Content references with display text and spell availability associations. The spell reader retains reprintedAs strings as unresolved relationships. Automatic target normalization/resolution and general relationship consistency validation remain pending.
+Implemented: exported, Blueprint-visible `FDnd5eRecordRelationship` is declared in [Dnd5eRecordRelationship.h](../Source/Dnd5e/Public/Records/Dnd5eRecordRelationship.h). This is a directed record link, separate from inline Content references with display text and spell availability associations. The spell reader normalizes supported explicit name/source reprint strings while retaining original selectors; unsupported nonempty spellings remain unresolved. The [catalog's relationship lookup](spell-catalog.md#spell-reference-resolution) can retrieve a declared spell target. Omitted-source/extended selector normalization and general relationship consistency validation remain pending.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |

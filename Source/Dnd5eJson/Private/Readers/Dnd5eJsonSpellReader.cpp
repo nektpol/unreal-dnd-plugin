@@ -362,9 +362,14 @@ namespace Dnd5eJsonReader
 		return true;
 	}
 
+	bool IsValidIdentityText(const FString& Text)
+	{
+		return !Text.IsEmpty() && Text.Equals(Text.TrimStartAndEnd(), ESearchCase::CaseSensitive) && !HasControlCharacters(Text) && HasValidUtf16(Text);
+	}
+
 	bool ValidateIdentityText(const FString& Text, const FString& Pointer, FReadState& State)
 	{
-		if (Text.IsEmpty() || !Text.Equals(Text.TrimStartAndEnd(), ESearchCase::CaseSensitive) || HasControlCharacters(Text) || !HasValidUtf16(Text))
+		if (!IsValidIdentityText(Text))
 		{
 			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Identity requires nonempty valid Unicode without edge whitespace or control characters."));
 		}
@@ -391,6 +396,28 @@ namespace Dnd5eJsonReader
 		return Escaped;
 	}
 
+	FDnd5eRecordId MakeSpellRecordId(const FString& Name, const FString& Source, const FString& DatasetNamespace)
+	{
+		FDnd5eRecordId RecordId;
+		RecordId.DatasetNamespace = DatasetNamespace;
+		RecordId.Category = Dnd5e::Category::Spell;
+		RecordId.SourceKey = TEXT("5etools:spell:v1:") + EscapeIdentityComponent(Name) + TEXT("|") + EscapeIdentityComponent(Source);
+		return RecordId;
+	}
+
+	bool TryNormalizeSpellUid(const FString& Uid, const FString& DatasetNamespace, FDnd5eRecordId& RecordId)
+	{
+		RecordId = FDnd5eRecordId{};
+		TArray<FString> Parts;
+		Uid.ParseIntoArray(Parts, TEXT("|"), false);
+		if (Parts.Num() != 2) { return false; }
+		const FString Name = Parts[0].TrimStartAndEnd();
+		const FString Source = Parts[1].TrimStartAndEnd();
+		if (!IsValidIdentityText(Name) || !IsValidIdentityText(Source) || !IsValidIdentityText(DatasetNamespace)) { return false; }
+		RecordId = MakeSpellRecordId(Name, Source, DatasetNamespace);
+		return true;
+	}
+
 	bool ReadPage(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, FDnd5ePageReference& OutPage, FReadState& State)
 	{
 		FDnd5ePageReference Page;
@@ -413,9 +440,7 @@ namespace Dnd5eJsonReader
 		if (!ReadRequiredString(Object, TEXT("name"), RecordPointer, Name, State) || !ValidateIdentityText(Name, AppendPointer(RecordPointer, TEXT("name")), State)) { return false; }
 		if (!ReadRequiredString(Object, TEXT("source"), RecordPointer, Source, State) || !ValidateIdentityText(Source, AppendPointer(RecordPointer, TEXT("source")), State)) { return false; }
 		FDnd5eRecordHeader Header;
-		Header.RecordId.DatasetNamespace = State.Context.DatasetNamespace;
-		Header.RecordId.Category = Dnd5e::Category::Spell;
-		Header.RecordId.SourceKey = TEXT("5etools:spell:v1:") + EscapeIdentityComponent(Name) + TEXT("|") + EscapeIdentityComponent(Source);
+		Header.RecordId = MakeSpellRecordId(Name, Source, State.Context.DatasetNamespace);
 		Header.DisplayName = Name;
 		FDnd5eRecordProvenance Provenance;
 		Provenance.SourceId = Source;
@@ -665,8 +690,12 @@ namespace Dnd5eJsonReader
 				Relationship.Kind = Dnd5e::Record::Relationship::ReprintedAs;
 				Relationship.SourceFormat = TEXT("5etools");
 				Relationship.SourceReference = References[Index];
+				Relationship.bHasTargetRecord = TryNormalizeSpellUid(Relationship.SourceReference, State.Context.DatasetNamespace, Relationship.TargetRecordId);
+				if (!Relationship.bHasTargetRecord)
+				{
+					AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, AppendPointer(Pointer, FString::FromInt(Index)), TEXT("Reprint selector retained without a normalized target; this mapping requires an explicit name|source selector."));
+				}
 				Candidate.Relationships.Add(MoveTemp(Relationship));
-				AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, AppendPointer(Pointer, FString::FromInt(Index)), TEXT("Reprint reference retained without target normalization or lookup."));
 			}
 		}
 		return true;

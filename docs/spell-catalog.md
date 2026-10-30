@@ -71,6 +71,7 @@ Construct the native class with Construct Object from Class and retain the resul
 | ReplaceSpells(Records, Diagnostics) | BlueprintCallable, instance | Core validated replacement; returns bool and diagnostics, preserves previous records on failure |
 | TryGetSpell(Id, Spell) const | BlueprintCallable, explicitly not pure | Exact lookup, independent copied spell output; resets output on miss |
 | ResolveSpellReference(Reference, Spell, Diagnostics) const | BlueprintCallable, explicitly not pure | Follow a normalized reference ID; return `EDnd5eReferenceResolveStatus`, a copied spell on success, and `TArray<FDnd5eDiagnostic>` |
+| ResolveSpellRelationship(Relationship, Spell, Diagnostics) const | BlueprintCallable, explicitly not pure | Follow an `FDnd5eRecordRelationship` target ID using the same status/copy/reset/diagnostic contract |
 | QuerySpellIds(Query, Ids, Diagnostics) const | BlueprintCallable, explicitly not pure | Query validity bool, ordered `TArray<FDnd5eRecordId>` output, diagnostics |
 | GetSpellCount() const | BlueprintPure | Current int32 count |
 | GetSpellIds() const | BlueprintCallable, explicitly not pure | Independent `TArray<FDnd5eRecordId>` containing all installed IDs |
@@ -160,6 +161,7 @@ FDnd5eSpellCatalog owns copies of normalized spell records, an exact-ID index, a
 | ReplaceSpells(Records, Diagnostics) | Reset diagnostics, validate a candidate, then replace atomically on success; an empty array clears the catalog |
 | TryGetSpell(Id, Spell) const | Exact-ID lookup; copy out on success, reset Spell to its default on failure |
 | ResolveSpellReference(Reference, Spell, Diagnostics) const | Validate a reference's supplied target ID, look it up exactly, and return a resolution status; reset outputs on each call |
+| ResolveSpellRelationship(Relationship, Spell, Diagnostics) const | Adapt the relationship's target-presence flag/ID to the same lookup, preserving the relationship |
 | QuerySpellIds(Query, Ids, Diagnostics) const | Reset both outputs, validate the query, return matching IDs in installation order |
 | GetSpellCount() const | Current record count |
 | GetSpellIds() const | Independent copy of all IDs in installation order |
@@ -197,6 +199,8 @@ This method adds no filesystem/network access, automatic loading, cached resolut
 Returned diagnostics are quiet API data. Their referring RelativeFilePath/JsonPointer remain empty because the input payload does not contain its owning inline wrapper's location. The target record's provenance is not substituted for the referring token's location. A traversal that knows the owning node can report that context separately.
 
 In Blueprint, extract a reference payload using TryGetReference, call Resolve Spell Reference on the intended retained catalog, and switch on its enum return. Use the Spell output only on Resolved. This does not expose the editor subsystem's private catalog to Blueprint or automatically navigate the browser.
+
+ResolveSpellRelationship accepts an FDnd5eRecordRelationship instead of the inline payload. It forwards bHasTargetRecord and TargetRecordId to the same resolver and returns the existing statuses and Dnd5e.Reference codes. It does not validate Kind semantics, parse SourceFormat/SourceReference, or follow further relationships on the returned target. The caller chooses an edge; cycles do not trigger traversal. Input evidence and both catalog records remain unchanged. An explicit reader-normalized reprint can therefore be inspected without treating editions/reprints as equivalent or replacing the original record.
 
 ## Spell query
 

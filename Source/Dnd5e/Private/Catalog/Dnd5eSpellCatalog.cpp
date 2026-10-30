@@ -180,3 +180,11 @@ EDnd5eReferenceResolveStatus FDnd5eSpellCatalog::ResolveSpellReference(const FDn
 	}
 	return EDnd5eReferenceResolveStatus::Resolved;
 }
+
+EDnd5eReferenceResolveStatus FDnd5eSpellCatalog::ResolveSpellRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const
+{
+	FDnd5eReferenceContent Reference;
+	Reference.bHasTargetRecordId = Relationship.bHasTargetRecord;
+	Reference.TargetRecordId = Relationship.TargetRecordId;
+	return ResolveSpellReference(Reference, Spell, Diagnostics);
+}
