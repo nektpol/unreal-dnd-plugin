@@ -1,4 +1,6 @@
-﻿#pragma once
+// Developed by Neko Creative Technologies
+
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Browser/Dnd5eSpellBrowserModel.h"
@@ -26,6 +28,7 @@ private:
 	TSharedRef<ITableRow> GenerateRow(FDnd5eSpellBrowserRowPtr Item, const TSharedRef<STableViewBase>& OwnerTable);
 	void ClearDetails();
 	FText GetSummary() const;
+	FText GetReferenceSummary() const;
 
 	FDnd5eSpellBrowserModel Model;
 	TSharedPtr<SListView<FDnd5eSpellBrowserRowPtr>> ListView;
@@ -33,4 +36,5 @@ private:
 	TStrongObjectPtr<UDnd5eSpellBrowserSelection> SelectedData;
 	TWeakObjectPtr<UDnd5eEditorDatasetSubsystem> DatasetSubsystem;
 	FDelegateHandle CatalogChangedHandle;
+	FText ReferenceSummary;
 };

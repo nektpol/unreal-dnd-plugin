@@ -1,6 +1,5 @@
 ﻿// Developed by Neko Creative Technologies
 
-
 #include "Readers/Dnd5eJsonSpellCatalogLibrary.h"
 
 #include "Catalog/Dnd5eSpellCatalogObject.h"

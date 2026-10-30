@@ -20,6 +20,7 @@
 #include "UObject/GarbageCollection.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Text/STextBlock.h"
 
 namespace
 {
@@ -82,6 +83,20 @@ namespace
 		for (int32 Index = 0; Index < Children->Num(); ++Index)
 		{
 			if (TSharedPtr<SWidget> Found = FindWidget(Children->GetChildAt(Index), Type)) { return Found; }
+		}
+		return nullptr;
+	}
+	TSharedPtr<STextBlock> FindBrowserText(const TSharedRef<SWidget>& Root, const FString& Prefix)
+	{
+		if (Root->GetType() == FName(TEXT("STextBlock")))
+		{
+			auto Text = StaticCastSharedRef<STextBlock>(Root);
+			if (Text->GetText().ToString().StartsWith(Prefix)) { return Text; }
+		}
+		auto* Children = Root->GetChildren();
+		for (int32 Index = 0; Index < Children->Num(); ++Index)
+		{
+			if (auto Found = FindBrowserText(Children->GetChildAt(Index), Prefix)) { return Found; }
 		}
 		return nullptr;
 	}
@@ -277,6 +292,64 @@ bool FDnd5eBrowserRegistrationTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("The browser menu uses the module's cleanup owner"), Entry.Owner == FToolMenuOwner(&Module));
 	}
 	TestEqual(TEXT("Exactly one browser command is registered"), Count, 1);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBrowserReportTest, "Dnd5e.Editor.SpellBrowser.ReferenceReportInspection", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBrowserReportTest::RunTest(const FString& Parameters)
+{
+	auto* Session = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorDatasetSubsystem>() : nullptr;
+	if (!TestNotNull(TEXT("Editor session"), Session)) { return false; }
+	auto* Property = FindFProperty<FObjectPropertyBase>(Session->GetClass(), TEXT("Catalog"));
+	if (!TestNotNull(TEXT("Transient catalog property"), Property)) { return false; }
+	TStrongObjectPtr<UDnd5eSpellCatalogObject> Fixture(NewObject<UDnd5eSpellCatalogObject>());
+	auto Owner = BrowserRecords()[0]; Owner.Header.DisplayName = TEXT("Invented Caller");
+	auto Target = BrowserRecords()[1]; Target.Header.DisplayName = TEXT("Invented Beacon"); Target.Description.Reset(); Target.HigherLevelDescription.Reset();
+	FDnd5eReferenceContent Token; Token.SourceFormat = TEXT("5etools"); Token.SourceReference = TEXT("{@spell Invented Beacon|SYN-SECOND}"); Token.Display = {Dnd5eTests::Text(TEXT("A label"))};
+	FDnd5eReferenceContent Declared = Token; Declared.SourceFormat = TEXT("other"); Declared.bHasTargetRecordId = true; Declared.TargetRecordId = Target.Header.RecordId;
+	FDnd5eParagraphContent Body; Body.Inlines = {Dnd5eTests::Inline(Dnd5e::Content::Inline::Reference, Token), Dnd5eTests::Inline(Dnd5e::Content::Inline::Reference, Declared)};
+	Owner.Description = {Dnd5eTests::Block(Dnd5e::Content::Block::Paragraph, Body), Dnd5eTests::Block(Dnd5e::Content::Block::Unsupported, FDnd5eUnsupportedContent{})}; Owner.HigherLevelDescription.Reset();
+	auto Empty = Target; Empty.Header.RecordId.SourceKey = TEXT("empty"); Empty.Header.DisplayName = TEXT("Invented Empty");
+	auto Failure = Empty; Failure.Header.RecordId.SourceKey = TEXT("failure"); Failure.Header.DisplayName = TEXT("Invented Failure"); Failure.Description.AddDefaulted();
+	if (!Install(*this, *Fixture, {Owner, Empty, Failure, Target})) { return false; }
+	FScopedBrowserCatalog Restore(*Session, *Property, Fixture.Get());
+	auto Browser = SNew(SDnd5eSpellBrowser);
+	auto List = StaticCastSharedPtr<SListView<FDnd5eSpellBrowserRowPtr>>(FindWidget(Browser, TEXT("SListView<FDnd5eSpellBrowserRowPtr>")));
+	auto Search = StaticCastSharedPtr<SSearchBox>(FindWidget(Browser, TEXT("SSearchBox")));
+	auto Details = StaticCastSharedPtr<IDetailsView>(FindWidget(Browser, TEXT("SDetailsView")));
+	if (!TestTrue(TEXT("Production widgets"), List.IsValid() && Search.IsValid() && Details.IsValid())) { return false; }
+	const FString NoSelection = TEXT("Select a spell to inspect its reference report.");
+	TestTrue(TEXT("Initial summary prompts selection"), FindBrowserText(Browser, NoSelection).IsValid());
+	List->SetSelection(List->GetItems()[0]);
+	if (!TestEqual(TEXT("One selected inspector object"), Details->GetSelectedObjects().Num(), 1)) { return false; }
+	auto* Selected = Cast<UDnd5eSpellBrowserSelection>(Details->GetSelectedObjects()[0].Get());
+	if (!TestNotNull(TEXT("Production selection"), Selected)) { return false; }
+	TestTrue(TEXT("Report computed against same catalog"), Selected->ReferenceReport.bCollected && Selected->ReferenceReport.Entries.Num() == 2 && Selected->ReferenceReport.Diagnostics.Num() == 1);
+	auto Summary = FindBrowserText(Browser, TEXT("Typed references: 2"));
+	if (!TestTrue(TEXT("Separate stage counts and collection warning shown"), Summary.IsValid() && Summary->GetText().ToString().Contains(TEXT("Original targets found: 1")) && Summary->GetText().ToString().Contains(TEXT("Selectors normalized: 1")) && Summary->GetText().ToString().Contains(TEXT("Normalized targets found: 1")) && Summary->GetText().ToString().Contains(TEXT("Collection diagnostics: 1")))) { return false; }
+	TestFalse(TEXT("Both spell/report inspection is read-only"), Details->GetIsPropertyEditingEnabledDelegate().Execute());
+	for (int32 Frame = 0; Frame < 3; ++Frame) { Details->Tick(FGeometry(), FPlatformTime::Seconds(), 1.0f / 60.0f); }
+	TWeakObjectPtr<UDnd5eSpellBrowserSelection> Weak = Selected; CollectGarbage(RF_NoFlags);
+	TestTrue(TEXT("Populated report survives GC"), Weak.IsValid() && Weak->ReferenceReport.Entries.Num() == 2);
+	const FString Cached = Summary->GetText().ToString(); Selected->ReferenceReport.Entries.Reset();
+	TestEqual(TEXT("Text getter returns cached summary rather than rebuilding report"), Summary->GetText().ToString(), Cached);
+	FDnd5eSpell Again; Fixture->TryGetSpell(Owner.Header.RecordId, Again);
+	TestTrue(TEXT("Selection report edits leave catalog intact"), Dnd5eTests::Equal(FDnd5eSpell::StaticStruct(), &Owner, &Again));
+	List->SetSelection(List->GetItems()[1]);
+	TestTrue(TEXT("Zero-reference success is distinct from no selection"), FindBrowserText(Browser, TEXT("Typed references: 0")).IsValid());
+	List->SetSelection(List->GetItems()[2]);
+	TestTrue(TEXT("Structural failure has explicit summary"), FindBrowserText(Browser, TEXT("Reference collection failed.")).IsValid());
+	Selected = Cast<UDnd5eSpellBrowserSelection>(Details->GetSelectedObjects()[0].Get());
+	TestTrue(TEXT("Failed report remains inspectable beside spell"), Selected && !Selected->ReferenceReport.bCollected && Selected->ReferenceReport.Diagnostics.Num() == 1 && Selected->Spell.Header.RecordId == Failure.Header.RecordId);
+	Search->SetText(FText::FromString(TEXT("Caller")));
+	TestTrue(TEXT("Search clears report object and cached summary"), Details->GetSelectedObjects().IsEmpty() && FindBrowserText(Browser, NoSelection).IsValid());
+	if (!TestEqual(TEXT("Filtered caller row exists"), List->GetItems().Num(), 1)) { return false; }
+	List->SetSelection(List->GetItems()[0]);
+	if (!Install(*this, *Fixture, {Owner, Target})) { return false; }
+	Session->OnCatalogChanged().Broadcast();
+	TestTrue(TEXT("Refresh clears old report and summary"), Details->GetSelectedObjects().IsEmpty() && FindBrowserText(Browser, NoSelection).IsValid());
+	List->SetSelection(List->GetItems()[0]);
+	TestTrue(TEXT("Reselection builds a fresh report"), FindBrowserText(Browser, TEXT("Typed references: 2")).IsValid());
 	return !HasAnyErrors();
 }
 

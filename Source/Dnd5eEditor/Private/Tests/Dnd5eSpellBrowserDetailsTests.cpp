@@ -61,4 +61,23 @@ bool FDnd5eSpellBrowserDetailsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBrowserReportSchemaTest, "Dnd5e.Editor.SpellBrowser.ReportSelectionSchema", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBrowserReportSchemaTest::RunTest(const FString& Parameters)
+{
+	auto* Type = UDnd5eSpellBrowserSelection::StaticClass();
+	TestEqual(TEXT("Private editor owns wrapper"), Type->GetOutermost()->GetName(), FString(TEXT("/Script/Dnd5eEditor")));
+	TestTrue(TEXT("Selection class remains transient"), Type->HasAnyClassFlags(CLASS_Transient));
+	int32 Count = 0;
+	for (TFieldIterator<FProperty> It(Type, EFieldIterationFlags::None); It; ++It) { ++Count; }
+	TestEqual(TEXT("Exactly spell and report fields"), Count, 2);
+	const auto* Report = FindFProperty<FStructProperty>(Type, TEXT("ReferenceReport"));
+	if (!TestNotNull(TEXT("Reflected report"), Report)) { return false; }
+	TestTrue(TEXT("Correct report type"), Report->Struct == FDnd5eJsonSpellReferenceReport::StaticStruct());
+	TestTrue(TEXT("Visible, noneditable, transient report"), Report->HasAllPropertyFlags(CPF_Edit | CPF_EditConst | CPF_Transient));
+	TestFalse(TEXT("Report is not config or save-game data"), Report->HasAnyPropertyFlags(CPF_Config | CPF_SaveGame));
+	TStrongObjectPtr<UDnd5eSpellBrowserSelection> Selection(NewObject<UDnd5eSpellBrowserSelection>());
+	TestTrue(TEXT("Fresh selection has default report"), !Selection->ReferenceReport.bCollected && Selection->ReferenceReport.Entries.IsEmpty() && Selection->ReferenceReport.Diagnostics.IsEmpty());
+	return !HasAnyErrors();
+}
+
 #endif

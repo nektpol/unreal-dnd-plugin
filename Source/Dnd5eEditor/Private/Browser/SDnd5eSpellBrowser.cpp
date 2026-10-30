@@ -1,4 +1,6 @@
-﻿#include "Browser/SDnd5eSpellBrowser.h"
+// Developed by Neko Creative Technologies
+
+#include "Browser/SDnd5eSpellBrowser.h"
 #include "Browser/Dnd5eSpellBrowserSelection.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
 #include "DetailsViewArgs.h"
@@ -14,8 +16,33 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
+#include "Readers/Dnd5eJsonSpellReferenceReporter.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eSpellBrowser"
+
+namespace
+{
+	FText MakeReferenceSummary(const FDnd5eJsonSpellReferenceReport& Report)
+	{
+		if (!Report.bCollected)
+		{
+			return LOCTEXT("ReferenceCollectionFailed", "Reference collection failed. Expand Reference Report → Diagnostics for details.");
+		}
+		int32 OriginalResolved = 0;
+		int32 Normalized = 0;
+		int32 NormalizedResolved = 0;
+		for (const auto& Entry : Report.Entries)
+		{
+			OriginalResolved += Entry.OriginalResolutionStatus == EDnd5eReferenceResolveStatus::Resolved;
+			Normalized += Entry.NormalizationStatus == EDnd5eJsonSpellReferenceNormalizeStatus::Normalized;
+			NormalizedResolved += Entry.NormalizedResolutionStatus == EDnd5eReferenceResolveStatus::Resolved;
+		}
+		return FText::Format(
+			LOCTEXT("ReferenceReportSummary", "Typed references: {0} | Original targets found: {1} | Selectors normalized: {2} | Normalized targets found: {3} | Collection diagnostics: {4}. Expand Reference Report to inspect each stage."),
+			FText::AsNumber(Report.Entries.Num()), FText::AsNumber(OriginalResolved), FText::AsNumber(Normalized),
+			FText::AsNumber(NormalizedResolved), FText::AsNumber(Report.Diagnostics.Num()));
+	}
+}
 
 void SDnd5eSpellBrowser::Construct(const FArguments& InArgs)
 {
@@ -65,6 +92,12 @@ void SDnd5eSpellBrowser::Construct(const FArguments& InArgs)
 					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 8)
 					[
 						SNew(STextBlock).Text(LOCTEXT("DetailsHint", "Read-only spell details — select a row to inspect."))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 8)
+					[
+						SNew(STextBlock)
+						.Text(this, &SDnd5eSpellBrowser::GetReferenceSummary)
+						.AutoWrapText(true)
 					]
 					+ SVerticalBox::Slot().FillHeight(1)
 					[
@@ -119,12 +152,14 @@ void SDnd5eSpellBrowser::HandleSelectionChanged(FDnd5eSpellBrowserRowPtr Item, E
 {
 	ClearDetails();
 	const auto* Subsystem = DatasetSubsystem.Get();
-	const auto* Catalog = Subsystem ? Subsystem->GetCatalog() : nullptr;
+	auto* Catalog = Subsystem ? Subsystem->GetCatalog() : nullptr;
 	if (!Item.IsValid() || !IsValid(Catalog)) { return; }
 	FDnd5eSpell Spell;
 	if (!Catalog->TryGetSpell(Item->Id, Spell)) { return; }
 	SelectedData.Reset(NewObject<UDnd5eSpellBrowserSelection>());
 	SelectedData->Spell = MoveTemp(Spell);
+	SelectedData->ReferenceReport = FDnd5eJsonSpellReferenceReporter::BuildReport(Catalog->GetMutableCatalog(), SelectedData->Spell);
+	ReferenceSummary = MakeReferenceSummary(SelectedData->ReferenceReport);
 	DetailsView->SetObject(SelectedData.Get());
 }
 
@@ -132,6 +167,7 @@ void SDnd5eSpellBrowser::ClearDetails()
 {
 	DetailsView->SetObject(nullptr);
 	SelectedData.Reset();
+	ReferenceSummary = LOCTEXT("NoReferenceSelection", "Select a spell to inspect its reference report.");
 }
 
 FText SDnd5eSpellBrowser::GetSummary() const
@@ -139,6 +175,11 @@ FText SDnd5eSpellBrowser::GetSummary() const
 	if (!DatasetSubsystem.IsValid()) { return LOCTEXT("Unavailable", "The editor dataset service is unavailable."); }
 	if (Model.GetTotalCount() == 0) { return LOCTEXT("Empty", "No spells loaded. Use Tools → Load Dnd5e Dataset to load your selection."); }
 	return FText::Format(LOCTEXT("Count", "Showing {0} of {1} spell records."), FText::AsNumber(Model.GetRows().Num()), FText::AsNumber(Model.GetTotalCount()));
+}
+
+FText SDnd5eSpellBrowser::GetReferenceSummary() const
+{
+	return ReferenceSummary;
 }
 
 #undef LOCTEXT_NAMESPACE
