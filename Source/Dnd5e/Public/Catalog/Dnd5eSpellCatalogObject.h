@@ -6,6 +6,7 @@
 #include "UObject/Object.h"
 #include "Catalog/Dnd5eSpellCatalog.h"
 #include "Records/Dnd5eReferenceResolution.h"
+#include "Spells/Dnd5eSpellSelector.h"
 #include "Dnd5eSpellCatalogObject.generated.h"
 
 /**
@@ -28,6 +29,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|SpellCatalog")
 	EDnd5eReferenceResolveStatus ResolveSpellRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|SpellCatalog")
+	EDnd5eSpellSelectorMatchStatus MatchSpellSelector(const FDnd5eSpellSelector& Selector, TArray<FDnd5eRecordId>& CandidateIds, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|SpellCatalog")
 	bool QuerySpellIds(const FDnd5eSpellQuery& Query, TArray<FDnd5eRecordId>& Ids, TArray<FDnd5eDiagnostic>& Diagnostics) const;

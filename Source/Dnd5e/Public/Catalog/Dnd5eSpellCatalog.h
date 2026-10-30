@@ -8,6 +8,7 @@
 #include "Content/Dnd5eContentType.h"
 #include "Records/Dnd5eReferenceResolution.h"
 #include "Records/Dnd5eRecordRelationship.h"
+#include "Spells/Dnd5eSpellSelector.h"
 #include "Dnd5eSpellCatalog.generated.h"
 
 USTRUCT(BlueprintType)
@@ -52,6 +53,7 @@ public:
 	TArray<FDnd5eRecordId> GetSpellIds() const { return OrderedIds; }
 	EDnd5eReferenceResolveStatus ResolveSpellReference(const FDnd5eReferenceContent& Reference, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 	EDnd5eReferenceResolveStatus ResolveSpellRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
+	EDnd5eSpellSelectorMatchStatus MatchSpellSelector(const FDnd5eSpellSelector& Selector, TArray<FDnd5eRecordId>& CandidateIds, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 
 private:
 	TMap<FDnd5eRecordId, FDnd5eSpell> Spells;

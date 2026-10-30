@@ -98,6 +98,7 @@ namespace
 			{ TEXT("EDnd5eDiagnosticSeverity"), &StaticEnum<EDnd5eDiagnosticSeverity>, { TEXT("Unspecified"), TEXT("Info"), TEXT("Warning"), TEXT("Error") } },
 			{ TEXT("EDnd5eJsonReadStatus"), &StaticEnum<EDnd5eJsonReadStatus>, { TEXT("NotAttempted"), TEXT("Success"), TEXT("Failure") } },
 			{ TEXT("EDnd5eReferenceResolveStatus"), &StaticEnum<EDnd5eReferenceResolveStatus>, { TEXT("NotAttempted"), TEXT("Resolved"), TEXT("MissingTargetId"), TEXT("InvalidTargetId"), TEXT("UnsupportedCategory"), TEXT("TargetNotFound") } },
+			{ TEXT("EDnd5eSpellSelectorMatchStatus"), &StaticEnum<EDnd5eSpellSelectorMatchStatus>, { TEXT("NotAttempted"), TEXT("Matched"), TEXT("MissingSource"), TEXT("InvalidSelector"), TEXT("NoMatch"), TEXT("Ambiguous") } },
 		};
 		return Cases;
 	}

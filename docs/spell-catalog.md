@@ -13,6 +13,7 @@ The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h
 - [Catalog builder](#catalog-builder)
 - [Core catalog](#core-catalog)
 - [Spell reference resolution](#spell-reference-resolution)
+- [Spell selector matching](#spell-selector-matching)
 - [Spell query](#spell-query)
 - [Availability source mapping](#availability-source-mapping)
 - [Limits and diagnostics](#limits-and-diagnostics)
@@ -72,6 +73,7 @@ Construct the native class with Construct Object from Class and retain the resul
 | TryGetSpell(Id, Spell) const | BlueprintCallable, explicitly not pure | Exact lookup, independent copied spell output; resets output on miss |
 | ResolveSpellReference(Reference, Spell, Diagnostics) const | BlueprintCallable, explicitly not pure | Follow a normalized reference ID; return `EDnd5eReferenceResolveStatus`, a copied spell on success, and `TArray<FDnd5eDiagnostic>` |
 | ResolveSpellRelationship(Relationship, Spell, Diagnostics) const | BlueprintCallable, explicitly not pure | Follow an `FDnd5eRecordRelationship` target ID using the same status/copy/reset/diagnostic contract |
+| MatchSpellSelector(Selector, CandidateIds, Diagnostics) const | BlueprintCallable, explicitly not pure | Return `EDnd5eSpellSelectorMatchStatus`, ordered `TArray<FDnd5eRecordId>` candidates, and `TArray<FDnd5eDiagnostic>` |
 | QuerySpellIds(Query, Ids, Diagnostics) const | BlueprintCallable, explicitly not pure | Query validity bool, ordered `TArray<FDnd5eRecordId>` output, diagnostics |
 | GetSpellCount() const | BlueprintPure | Current int32 count |
 | GetSpellIds() const | BlueprintCallable, explicitly not pure | Independent `TArray<FDnd5eRecordId>` containing all installed IDs |
@@ -162,6 +164,7 @@ FDnd5eSpellCatalog owns copies of normalized spell records, an exact-ID index, a
 | TryGetSpell(Id, Spell) const | Exact-ID lookup; copy out on success, reset Spell to its default on failure |
 | ResolveSpellReference(Reference, Spell, Diagnostics) const | Validate a reference's supplied target ID, look it up exactly, and return a resolution status; reset outputs on each call |
 | ResolveSpellRelationship(Relationship, Spell, Diagnostics) const | Adapt the relationship's target-presence flag/ID to the same lookup, preserving the relationship |
+| MatchSpellSelector(Selector, CandidateIds, Diagnostics) const | Match explicit namespace/name/publication fields, return canonical candidate IDs, and distinguish missing source/ambiguity |
 | QuerySpellIds(Query, Ids, Diagnostics) const | Reset both outputs, validate the query, return matching IDs in installation order |
 | GetSpellCount() const | Current record count |
 | GetSpellIds() const | Independent copy of all IDs in installation order |
@@ -201,6 +204,39 @@ Returned diagnostics are quiet API data. Their referring RelativeFilePath/JsonPo
 In Blueprint, extract a reference payload using TryGetReference, call Resolve Spell Reference on the intended retained catalog, and switch on its enum return. Use the Spell output only on Resolved. This does not expose the editor subsystem's private catalog to Blueprint or automatically navigate the browser.
 
 ResolveSpellRelationship accepts an FDnd5eRecordRelationship instead of the inline payload. It forwards bHasTargetRecord and TargetRecordId to the same resolver and returns the existing statuses and Dnd5e.Reference codes. It does not validate Kind semantics, parse SourceFormat/SourceReference, or follow further relationships on the returned target. The caller chooses an edge; cycles do not trigger traversal. Input evidence and both catalog records remain unchanged. An explicit reader-normalized reprint can therefore be inspected without treating editions/reprints as equivalent or replacing the original record.
+
+## Spell selector matching
+
+`FDnd5eSpellSelector` and `EDnd5eSpellSelectorMatchStatus : uint8` are exported/Blueprint-visible request vocabulary in [Dnd5eSpellSelector.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellSelector.h), owned by Dnd5e. The enum is Blueprint-visible; the struct has EditAnywhere/BlueprintReadWrite properties in Dnd5e|SpellSelector.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| DatasetNamespace | `FString`, empty | Required exact case-sensitive collection boundary |
+| Name | `FString`, empty | Required canonical display-name selector |
+| SourceId | `FString`, empty | Optional explicit primary publication selector; empty means omitted |
+
+Both native and UObject catalogs expose:
+
+```cpp
+EDnd5eSpellSelectorMatchStatus MatchSpellSelector(const FDnd5eSpellSelector& Selector, TArray<FDnd5eRecordId>& CandidateIds, TArray<FDnd5eDiagnostic>& Diagnostics) const;
+```
+
+Every call resets both output arrays, validates nonblank/control-free namespace/name and any supplied source, then scans in installation order. Namespace comparison is case-sensitive. Name matches Header.DisplayName as a whole, case-insensitively; aliases are excluded. A supplied source matches only Header.Provenance[0].SourceId, also as a whole case-insensitive string. Missing primary provenance cannot satisfy an explicit source; contributing sources are excluded. Strings are not trimmed or rewritten. Unreal FString comparison semantics do not establish full JavaScript Unicode-case equivalence.
+
+| Status | CandidateIds | Diagnostic |
+| --- | --- | --- |
+| NotAttempted | Default caller state; not returned by this operation | None |
+| InvalidSelector | Empty | Error: Dnd5e.Catalog.Selector.Invalid |
+| MissingSource | Zero or more name candidates | Warning: Dnd5e.Catalog.Selector.MissingSource |
+| NoMatch | Empty; an explicit source had no matching loaded record | Warning: Dnd5e.Catalog.Selector.NoMatch |
+| Ambiguous | All matching IDs, in installation order | Warning: Dnd5e.Catalog.Selector.Ambiguous |
+| Matched | Exactly one existing canonical ID | None |
+
+Invalid input is checked first. For otherwise valid input, an empty SourceId always produces MissingSource after collecting name candidates—even with zero or exactly one candidate. With an explicit source, zero candidates produce NoMatch, multiple candidates Ambiguous, and one candidate Matched. Exactly one candidate alone is not equivalent to Matched. Callers must inspect the status before treating an answer as an authoritative unique target.
+
+Candidate IDs are independent copies of existing exact map keys; no ID is reconstructed from the selector's casing. A Matched candidate can be used with TryGetSpell. Different exact IDs may match the same case-insensitive selector, in which case neither installation order nor edition becomes a tie-break rule. Candidate suggestions on MissingSource/Ambiguous permit a caller to present explicit choices; the API does not make that choice.
+
+This operation adds no token parser, default publication, source inheritance, edition/reprint redirect, automatic reference repair, or browser navigation. The reader's existing source-explicit reference/reprint construction remains unchanged. QuerySpellIds also retains its existing case-sensitive SourceId filter and optional alias behavior; matching and query semantics are separate contracts. Diagnostics are returned quietly with empty referring source locations because a selector has no owning Content wrapper. Synchronization with concurrent replacement remains the caller's responsibility.
 
 ## Spell query
 

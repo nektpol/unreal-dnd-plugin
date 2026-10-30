@@ -188,3 +188,50 @@ EDnd5eReferenceResolveStatus FDnd5eSpellCatalog::ResolveSpellRelationship(const 
 	Reference.TargetRecordId = Relationship.TargetRecordId;
 	return ResolveSpellReference(Reference, Spell, Diagnostics);
 }
+
+EDnd5eSpellSelectorMatchStatus FDnd5eSpellCatalog::MatchSpellSelector(const FDnd5eSpellSelector& Selector, TArray<FDnd5eRecordId>& CandidateIds,
+	TArray<FDnd5eDiagnostic>& Diagnostics) const
+{
+	CandidateIds.Reset();
+	Diagnostics.Reset();
+	if (!NonemptyText(Selector.DatasetNamespace) || !NonemptyText(Selector.Name) || (!Selector.SourceId.IsEmpty() && !NonemptyText(Selector.SourceId)))
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Error,
+			TEXT("Dnd5e.Catalog.Selector.Invalid"),
+			TEXT("A spell selector needs a usable namespace/name and, when supplied, a usable source."));
+		return EDnd5eSpellSelectorMatchStatus::InvalidSelector;
+	}
+	for (const FDnd5eRecordId& Id : OrderedIds)
+	{
+		if (!Id.DatasetNamespace.Equals(Selector.DatasetNamespace, ESearchCase::CaseSensitive)) { continue; }
+		const FDnd5eSpell& Spell = Spells.FindChecked(Id);
+		if (!Spell.Header.DisplayName.Equals(Selector.Name, ESearchCase::IgnoreCase)) { continue; }
+		if (!Selector.SourceId.IsEmpty())
+		{
+			if (Spell.Header.Provenance.IsEmpty() || !Spell.Header.Provenance[0].SourceId.Equals(Selector.SourceId, ESearchCase::IgnoreCase)) { continue; }
+		}
+		CandidateIds.Add(Id);
+	}
+	if (Selector.SourceId.IsEmpty())
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning,
+			TEXT("Dnd5e.Catalog.Selector.MissingSource"),
+			TEXT("Supply an explicit source before treating name candidates as a unique spell target."));
+		return EDnd5eSpellSelectorMatchStatus::MissingSource;
+	}
+	if (CandidateIds.IsEmpty())
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning,
+			TEXT("Dnd5e.Catalog.Selector.NoMatch"),
+			TEXT("No loaded spell matches the supplied namespace, name, and source selector."));
+		return EDnd5eSpellSelectorMatchStatus::NoMatch;
+	}
+	if (CandidateIds.Num() > 1)
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning,
+			TEXT("Dnd5e.Catalog.Selector.Ambiguous"),
+			TEXT("Multiple exact record IDs match this spell selector; an explicit choice is required."));
+		return EDnd5eSpellSelectorMatchStatus::Ambiguous;
+	}
+	return EDnd5eSpellSelectorMatchStatus::Matched;
+}

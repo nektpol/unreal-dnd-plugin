@@ -24,6 +24,11 @@ EDnd5eReferenceResolveStatus UDnd5eSpellCatalogObject::ResolveSpellRelationship(
 	return Catalog.ResolveSpellRelationship(Relationship, Spell, Diagnostics);
 }
 
+EDnd5eSpellSelectorMatchStatus UDnd5eSpellCatalogObject::MatchSpellSelector(const FDnd5eSpellSelector& Selector, TArray<FDnd5eRecordId>& CandidateIds, TArray<FDnd5eDiagnostic>& Diagnostics) const
+{
+	return Catalog.MatchSpellSelector(Selector, CandidateIds, Diagnostics);
+}
+
 bool UDnd5eSpellCatalogObject::QuerySpellIds(const FDnd5eSpellQuery& Query, TArray<FDnd5eRecordId>& Ids, TArray<FDnd5eDiagnostic>& Diagnostics) const
 {
 	return Catalog.QuerySpellIds(Query, Ids, Diagnostics);

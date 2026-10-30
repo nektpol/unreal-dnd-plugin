@@ -114,6 +114,9 @@ bool FDnd5eBlueprintCatalogReflectionTest::RunTest(const FString& Parameters)
 	CheckFunction(*this, Catalog, TEXT("ResolveSpellRelationship"), false, true, false, {
 		{TEXT("Relationship"), TEXT("FDnd5eRecordRelationship"), false, true}, {TEXT("Spell"), TEXT("FDnd5eSpell"), true},
 		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("EDnd5eReferenceResolveStatus"), false, false, true}});
+	CheckFunction(*this, Catalog, TEXT("MatchSpellSelector"), false, true, false, {
+		{TEXT("Selector"), TEXT("FDnd5eSpellSelector"), false, true}, {TEXT("CandidateIds"), TEXT("TArray<FDnd5eRecordId>"), true},
+		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("EDnd5eSpellSelectorMatchStatus"), false, false, true}});
 	CheckFunction(*this, Catalog, TEXT("QuerySpellIds"), false, true, false, {
 		{TEXT("Query"), TEXT("FDnd5eSpellQuery"), false, true}, {TEXT("Ids"), TEXT("TArray<FDnd5eRecordId>"), true},
 		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("bool"), false, false, true}});
@@ -380,6 +383,43 @@ bool FDnd5eBlueprintRelationshipTest::RunTest(const FString& Parameters)
 	}
 	*Input = Original; Call.Invoke();
 	TestTrue(TEXT("Success clears a previous warning"), *Status == EDnd5eReferenceResolveStatus::Resolved && Diagnostics->IsEmpty());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBlueprintSelectorTest, "Dnd5e.Blueprint.SpellCatalog.MatchSelector", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBlueprintSelectorTest::RunTest(const FString& Parameters)
+{
+	TStrongObjectPtr<UDnd5eSpellCatalogObject> Catalog(NewObject<UDnd5eSpellCatalogObject>());
+	auto Target = SyntheticSpell();
+	Target.Header.DisplayName = TEXT("Invented Beacon"); Target.Header.Provenance[0].SourceId = TEXT("SYN-B");
+	TArray<FDnd5eDiagnostic> Setup;
+	if (!TestTrue(TEXT("Install the synthetic target"), Catalog->ReplaceSpells({Target}, Setup))) { return false; }
+	FBlueprintInvocation Call(*this, Catalog.Get(), TEXT("MatchSpellSelector"));
+	auto* Selector = Call.Parameter<FDnd5eSpellSelector>(TEXT("Selector"), TEXT("FDnd5eSpellSelector"));
+	auto* Ids = Call.Parameter<TArray<FDnd5eRecordId>>(TEXT("CandidateIds"), TEXT("TArray<FDnd5eRecordId>"));
+	auto* Diagnostics = Call.Parameter<TArray<FDnd5eDiagnostic>>(TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"));
+	auto* Status = Call.Parameter<EDnd5eSpellSelectorMatchStatus>(TEXT("ReturnValue"), TEXT("EDnd5eSpellSelectorMatchStatus"));
+	if (!Selector || !Ids || !Diagnostics || !Status) { return false; }
+	Selector->DatasetNamespace = Target.Header.RecordId.DatasetNamespace;
+	Selector->Name = TEXT("INVENTED BEACON"); Selector->SourceId = TEXT("syn-b");
+	const auto Original = *Selector;
+	Diagnostics->AddDefaulted(); Call.Invoke();
+	TestTrue(TEXT("Reflected matching returns the stored canonical ID"), *Status == EDnd5eSpellSelectorMatchStatus::Matched && *Ids == TArray<FDnd5eRecordId>{Target.Header.RecordId} && Diagnostics->IsEmpty());
+	TestTrue(TEXT("Reflected selector input is immutable"), Equal(FDnd5eSpellSelector::StaticStruct(), Selector, &Original));
+	Ids->Reset(); Selector->SourceId.Reset(); Call.Invoke();
+	TestTrue(TEXT("A single candidate is still MissingSource"), *Status == EDnd5eSpellSelectorMatchStatus::MissingSource && Ids->Num() == 1 && Diagnostics->Num() == 1);
+	*Selector = Original; Selector->Name = TEXT("not present"); Call.Invoke();
+	TestTrue(TEXT("NoMatch clears old candidates"), *Status == EDnd5eSpellSelectorMatchStatus::NoMatch && Ids->IsEmpty() && Diagnostics->Num() == 1);
+	*Selector = Original; Selector->DatasetNamespace.Reset(); Ids->Add(Target.Header.RecordId); Call.Invoke();
+	TestTrue(TEXT("Invalid input clears candidates and replaces diagnostics"), *Status == EDnd5eSpellSelectorMatchStatus::InvalidSelector && Ids->IsEmpty() && Diagnostics->Num() == 1 && (*Diagnostics)[0].Severity == EDnd5eDiagnosticSeverity::Error);
+	auto Duplicate = Target; Duplicate.Header.RecordId.SourceKey = TEXT("different-key");
+	Catalog->ReplaceSpells({Target, Duplicate}, Setup);
+	*Selector = Original; Call.Invoke();
+	TestTrue(TEXT("Reflected ambiguity returns all IDs without choosing one"), *Status == EDnd5eSpellSelectorMatchStatus::Ambiguous && Ids->Num() == 2 && Diagnostics->Num() == 1);
+	Catalog->ReplaceSpells({Target}, Setup); Call.Invoke();
+	TestTrue(TEXT("Later success clears previous failure diagnostics"), *Status == EDnd5eSpellSelectorMatchStatus::Matched && Diagnostics->IsEmpty() && Ids->Num() == 1);
+	FDnd5eSpell Copy;
+	TestTrue(TEXT("The returned canonical ID works with exact lookup"), Catalog->TryGetSpell((*Ids)[0], Copy) && Equal(FDnd5eSpell::StaticStruct(), &Copy, &Target));
 	return !HasAnyErrors();
 }
 
