@@ -108,6 +108,9 @@ bool FDnd5eBlueprintCatalogReflectionTest::RunTest(const FString& Parameters)
 		{TEXT("Records"), TEXT("TArray<FDnd5eSpell>"), false, true}, {TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("bool"), false, false, true}});
 	CheckFunction(*this, Catalog, TEXT("TryGetSpell"), false, true, false, {
 		{TEXT("Id"), TEXT("FDnd5eRecordId"), false, true}, {TEXT("Spell"), TEXT("FDnd5eSpell"), true}, {TEXT("ReturnValue"), TEXT("bool"), false, false, true}});
+	CheckFunction(*this, Catalog, TEXT("ResolveSpellReference"), false, true, false, {
+		{TEXT("Reference"), TEXT("FDnd5eReferenceContent"), false, true}, {TEXT("Spell"), TEXT("FDnd5eSpell"), true},
+		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("EDnd5eReferenceResolveStatus"), false, false, true}});
 	CheckFunction(*this, Catalog, TEXT("QuerySpellIds"), false, true, false, {
 		{TEXT("Query"), TEXT("FDnd5eSpellQuery"), false, true}, {TEXT("Ids"), TEXT("TArray<FDnd5eRecordId>"), true},
 		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("bool"), false, false, true}});
@@ -277,6 +280,61 @@ bool FDnd5eBlueprintCatalogLifetimeTest::RunTest(const FString& Parameters)
 	CollectGarbage(RF_NoFlags);
 	TestFalse(TEXT("The object is collectible after the strong owner releases it"), Weak.IsValid());
 	TestEqual(TEXT("Collecting one object does not affect another"), Second->GetSpellCount(), 0);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBlueprintReferenceResolveTest, "Dnd5e.Blueprint.SpellCatalog.ResolveReference", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBlueprintReferenceResolveTest::RunTest(const FString& Parameters)
+{
+	TStrongObjectPtr<UDnd5eSpellCatalogObject> Catalog(NewObject<UDnd5eSpellCatalogObject>());
+	const FDnd5eSpell Target = SyntheticSpell();
+	TArray<FDnd5eDiagnostic> SetupDiagnostics;
+	if (!TestTrue(TEXT("Seed a synthetic target"), Catalog->ReplaceSpells({Target}, SetupDiagnostics))) { return false; }
+	FBlueprintInvocation Call(*this, Catalog.Get(), TEXT("ResolveSpellReference"));
+	auto* Reference = Call.Parameter<FDnd5eReferenceContent>(TEXT("Reference"), TEXT("FDnd5eReferenceContent"));
+	auto* Spell = Call.Parameter<FDnd5eSpell>(TEXT("Spell"), TEXT("FDnd5eSpell"));
+	auto* Diagnostics = Call.Parameter<TArray<FDnd5eDiagnostic>>(TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"));
+	auto* Status = Call.Parameter<EDnd5eReferenceResolveStatus>(TEXT("ReturnValue"), TEXT("EDnd5eReferenceResolveStatus"));
+	if (!Reference || !Spell || !Diagnostics || !Status) { return false; }
+	Reference->bHasTargetRecordId = true;
+	Reference->TargetRecordId = Target.Header.RecordId;
+	Reference->SourceFormat = TEXT("synthetic");
+	Reference->SourceReference = TEXT("opaque-token");
+	Reference->Display.Add(Text(TEXT("Independent label")));
+	const FDnd5eReferenceContent Before = *Reference;
+	Diagnostics->AddDefaulted();
+	Call.Invoke();
+	TestTrue(TEXT("Reflected success returns the complete independent value"), *Status == EDnd5eReferenceResolveStatus::Resolved && Diagnostics->IsEmpty() && Equal(FDnd5eSpell::StaticStruct(), Spell, &Target));
+	TestTrue(TEXT("Reflected input remains unchanged"), Equal(FDnd5eReferenceContent::StaticStruct(), Reference, &Before));
+	Spell->Description.Reset();
+	Call.Invoke();
+	TestTrue(TEXT("A new reflected resolution restores the original nested content"), Equal(FDnd5eSpell::StaticStruct(), Spell, &Target));
+
+	struct FFailure
+	{
+		FDnd5eReferenceContent Value;
+		EDnd5eReferenceResolveStatus Expected;
+	};
+	TArray<FFailure> Failures;
+	auto Missing = Before; Missing.bHasTargetRecordId = false;
+	Failures.Add({Missing, EDnd5eReferenceResolveStatus::MissingTargetId});
+	auto Invalid = Before; Invalid.TargetRecordId.SourceKey.Reset();
+	Failures.Add({Invalid, EDnd5eReferenceResolveStatus::InvalidTargetId});
+	auto Other = Before; Other.TargetRecordId.Category = Dnd5e::Category::Class;
+	Failures.Add({Other, EDnd5eReferenceResolveStatus::UnsupportedCategory});
+	auto Absent = Before; Absent.TargetRecordId.SourceKey = TEXT("not-loaded");
+	Failures.Add({Absent, EDnd5eReferenceResolveStatus::TargetNotFound});
+	const FDnd5eSpell Default;
+	for (const auto& Failure : Failures)
+	{
+		*Reference = Failure.Value; *Spell = Target; Diagnostics->AddDefaulted();
+		Call.Invoke();
+		TestTrue(TEXT("Every reflected failure returns its status and clears stale spell output"), *Status == Failure.Expected && Equal(FDnd5eSpell::StaticStruct(), Spell, &Default) && Diagnostics->Num() == 1);
+		TestTrue(TEXT("Failure also preserves its reference input"), Equal(FDnd5eReferenceContent::StaticStruct(), Reference, &Failure.Value));
+	}
+	*Reference = Before;
+	Call.Invoke();
+	TestTrue(TEXT("Success clears the preceding failure diagnostic"), *Status == EDnd5eReferenceResolveStatus::Resolved && Diagnostics->IsEmpty());
 	return !HasAnyErrors();
 }
 

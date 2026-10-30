@@ -97,6 +97,7 @@ namespace
 			{ TEXT("EDnd5eMaterialConsumption"), &StaticEnum<EDnd5eMaterialConsumption>, { TEXT("Unspecified"), TEXT("Consumed"), TEXT("Optional"), TEXT("NotConsumed") } },
 			{ TEXT("EDnd5eDiagnosticSeverity"), &StaticEnum<EDnd5eDiagnosticSeverity>, { TEXT("Unspecified"), TEXT("Info"), TEXT("Warning"), TEXT("Error") } },
 			{ TEXT("EDnd5eJsonReadStatus"), &StaticEnum<EDnd5eJsonReadStatus>, { TEXT("NotAttempted"), TEXT("Success"), TEXT("Failure") } },
+			{ TEXT("EDnd5eReferenceResolveStatus"), &StaticEnum<EDnd5eReferenceResolveStatus>, { TEXT("NotAttempted"), TEXT("Resolved"), TEXT("MissingTargetId"), TEXT("InvalidTargetId"), TEXT("UnsupportedCategory"), TEXT("TargetNotFound") } },
 		};
 		return Cases;
 	}

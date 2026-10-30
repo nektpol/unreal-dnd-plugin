@@ -1,3 +1,5 @@
+// Developed by Neko Creative Technologies
+
 #include "Catalog/Dnd5eSpellCatalog.h"
 #include "Dnd5eTags.h"
 
@@ -140,4 +142,41 @@ bool FDnd5eSpellCatalog::QuerySpellIds(const FDnd5eSpellQuery& Query, TArray<FDn
 		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning, TEXT("Dnd5e.Catalog.IncompleteAvailability"), TEXT("Some otherwise matching spells lack supplied availability data; results contain known matches only."));
 	}
 	return true;
+}
+
+EDnd5eReferenceResolveStatus FDnd5eSpellCatalog::ResolveSpellReference(const FDnd5eReferenceContent& Reference, FDnd5eSpell& Spell,
+	TArray<FDnd5eDiagnostic>& Diagnostics) const
+{
+	Spell = FDnd5eSpell{};
+	Diagnostics.Reset();
+	if (!Reference.bHasTargetRecordId)
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning,
+			TEXT("Dnd5e.Reference.MissingTargetId"),
+			TEXT("The reference has no normalized target record ID."));
+		return EDnd5eReferenceResolveStatus::MissingTargetId;
+	}
+	const FDnd5eRecordId& Id = Reference.TargetRecordId;
+	if (!Id.Category.IsValid() || !NonemptyText(Id.DatasetNamespace) || !NonemptyText(Id.SourceKey))
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Error,
+			TEXT("Dnd5e.Reference.InvalidTargetId"),
+			TEXT("The supplied target record ID is incomplete or contains invalid identity text."));
+		return EDnd5eReferenceResolveStatus::InvalidTargetId;
+	}
+	if (Id.Category != Dnd5e::Category::Spell)
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning,
+			TEXT("Dnd5e.Reference.UnsupportedCategory"),
+			TEXT("This catalog resolves only exact spell-category target IDs."));
+		return EDnd5eReferenceResolveStatus::UnsupportedCategory;
+	}
+	if (!TryGetSpell(Id, Spell))
+	{
+		CatalogDiagnostic(Diagnostics, EDnd5eDiagnosticSeverity::Warning,
+			TEXT("Dnd5e.Reference.TargetNotFound"),
+			TEXT("The target spell is not present in this catalog."));
+		return EDnd5eReferenceResolveStatus::TargetNotFound;
+	}
+	return EDnd5eReferenceResolveStatus::Resolved;
 }

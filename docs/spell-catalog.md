@@ -2,7 +2,7 @@
 
 The plugin can build an in-memory spell catalog from supplied JSON documents, optionally join a supplied spell-availability lookup, and answer read-only queries. The caller supplies all text and chooses when to replace the catalog. These APIs perform no filesystem or network access, select no default publication/edition, and apply no character or gameplay changes.
 
-The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h) and its [Blueprint object wrapper](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalogObject.h) live in Dnd5e. The [availability reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellAvailabilityReader.h), [native builder](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogBuilder.h), and [Blueprint library](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h) live in Dnd5eJson. The single-record readers remain native C++ APIs; catalog construction, replacement, and queries are also callable from Blueprint. Separate [editor loading tools](editor-dataset-loading.md) provide local selection and an editor-owned catalog.
+The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h) and its [Blueprint object wrapper](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalogObject.h) live in Dnd5e. The [availability reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellAvailabilityReader.h), [native builder](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogBuilder.h), and [Blueprint library](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h) live in Dnd5eJson. The single-record readers remain native C++ APIs; catalog construction, replacement, queries, and normalized spell-reference lookup are also callable from Blueprint. Separate [editor loading tools](editor-dataset-loading.md) provide local selection and an editor-owned catalog.
 
 ## Contents
 
@@ -12,6 +12,7 @@ The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h
 - [Availability reader](#availability-reader)
 - [Catalog builder](#catalog-builder)
 - [Core catalog](#core-catalog)
+- [Spell reference resolution](#spell-reference-resolution)
 - [Spell query](#spell-query)
 - [Availability source mapping](#availability-source-mapping)
 - [Limits and diagnostics](#limits-and-diagnostics)
@@ -69,6 +70,7 @@ Construct the native class with Construct Object from Class and retain the resul
 | --- | --- | --- |
 | ReplaceSpells(Records, Diagnostics) | BlueprintCallable, instance | Core validated replacement; returns bool and diagnostics, preserves previous records on failure |
 | TryGetSpell(Id, Spell) const | BlueprintCallable, explicitly not pure | Exact lookup, independent copied spell output; resets output on miss |
+| ResolveSpellReference(Reference, Spell, Diagnostics) const | BlueprintCallable, explicitly not pure | Follow a normalized reference ID; return `EDnd5eReferenceResolveStatus`, a copied spell on success, and `TArray<FDnd5eDiagnostic>` |
 | QuerySpellIds(Query, Ids, Diagnostics) const | BlueprintCallable, explicitly not pure | Query validity bool, ordered `TArray<FDnd5eRecordId>` output, diagnostics |
 | GetSpellCount() const | BlueprintPure | Current int32 count |
 | GetSpellIds() const | BlueprintCallable, explicitly not pure | Independent `TArray<FDnd5eRecordId>` containing all installed IDs |
@@ -157,6 +159,7 @@ FDnd5eSpellCatalog owns copies of normalized spell records, an exact-ID index, a
 | --- | --- |
 | ReplaceSpells(Records, Diagnostics) | Reset diagnostics, validate a candidate, then replace atomically on success; an empty array clears the catalog |
 | TryGetSpell(Id, Spell) const | Exact-ID lookup; copy out on success, reset Spell to its default on failure |
+| ResolveSpellReference(Reference, Spell, Diagnostics) const | Validate a reference's supplied target ID, look it up exactly, and return a resolution status; reset outputs on each call |
 | QuerySpellIds(Query, Ids, Diagnostics) const | Reset both outputs, validate the query, return matching IDs in installation order |
 | GetSpellCount() const | Current record count |
 | GetSpellIds() const | Independent copy of all IDs in installation order |
@@ -164,6 +167,36 @@ FDnd5eSpellCatalog owns copies of normalized spell records, an exact-ID index, a
 ReplaceSpells requires a complete Spell-category ID, nonblank/control-free namespace/source key/display name, level 0–9, unique exact identities, and consistent availability presence/provider qualification. Subclass links also need parent-class name/source and short name. These are catalog indexing checks; they do not recursively validate all Content or certify complete rule/reference semantics. Default authoring spells with Level=-1 cannot be installed as complete records.
 
 [ID equality and hashing](shared-models.md#record-id) preserve exact namespace/source-key case, including Unreal reflected equality. Name search is a separate operation. The caller owns synchronization for a catalog shared across threads; atomic replacement here describes failure behavior and does not provide concurrent-reader synchronization.
+
+## Spell reference resolution
+
+Both FDnd5eSpellCatalog and UDnd5eSpellCatalogObject expose:
+
+```cpp
+EDnd5eReferenceResolveStatus ResolveSpellReference(const FDnd5eReferenceContent& Reference, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
+```
+
+The [shared status enum](shared-models.md#reference-resolution-status) is declared in [Dnd5eReferenceResolution.h](../Source/Dnd5e/Public/Records/Dnd5eReferenceResolution.h). The native catalog performs the operation; the exported UObject forwards it and exposes an explicit Blueprint execution node. The caller must retain a valid catalog object, as with its other instance methods.
+
+The checks run in this order:
+
+| Condition | Status | Diagnostic |
+| --- | --- | --- |
+| bHasTargetRecordId is false | MissingTargetId | Warning: Dnd5e.Reference.MissingTargetId |
+| Declared target has an invalid category or blank/control-character namespace/key | InvalidTargetId | Error: Dnd5e.Reference.InvalidTargetId |
+| Usable ID has a category other than exactly Category::Spell | UnsupportedCategory | Warning: Dnd5e.Reference.UnsupportedCategory |
+| Exact spell ID is absent from this catalog | TargetNotFound | Warning: Dnd5e.Reference.TargetNotFound |
+| Exact spell ID is present | Resolved | None |
+
+Every call first resets Spell to a default FDnd5eSpell and clears Diagnostics. Failure leaves that default value and returns exactly one diagnostic. Success returns an independent complete spell copy and no diagnostics. NotAttempted is the enum's default state and is not returned by this operation.
+
+A false target-presence flag ignores inactive ID storage. For a supplied ID, namespace and source key must pass the catalog's existing nonblank/control-free check; validation does not trim, case-fold, or reconstruct them. The exact three-part ID is authoritative. SourceFormat, SourceReference, and Display are retained input values and are not parsed, used as search fallbacks, or changed. A missing target can become available after an explicit catalog replacement without changing the reference.
+
+This method adds no filesystem/network access, automatic loading, cached resolution state, reprint following, recursion, or catalog mutation. TargetNotFound means absent from this selected catalog, not nonexistent globally. The method does not infer an omitted source, choose among name/alias matches, cross to another namespace as a fallback, or prefer a 2014/2024 publication. A validated catalog has no duplicate exact IDs; ambiguous source-selector handling remains separate normalization work.
+
+Returned diagnostics are quiet API data. Their referring RelativeFilePath/JsonPointer remain empty because the input payload does not contain its owning inline wrapper's location. The target record's provenance is not substituted for the referring token's location. A traversal that knows the owning node can report that context separately.
+
+In Blueprint, extract a reference payload using TryGetReference, call Resolve Spell Reference on the intended retained catalog, and switch on its enum return. Use the Spell output only on Resolved. This does not expose the editor subsystem's private catalog to Blueprint or automatically navigate the browser.
 
 ## Spell query
 

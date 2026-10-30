@@ -1,8 +1,12 @@
+// Developed by Neko Creative Technologies
+
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Spells/Dnd5eSpell.h"
 #include "Diagnostics/Dnd5eDiagnostic.h"
+#include "Content/Dnd5eContentType.h"
+#include "Records/Dnd5eReferenceResolution.h"
 #include "Dnd5eSpellCatalog.generated.h"
 
 USTRUCT(BlueprintType)
@@ -45,6 +49,7 @@ public:
 	bool QuerySpellIds(const FDnd5eSpellQuery& Query, TArray<FDnd5eRecordId>& Ids, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 	int32 GetSpellCount() const { return Spells.Num(); }
 	TArray<FDnd5eRecordId> GetSpellIds() const { return OrderedIds; }
+	EDnd5eReferenceResolveStatus ResolveSpellReference(const FDnd5eReferenceContent& Reference, FDnd5eSpell& Spell, TArray<FDnd5eDiagnostic>& Diagnostics) const;
 
 private:
 	TMap<FDnd5eRecordId, FDnd5eSpell> Spells;

@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [303-case standard suite](testing.md) covers all 60 runtime model schemas/defaults and 269 reflected fields, copy/serialization, Content helpers, spell readers/catalogs/loading, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, general reference resolution, and rich Content rendering remain pending.
+Status: current shared declarations and remaining logical contracts. The [329-case standard suite](testing.md) covers all 60 runtime model schemas/defaults and 269 reflected fields, copy/serialization, 15 enums, Content helpers, spell readers/catalogs/loading/reference lookup, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference resolution, and rich Content rendering remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -14,6 +14,7 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Record header](#record-header)
     - [Record ID](#record-id)
     - [Record relationships](#record-relationships)
+    - [Reference resolution status](#reference-resolution-status)
 - [Diagnostics](#diagnostics)
 - [Reusable values](#reusable-values)
     - [Dice expression](#dice-expression)
@@ -93,7 +94,7 @@ FDnd5eRecordHeader fields:
 | Classification | `FGameplayTagContainer`, empty | Supported record classifications, keeping distinct roles in their own tag branches |
 | Provenance | `TArray<FDnd5eRecordProvenance>`, empty | Primary origin followed by any contributing origins |
 
-Identity remains dataset namespace, category, and an opaque category-specific source key. Display names, aliases, file paths, and dataset release versions do not replace identity. Category is stored in RecordId.Category. The spell adapter defines its source-key construction, the caller assigns the namespace, and the core implements exact equality/hashing below. Cross-dataset reference resolution remains pending; the header itself owns no catalog.
+Identity remains dataset namespace, category, and an opaque category-specific source key. Display names, aliases, file paths, and dataset release versions do not replace identity. Category is stored in RecordId.Category. The spell adapter defines its source-key construction, the caller assigns the namespace, and the core implements exact equality/hashing below. A catalog can resolve an explicitly supplied complete spell ID; automatic cross-dataset target selection remains pending. The header itself owns no catalog.
 
 Classification tags must distinguish declared edition, source generation, and source-provided SRD/Basic Rules membership. Missing edition does not imply both editions; publication generation must not be substituted for an explicit declared edition. Preserve original values and the basis of documented derivations. Unknown imported strings must not automatically become native tags.
 
@@ -144,6 +145,21 @@ The containing record is the origin. Kind currently uses Dnd5e::Record::Relation
 Despite its shortened name, bHasTargetRecord means a complete normalized target ID has been produced, not that a target record is loaded or resolved. False leaves TargetRecordId default-constructed; true requires a namespace, category, and source key under the shared ID contract. A retained source reference can be meaningful before normalization succeeds. A usable relationship needs a recognized Kind and either a complete target ID or a source reference with a declared syntax.
 
 A supplied SourceReference requires SourceFormat; the initial syntax identifier is 5etools. Preserve the original reference even after normalizing its target ID. A programmatically authored relationship with a complete target ID can omit both source fields. Do not universally split or rewrite source references, infer category-specific source defaults, or invent a name-plus-source ID format in this value. Those remain adapter/catalog responsibilities. Editor EditCondition metadata controls authoring visibility only.
+
+### Reference resolution status
+
+Implemented: `EDnd5eReferenceResolveStatus : uint8` is a Blueprint-visible enum in [Dnd5eReferenceResolution.h](../Source/Dnd5e/Public/Records/Dnd5eReferenceResolution.h), owned by Dnd5e.
+
+| Value | Meaning |
+| --- | --- |
+| NotAttempted | Default caller-owned state; no lookup answer yet |
+| Resolved | The supplied target ID produced a loaded record |
+| MissingTargetId | The reference does not declare a normalized target ID |
+| InvalidTargetId | The declared target ID is structurally unusable |
+| UnsupportedCategory | This resolver does not support the declared category |
+| TargetNotFound | No exact target is present in the selected catalog |
+
+The current [spell resolver](spell-catalog.md#spell-reference-resolution) defines validation order, diagnostics, independent copy-out, and output reset. It returns one of the five attempted outcomes rather than NotAttempted. The enum does not add an index, parser, default source, saved state, or a result field to FDnd5eReferenceContent. Future resolvers need their own documented category/lookup contracts; the enum alone does not implement other domains.
 
 ## Diagnostics
 
@@ -826,7 +842,7 @@ The target flag means a normalized identity is available; it does not assert tha
 
 For imported references, retain the full original token and its SourceFormat even after normalization succeeds. The adapter derives usable Display content from an explicit label or the source's supported label rules; it must not require a successful catalog lookup to retain a readable label. Manually authored references need not invent a source token. A supplied SourceReference requires a nonempty SourceFormat. Interpretation of omitted arguments still requires the owning record/document context; a token alone does not settle its target.
 
-Display may contain text and formatted spans. Nested record references or other navigable links inside the label are invalid; a future recursive validator enforces this separately from typed extraction. Keep node provenance on the existing inline wrapper's Metadata. Document-local anchor links and external URLs follow the separate contracts below and are not encoded as fake record IDs. No parser, resolver, lookup status enum, or catalog mutation is introduced by this storage/accessor batch.
+Display may contain text and formatted spans. Nested record references or other navigable links inside the label are invalid; a future recursive validator enforces this separately from typed extraction. Keep node provenance on the existing inline wrapper's Metadata. Document-local anchor links and external URLs follow the separate contracts below and are not encoded as fake record IDs. The original storage/accessor batch introduced no parser or resolver. The current reader normalizes supported source-explicit spell tokens, and the separate [spell catalog resolver](spell-catalog.md#spell-reference-resolution) can now look up a declared target ID without mutating this payload. Omitted-source and other-domain normalization remain separate work.
 
 #### External link content
 
