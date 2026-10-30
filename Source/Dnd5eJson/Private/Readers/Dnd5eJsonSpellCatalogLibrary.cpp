@@ -37,3 +37,22 @@ FDnd5eJsonSpellCatalogBuildResult UDnd5eJsonSpellCatalogLibrary::LoadSpellCatalo
 	}
 	return FDnd5eJsonSpellCatalogLoader::LoadCatalog(Request, CatalogObject->GetMutableCatalog());
 }
+
+EDnd5eJsonSpellReferenceNormalizeStatus UDnd5eJsonSpellCatalogLibrary::NormalizeSpellReference(UDnd5eSpellCatalogObject* CatalogObject,
+	const FString& DatasetNamespace, const FDnd5eReferenceContent& Reference, FDnd5eReferenceContent& NormalizedReference,
+	TArray<FDnd5eDiagnostic>& Diagnostics)
+{
+	if (!IsValid(CatalogObject))
+	{
+		NormalizedReference = Reference;
+		Diagnostics.Reset();
+		FDnd5eDiagnostic Diagnostic;
+		Diagnostic.Severity = EDnd5eDiagnosticSeverity::Error;
+		Diagnostic.Code = TEXT("Dnd5e.Json.InvalidCatalogObject");
+		Diagnostic.Message = TEXT("Supply a valid spell catalog object.");
+		Diagnostics.Add(MoveTemp(Diagnostic));
+		return EDnd5eJsonSpellReferenceNormalizeStatus::InvalidCatalog;
+	}
+	return FDnd5eJsonSpellReferenceNormalizer::NormalizeReference(CatalogObject->GetMutableCatalog(), DatasetNamespace, Reference,
+		NormalizedReference, Diagnostics);
+}

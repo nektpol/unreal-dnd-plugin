@@ -14,6 +14,7 @@ The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h
 - [Core catalog](#core-catalog)
 - [Spell reference resolution](#spell-reference-resolution)
 - [Spell selector matching](#spell-selector-matching)
+- [Retained spell-reference normalization](spell-reference-normalization.md)
 - [Spell query](#spell-query)
 - [Availability source mapping](#availability-source-mapping)
 - [Limits and diagnostics](#limits-and-diagnostics)
@@ -81,6 +82,8 @@ Construct the native class with Construct Object from Class and retain the resul
 Querying and copying are explicit execution nodes even though they are const. This avoids repeated scans or copying large Content trees through pure-node reevaluation. The cheap count getter is pure. Const struct/array reference parameters are inputs; non-const reference parameters are output pins. GetMutableCatalog is an unreflected C++ integration method used by the JSON wrapper, not a Blueprint node.
 
 UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(CatalogObject, Request) is a static BlueprintCallable function returning the existing FDnd5eJsonSpellCatalogBuildResult. It uses the target's native catalog and forwards the builder result unchanged. A null or invalid object returns Failure, SpellCount=0, and one Error with code Dnd5e.Json.InvalidCatalogObject and empty source location. The library owns no catalog and never clears a valid target before building.
+
+The same JSON library also exposes [NormalizeSpellReference](spell-reference-normalization.md) for explicitly reconciling one retained inline spell token with loaded canonical IDs. It returns its own normalization status and a copied reference; it performs no build/replacement.
 
 For supplied text, the Blueprint flow is:
 
@@ -206,6 +209,8 @@ In Blueprint, extract a reference payload using TryGetReference, call Resolve Sp
 ResolveSpellRelationship accepts an FDnd5eRecordRelationship instead of the inline payload. It forwards bHasTargetRecord and TargetRecordId to the same resolver and returns the existing statuses and Dnd5e.Reference codes. It does not validate Kind semantics, parse SourceFormat/SourceReference, or follow further relationships on the returned target. The caller chooses an edge; cycles do not trigger traversal. Input evidence and both catalog records remain unchanged. An explicit reader-normalized reprint can therefore be inspected without treating editions/reprints as equivalent or replacing the original record.
 
 ## Spell selector matching
+
+For explicit reconciliation of a retained source token into a canonical loaded ID, use the separate [JSON-adapter normalization API](spell-reference-normalization.md). Matching itself does not parse source markup or rewrite references.
 
 `FDnd5eSpellSelector` and `EDnd5eSpellSelectorMatchStatus : uint8` are exported/Blueprint-visible request vocabulary in [Dnd5eSpellSelector.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellSelector.h), owned by Dnd5e. The enum is Blueprint-visible; the struct has EditAnywhere/BlueprintReadWrite properties in Dnd5e|SpellSelector.
 

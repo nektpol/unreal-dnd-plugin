@@ -8,6 +8,8 @@ For multiple supplied documents and supplementary availability, use the separate
 
 ## Calling the reader
 
+After reading, the separate [retained-reference normalizer](spell-reference-normalization.md) can explicitly reconcile a supported spell token with a loaded catalog's canonical ID. It does not change ReadSpell's identity construction, missing-source policy, or import diagnostics.
+
 ```cpp
 #include "Readers/Dnd5eJsonSpellReader.h"
 

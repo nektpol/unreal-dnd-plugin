@@ -131,6 +131,14 @@ bool FDnd5eBlueprintCatalogReflectionTest::RunTest(const FString& Parameters)
 	CheckFunction(*this, Library, TEXT("LoadSpellCatalog"), false, false, true, {
 		{TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*")}, {TEXT("Request"), TEXT("FDnd5eJsonSpellCatalogLoadRequest"), false, true},
 		{TEXT("ReturnValue"), TEXT("FDnd5eJsonSpellCatalogBuildResult"), false, false, true}});
+	CheckFunction(*this, Library, TEXT("NormalizeSpellReference"), false, false, true, {
+		{TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*")}, {TEXT("DatasetNamespace"), TEXT("FString")},
+		{TEXT("Reference"), TEXT("FDnd5eReferenceContent"), false, true}, {TEXT("NormalizedReference"), TEXT("FDnd5eReferenceContent"), true},
+		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("EDnd5eJsonSpellReferenceNormalizeStatus"), false, false, true}});
+	// UHT represents const FString& inputs with NativeConst metadata, without CPF_ConstParm.
+	const auto* Normalize = Library->FindFunctionByName(TEXT("NormalizeSpellReference"));
+	const auto* Namespace = Normalize ? FindFProperty<FStrProperty>(Normalize, TEXT("DatasetNamespace")) : nullptr;
+	TestTrue(TEXT("Namespace preserves native const input metadata"), Namespace && Namespace->HasMetaData(TEXT("NativeConst")));
 	return !HasAnyErrors();
 }
 
@@ -420,6 +428,41 @@ bool FDnd5eBlueprintSelectorTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Later success clears previous failure diagnostics"), *Status == EDnd5eSpellSelectorMatchStatus::Matched && Diagnostics->IsEmpty() && Ids->Num() == 1);
 	FDnd5eSpell Copy;
 	TestTrue(TEXT("The returned canonical ID works with exact lookup"), Catalog->TryGetSpell((*Ids)[0], Copy) && Equal(FDnd5eSpell::StaticStruct(), &Copy, &Target));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBlueprintNormalizeReferenceTest, "Dnd5e.Blueprint.SpellCatalog.NormalizeReference", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBlueprintNormalizeReferenceTest::RunTest(const FString& Parameters)
+{
+	TStrongObjectPtr<UDnd5eSpellCatalogObject> Catalog(NewObject<UDnd5eSpellCatalogObject>());
+	const auto Build = UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(Catalog.Get(), BlueprintBuildRequest());
+	if (!TestEqual(TEXT("Build fixture"), Build.Status, EDnd5eJsonReadStatus::Success)) { return false; }
+	FBlueprintInvocation Call(*this, GetMutableDefault<UDnd5eJsonSpellCatalogLibrary>(), TEXT("NormalizeSpellReference"));
+	auto* CatalogInput = Call.Parameter<UDnd5eSpellCatalogObject*>(TEXT("CatalogObject"), TEXT("UDnd5eSpellCatalogObject*"));
+	auto* Namespace = Call.Parameter<FString>(TEXT("DatasetNamespace"), TEXT("FString"));
+	auto* Input = Call.Parameter<FDnd5eReferenceContent>(TEXT("Reference"), TEXT("FDnd5eReferenceContent"));
+	auto* Output = Call.Parameter<FDnd5eReferenceContent>(TEXT("NormalizedReference"), TEXT("FDnd5eReferenceContent"));
+	auto* Diagnostics = Call.Parameter<TArray<FDnd5eDiagnostic>>(TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"));
+	auto* Status = Call.Parameter<EDnd5eJsonSpellReferenceNormalizeStatus>(TEXT("ReturnValue"), TEXT("EDnd5eJsonSpellReferenceNormalizeStatus"));
+	if (!CatalogInput || !Namespace || !Input || !Output || !Diagnostics || !Status) { return false; }
+	*Namespace = TEXT("blueprint-synthetic"); Input->SourceFormat = TEXT("5etools");
+	Input->SourceReference = TEXT("{@spell invented lantern|syn}"); Input->Display = {Text(TEXT("A label"))};
+	const auto Original = *Input;
+	Call.Invoke();
+	TestTrue(TEXT("Null catalog failure preserves input copy"), *Status == EDnd5eJsonSpellReferenceNormalizeStatus::InvalidCatalog && Equal(FDnd5eReferenceContent::StaticStruct(), Output, &Original));
+	if (TestEqual(TEXT("Null catalog diagnostic"), Diagnostics->Num(), 1))
+	{
+		TestTrue(TEXT("Controlled error"), (*Diagnostics)[0].Code == FName(TEXT("Dnd5e.Json.InvalidCatalogObject")) && (*Diagnostics)[0].Severity == EDnd5eDiagnosticSeverity::Error);
+	}
+	*CatalogInput = Catalog.Get(); Call.Invoke();
+	TestTrue(TEXT("Reflected success replaces failure"), *Status == EDnd5eJsonSpellReferenceNormalizeStatus::Normalized && Output->bHasTargetRecordId && Diagnostics->IsEmpty());
+	TestTrue(TEXT("Input frame unchanged"), Equal(FDnd5eReferenceContent::StaticStruct(), Input, &Original));
+	FDnd5eSpell Spell; TArray<FDnd5eDiagnostic> ResolveDiagnostics;
+	TestEqual(TEXT("Reflected output resolves"), Catalog->ResolveSpellReference(*Output, Spell, ResolveDiagnostics), EDnd5eReferenceResolveStatus::Resolved);
+	Input->SourceReference = TEXT("{@spell invented lantern}"); Call.Invoke();
+	TestTrue(TEXT("Missing source does not promote one candidate"), *Status == EDnd5eJsonSpellReferenceNormalizeStatus::MissingSource && !Output->bHasTargetRecordId && Diagnostics->Num() == 1);
+	Input->SourceReference = TEXT("{@item invented lantern|syn}"); Call.Invoke();
+	TestTrue(TEXT("Unsupported replaces preceding output"), *Status == EDnd5eJsonSpellReferenceNormalizeStatus::UnsupportedReference && Equal(FDnd5eReferenceContent::StaticStruct(), Input, Output) && Diagnostics->Num() == 1);
 	return !HasAnyErrors();
 }
 

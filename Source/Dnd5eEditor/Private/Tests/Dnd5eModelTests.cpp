@@ -2,6 +2,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
 #include "UObject/Package.h"
 
 using namespace Dnd5eTests;
@@ -99,6 +100,7 @@ namespace
 			{ TEXT("EDnd5eJsonReadStatus"), &StaticEnum<EDnd5eJsonReadStatus>, { TEXT("NotAttempted"), TEXT("Success"), TEXT("Failure") } },
 			{ TEXT("EDnd5eReferenceResolveStatus"), &StaticEnum<EDnd5eReferenceResolveStatus>, { TEXT("NotAttempted"), TEXT("Resolved"), TEXT("MissingTargetId"), TEXT("InvalidTargetId"), TEXT("UnsupportedCategory"), TEXT("TargetNotFound") } },
 			{ TEXT("EDnd5eSpellSelectorMatchStatus"), &StaticEnum<EDnd5eSpellSelectorMatchStatus>, { TEXT("NotAttempted"), TEXT("Matched"), TEXT("MissingSource"), TEXT("InvalidSelector"), TEXT("NoMatch"), TEXT("Ambiguous") } },
+			{ TEXT("EDnd5eJsonSpellReferenceNormalizeStatus"), &StaticEnum<EDnd5eJsonSpellReferenceNormalizeStatus>, { TEXT("NotAttempted"), TEXT("Normalized"), TEXT("UnsupportedReference"), TEXT("MissingSource"), TEXT("InvalidSelector"), TEXT("NoMatch"), TEXT("Ambiguous"), TEXT("InvalidCatalog") } },
 		};
 		return Cases;
 	}
