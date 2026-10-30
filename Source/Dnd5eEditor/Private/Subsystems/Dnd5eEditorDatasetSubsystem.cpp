@@ -10,6 +10,7 @@ const FDnd5eJsonSpellCatalogBuildResult& UDnd5eEditorDatasetSubsystem::LoadSelec
 {
 	if (!IsValid(Catalog)) { Catalog = NewObject<UDnd5eSpellCatalogObject>(this); }
 	LastLoadResult = UDnd5eJsonSpellCatalogLibrary::LoadSpellCatalog(Catalog, Request);
+	if (LastLoadResult.Status == EDnd5eJsonReadStatus::Success) { CatalogChanged.Broadcast(); }
 	return LastLoadResult;
 }
 
@@ -27,5 +28,6 @@ void UDnd5eEditorDatasetSubsystem::Deinitialize()
 {
 	Catalog = nullptr;
 	LastLoadResult = FDnd5eJsonSpellCatalogBuildResult{};
+	CatalogChanged.Broadcast();
 	Super::Deinitialize();
 }

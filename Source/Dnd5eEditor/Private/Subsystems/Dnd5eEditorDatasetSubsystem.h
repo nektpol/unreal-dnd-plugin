@@ -25,10 +25,14 @@ public:
 	const FDnd5eJsonSpellCatalogBuildResult& GetLastLoadResult() const { return LastLoadResult; }
 	virtual void Deinitialize() override;
 
+	FSimpleMulticastDelegate& OnCatalogChanged() { return CatalogChanged; }
+
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UDnd5eSpellCatalogObject> Catalog;
 
 	UPROPERTY(Transient)
 	FDnd5eJsonSpellCatalogBuildResult LastLoadResult;
+
+	FSimpleMulticastDelegate CatalogChanged;
 };

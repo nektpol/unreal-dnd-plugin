@@ -23,6 +23,9 @@ public class Dnd5eEditor : ModuleRules
 			"MessageLog",
 			"Slate",
 			"SlateCore",
+			"PropertyEditor",
+			"InputCore",
+			"EditorStyle",
 		});
 	}
 }

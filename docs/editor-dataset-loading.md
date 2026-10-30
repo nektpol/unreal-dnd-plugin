@@ -1,6 +1,6 @@
 # Editor dataset loading
 
-Dnd5eEditor adds a local dataset selection page, two Tools commands, an editor-session catalog, and Message Log results. It uses the existing [file loader](json-spell-file-loader.md) without changing the runtime parser or catalog contract. No test Actor or Play In Editor session is needed.
+Dnd5eEditor adds a local dataset selection page, three Tools commands, an editor-session catalog, Message Log results, and a searchable spell browser. It uses the existing [file loader](json-spell-file-loader.md) without changing the runtime parser or catalog contract. No test Actor or Play In Editor session is needed.
 
 ## Select files
 
@@ -46,16 +46,30 @@ Restarting Unreal restores the file selection, not the loaded records. The edito
 
 This editor catalog is independent of Actor/GameInstance-owned Blueprint catalogs. It does not automatically populate a playable project or package external content. Runtime consumers still choose their own catalog ownership and loading configuration.
 
+## Browse loaded spells
+
+Open **Tools → Dnd5e Spell Browser**. The dockable tab reads the existing editor catalog; opening it does not select files or load a dataset. Before an explicit load, it shows an empty list and a loading instruction. The summary reports visible rows out of total loaded records.
+
+The left search box matches case-insensitive substrings of display names, ignoring leading/trailing search whitespace. Empty search shows all records in catalog order. Source labels and other fields are not included in this search. Runtime catalog exact-name queries retain their existing contract.
+
+Each row shows display name, level, and primary publication/source ID. Level 0 represents a cantrip. Missing provenance displays Source unspecified; no source or edition is inferred. Records with matching names remain distinct rows selected by their exact record IDs.
+
+Select a row to inspect its expandable Spell value on the right, including Header, tags, shared values, and structured Content payloads. This is a read-only reflected inspector, not a formatted spell sheet. Its property search is separate from the name search. It presents retained fallback fields as stored; inspecting a record adds no rule interpretation and does not execute expressions or navigate references/media.
+
+A successful dataset load refreshes the list and clears selection/details while retaining the search text. A failed load sends no catalog-change notification, preserving the prior catalog and current view. Changing the name search also clears selection/details. Closing and reopening the tab shows the current catalog with a fresh search and selection; restarting Unreal still begins with an unloaded catalog even if its tab layout is restored.
+
+The details view displays an independent copy inside a transient editor-only UObject. The browser retains that object through a strong UObject pointer, disables property editing, and releases it when the selection clears or the view closes. This does not create a Content Browser asset, save converted records, or modify the catalog. Repeated Tools invocations focus the existing tab.
+
 ## Implementation boundary
 
 The settings and subsystem headers are private editor implementation in [Settings](../Source/Dnd5eEditor/Private/Settings/Dnd5eEditorDatasetSettings.h) and [Subsystems](../Source/Dnd5eEditor/Private/Subsystems/Dnd5eEditorDatasetSubsystem.h). Module menu/result code is in [Dnd5eEditor.cpp](../Source/Dnd5eEditor/Private/Dnd5eEditor.cpp). These classes are not a new public runtime API.
 
-Dnd5eEditor directly declares DeveloperSettings, EditorSubsystem, Settings, ToolMenus, MessageLog, Slate, and SlateCore in addition to its existing dependencies. The runtime modules acquire none of them. UDeveloperSettings supplies automatic settings registration; ToolMenus uses deferred startup registration and owner-based cleanup. The module unregisters its callback, menu owner, and Message Log listing during shutdown without loading UI modules during teardown.
+Dnd5eEditor directly declares DeveloperSettings, EditorSubsystem, Settings, ToolMenus, MessageLog, Slate, SlateCore, PropertyEditor, and InputCore in addition to its existing dependencies. The runtime modules acquire none of them. UDeveloperSettings supplies automatic settings registration; ToolMenus uses deferred startup registration and owner-based cleanup. Shutdown releases the browser tab content, closes its tab, and unregisters its factory, menu owner/callback, and Message Log listing without loading UI modules during teardown.
 
-The current interface selects and loads data and presents diagnostics. A dedicated searchable record list and read-only details panel remain the next editor feature. Asynchronous loading, provider/reference resolution, and complete rule semantics are separate work.
+The list model, Slate widget, and transient selection class are private [browser implementation](../Source/Dnd5eEditor/Private/Browser/SDnd5eSpellBrowser.h), not new public runtime models. The object details view inspects UDnd5eSpellBrowserSelection.Spell; the original direct struct-details approach reproduced a nested-Content crash on UE 5.8.4 and is no longer used. The precise engine-side lifetime defect was not established. The current object-view path is covered by repeated updates and garbage-collection tests. Rich Content rendering, asynchronous loading, provider/reference resolution, and complete rule semantics remain separate work.
 
 ## Verification
 
-The user verified editor loading of 319 source-marked SRD records and selection persistence after restart. [Automated tests](testing.md) cover editor schemas, path conversion, isolated config save/reload, transient ownership, failed-load preservation, deinitialization, settings/menu registration, and Message Log registration. Config tests check that the actual user-config file and settings default object remain unchanged.
+The user verified editor loading of 319 source-marked SRD records, selection persistence after restart, and successful spell selection after the details-view correction. The 303-case standard / 323-case combined [automation run](testing.md) also covers browser metadata/exact identity, name searching, refresh notifications, the production widget's selection/search/details flow, copy isolation, garbage collection, and menu/tab registration. Existing config tests check that the actual user-config file and settings default object remain unchanged.
 
-Automated coverage does not simulate native file dialogs or unload its own executing test module. Interactive picker/persistence behavior is supported by the manual check; shutdown cleanup is reviewed and menu-entry ownership is verified. The runtime source-mapping limits remain those documented by the reader and loader.
+Automated coverage drives the real Slate controls and details updates without simulating screen clicks, docking gestures, or native file dialogs; it does not unload its own executing test module. Interactive picker/persistence and corrected spell selection have manual evidence. Docking appearance, scrolling/expansion presentation, and teardown during module unload are not claimed as fully simulated UI coverage. The runtime source-mapping limits remain those documented by the reader and loader.

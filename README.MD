@@ -8,11 +8,11 @@ Early development. The runtime module contains shared identity, provenance, meas
 
 The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, selected references, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
 
-The standard editor automation suite has 296 passing cases on 2026-10-30. The combined opt-in run passed 316 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading. See [Automated tests](docs/testing.md) for evidence and limits.
+The standard editor automation suite has 303 passing cases on 2026-10-30. The combined opt-in run passed 323 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading and the spell browser. See [Automated tests](docs/testing.md) for evidence and limits.
 
 The [JSON spell reader](docs/json-spell-reader.md) accepts supplied text and an explicit spell-array index. It constructs identity/provenance and typed values, retains supported metadata and fallbacks, and returns diagnostics. Unknown required top-level values fail with a default output spell. The runtime reader performs no file or network access.
 
-For Blueprint use, construct and retain a [spell catalog object](docs/spell-catalog.md#blueprint-ownership-and-operations), supply document text to BuildSpellCatalog or explicit filenames to [LoadSpellCatalog](docs/json-spell-file-loader.md), query IDs, and retrieve copied structs with TryGetSpell. Each object owns an independent transient catalog; failed replacement preserves its previous records. The [editor loading tools](docs/editor-dataset-loading.md) add file pickers, remembered local selection, and load diagnostics. A searchable spell browser remains pending.
+For Blueprint use, construct and retain a [spell catalog object](docs/spell-catalog.md#blueprint-ownership-and-operations), supply document text to BuildSpellCatalog or explicit filenames to [LoadSpellCatalog](docs/json-spell-file-loader.md), query IDs, and retrieve copied structs with TryGetSpell. Each object owns an independent transient catalog; failed replacement preserves its previous records. The [editor tools](docs/editor-dataset-loading.md) add file pickers, remembered local selection, load diagnostics, and a searchable spell list with read-only structured details.
 
 The development host project uses Unreal Engine 5.8. Compatibility with other versions has not been established.
 
@@ -45,14 +45,14 @@ Format compatibility does not grant permission to use or redistribute content. U
 2. Place or clone this repository at `<HostProject>/Plugins/Dnd5e`.
 3. Open the host project's `.uproject`, enable Dnd5e if necessary, and build the host project's editor target.
 
-The [file loader reference](docs/json-spell-file-loader.md) documents runtime/Blueprint loading. For editor use, open **Tools → Dnd5e Dataset Settings**, choose a root and spell files, then choose **Tools → Load Dnd5e Dataset**. The [editor reference](docs/editor-dataset-loading.md) explains local settings, session ownership, and diagnostics. No dataset is needed to construct or query synthetic in-memory content types.
+The [file loader reference](docs/json-spell-file-loader.md) documents runtime/Blueprint loading. For editor use, open **Tools → Dnd5e Dataset Settings**, choose a root and spell files, then choose **Tools → Load Dnd5e Dataset**. Open **Tools → Dnd5e Spell Browser** to search loaded names and inspect a selected record. The [editor reference](docs/editor-dataset-loading.md) explains local settings, session ownership, diagnostics, and browsing. No dataset is needed to construct or query synthetic in-memory content types.
 
 ## Documentation
 
 - [Automated tests](docs/testing.md): coverage, running the development suite, fixtures, and verification limits.
 - [JSON spell reader](docs/json-spell-reader.md): implemented text-to-spell API, accepted subset, identity, preservation, limits, and diagnostics.
 - [JSON spell-file loader](docs/json-spell-file-loader.md): explicit external selections, bounded reads, native/Blueprint calls, provenance, and atomic failure behavior.
-- [Editor dataset loading](docs/editor-dataset-loading.md): file selection, local preferences, Tools commands, transient editor ownership, and Message Log results.
+- [Editor dataset loading](docs/editor-dataset-loading.md): file selection, local preferences, Tools commands, Message Log results, and searchable read-only spell browsing.
 - [Spell availability and catalog](docs/spell-catalog.md): supplied-document builds, availability joins, atomic replacement, exact-ID lookup, and read-only filters.
 - [Source-format compatibility](docs/source-format-compatibility.md): verified source mappings, normalization requirements, and known gaps for the audited dataset snapshot.
 - [Shared models](docs/shared-models.md): reusable metadata, measurements, money, components, and structured content.
