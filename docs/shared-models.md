@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [416-case standard suite](testing.md) covers all 61 runtime model schemas/defaults and 272 reflected fields, copy/serialization, 17 enums, Content helpers, spell readers/catalogs/loading/reference lookup/selector matching, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). The spell-specific selector request/status is defined in the [catalog API](spell-catalog.md#spell-selector-matching); the separate [JSON normalizer](spell-reference-normalization.md) reconciles a retained spell token with loaded IDs. Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference normalization, and rich Content rendering remain pending.
+Status: current shared declarations and remaining logical contracts. The [449-case standard suite](testing.md) covers all 62 runtime model schemas/defaults and 274 reflected fields, copy/serialization, 17 enums, Content helpers, spell readers/catalogs/loading/reference lookup/selector matching, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). The spell-specific selector request/status is defined in the [catalog API](spell-catalog.md#spell-selector-matching); the separate [JSON normalizer](spell-reference-normalization.md) reconciles a retained spell token with loaded IDs. Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference normalization, and rich Content rendering remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -68,6 +68,7 @@ The implemented Content and supporting value types are a normalized model, not t
         - [Numeric content](#numeric-content)
     - [References and links](#references-and-links)
         - [Inline record references](#inline-record-references)
+        - [Content reference occurrences](#content-reference-occurrences)
         - [External link content](#external-link-content)
         - [Document-local anchor link content](#document-local-anchor-link-content)
     - [Unsupported-content fallback](#unsupported-content-fallback)
@@ -843,6 +844,17 @@ The target flag means a normalized identity is available; it does not assert tha
 For imported references, retain the full original token and its SourceFormat even after normalization succeeds. The adapter derives usable Display content from an explicit label or the source's supported label rules; it must not require a successful catalog lookup to retain a readable label. Manually authored references need not invent a source token. A supplied SourceReference requires a nonempty SourceFormat. Interpretation of omitted arguments still requires the owning record/document context; a token alone does not settle its target.
 
 Display may contain text and formatted spans. Nested record references or other navigable links inside the label are invalid; a future recursive validator enforces this separately from typed extraction. Keep node provenance on the existing inline wrapper's Metadata. Document-local anchor links and external URLs follow the separate contracts below and are not encoded as fake record IDs. The original storage/accessor batch introduced no parser or resolver. The current reader normalizes supported source-explicit spell tokens, and the separate [spell catalog resolver](spell-catalog.md#spell-reference-resolution) can now look up a declared target ID without mutating this payload. Omitted-source and other-domain normalization remain separate work.
+
+#### Content reference occurrences
+
+Implemented: exported, Blueprint-visible `FDnd5eContentReferenceOccurrence` is declared in [Dnd5eSpellContentLibrary.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellContentLibrary.h). It records a typed reference's location in a traversed model. It is a detached value, not a mutable pointer into the original Content tree.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| ContentPath | `FString`, empty | Model location such as `/Description/0/Payload/Inlines/1/Payload`; not a source JSON pointer or persistent identity |
+| Reference | `FDnd5eReferenceContent`, default struct | Independent copy of the original reference, including display, source context, target flag, and declared ID |
+
+The core [spell Content collector](spell-content-references.md) returns `TArray<FDnd5eContentReferenceOccurrence>` in bounded traversal order. Collection preserves unresolved/non-spell references and does not normalize selectors, resolve targets, or validate every semantic child-composition rule. An owning spell supplies context; its record ID is not duplicated into every occurrence.
 
 #### External link content
 

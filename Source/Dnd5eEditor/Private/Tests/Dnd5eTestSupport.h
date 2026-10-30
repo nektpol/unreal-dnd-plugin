@@ -7,6 +7,7 @@
 #include "Content/Dnd5eContentLibrary.h"
 #include "Dnd5eTags.h"
 #include "Spells/Dnd5eSpell.h"
+#include "Spells/Dnd5eSpellContentLibrary.h"
 #include "Values/Dnd5eMoney.h"
 #include "Values/Dnd5eTimeSpan.h"
 #include "Diagnostics/Dnd5eDiagnostic.h"

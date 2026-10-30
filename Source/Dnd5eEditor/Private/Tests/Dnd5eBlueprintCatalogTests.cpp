@@ -466,4 +466,36 @@ bool FDnd5eBlueprintNormalizeReferenceTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBlueprintCollectReferencesTest, "Dnd5e.Blueprint.SpellContent.CollectReferences", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBlueprintCollectReferencesTest::RunTest(const FString& Parameters)
+{
+	UClass* Library = UDnd5eSpellContentLibrary::StaticClass();
+	TestEqual(TEXT("Core owns collection"), Library->GetOutermost()->GetName(), FString(TEXT("/Script/Dnd5e")));
+	TestTrue(TEXT("Stateless function library"), Library->GetSuperClass() == UBlueprintFunctionLibrary::StaticClass());
+	CheckFunction(*this, Library, TEXT("CollectSpellReferences"), false, false, true, {
+		{TEXT("Spell"), TEXT("FDnd5eSpell"), false, true}, {TEXT("Occurrences"), TEXT("TArray<FDnd5eContentReferenceOccurrence>"), true},
+		{TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), true}, {TEXT("ReturnValue"), TEXT("bool"), false, false, true}});
+	FBlueprintInvocation Call(*this, GetMutableDefault<UDnd5eSpellContentLibrary>(), TEXT("CollectSpellReferences"));
+	auto* Spell = Call.Parameter<FDnd5eSpell>(TEXT("Spell"), TEXT("FDnd5eSpell"));
+	auto* Out = Call.Parameter<TArray<FDnd5eContentReferenceOccurrence>>(TEXT("Occurrences"), TEXT("TArray<FDnd5eContentReferenceOccurrence>"));
+	auto* Diagnostics = Call.Parameter<TArray<FDnd5eDiagnostic>>(TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"));
+	auto* Success = Call.Parameter<bool>(TEXT("ReturnValue"), TEXT("bool"));
+	if (!Spell || !Out || !Diagnostics || !Success) { return false; }
+	FDnd5eReferenceContent Reference; Reference.SourceReference = TEXT("{@spell Invented Beacon|SYN}"); Reference.SourceFormat = TEXT("5etools");
+	FDnd5eParagraphContent Body; Body.Inlines = {Text(TEXT("See ")), Inline(Dnd5e::Content::Inline::Reference, Reference)};
+	Spell->Description = {Block(Dnd5e::Content::Block::Paragraph, Body)}; const auto Before = *Spell;
+	Call.Invoke();
+	if (TestTrue(TEXT("Reflected success"), *Success && Out->Num() == 1 && Diagnostics->IsEmpty()))
+	{
+		TestEqual(TEXT("Manual Blueprint path reproduced"), (*Out)[0].ContentPath, FString(TEXT("/Description/0/Payload/Inlines/1/Payload")));
+		(*Out)[0].Reference.SourceReference = TEXT("Changed output");
+	}
+	TestTrue(TEXT("Reflected output owns its copy"), Equal(FDnd5eSpell::StaticStruct(), Spell, &Before));
+	Spell->HigherLevelDescription.AddDefaulted(); Call.Invoke();
+	TestTrue(TEXT("Reflected failure clears prior output"), !*Success && Out->IsEmpty() && Diagnostics->Num() == 1);
+	*Spell = {}; Call.Invoke();
+	TestTrue(TEXT("Reflected empty success clears diagnostics"), *Success && Out->IsEmpty() && Diagnostics->IsEmpty());
+	return !HasAnyErrors();
+}
+
 #endif

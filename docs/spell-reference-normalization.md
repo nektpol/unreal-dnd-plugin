@@ -44,6 +44,8 @@ On every outcome, NormalizedReference begins as an independent value copy of the
 
 ## Consumption and limits
 
+The core [spell Content collector](spell-content-references.md) can first obtain typed references and model locations from both description trees. Collection and normalization remain separate explicit operations.
+
 After Normalized, pass the output to [ResolveSpellReference](spell-catalog.md#spell-reference-resolution) on the same catalog to retrieve the actual spell. Normalization does not return or mutate the spell itself. Catalog replacement can change later normalization results; synchronize shared catalog access as for other catalog operations.
 
 This operation handles one reference, not a recursive spell traversal. It does not normalize relationship/reprint strings, infer omitted publications from an owning spell, choose an ambiguous candidate, follow reference chains, or modify reader/build diagnostics. Existing exact-ID/query behavior and automatic reader identity construction remain unchanged.

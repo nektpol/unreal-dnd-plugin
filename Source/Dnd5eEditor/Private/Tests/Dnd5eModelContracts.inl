@@ -4,6 +4,10 @@ const TArray<FModelContract>& ModelContracts()
 {
 	static const TArray<FModelContract> Cases =
 	{
+		{ TEXT("FDnd5eContentReferenceOccurrence"), &FDnd5eContentReferenceOccurrence::StaticStruct, {
+			{ TEXT("ContentPath"), TEXT("FString"), TEXT("") },
+			{ TEXT("Reference"), TEXT("FDnd5eReferenceContent"), TEXT("") },
+		} },
 		{ TEXT("FDnd5eSpellSelector"), &FDnd5eSpellSelector::StaticStruct, {
 			{ TEXT("DatasetNamespace"), TEXT("FString"), TEXT("") },
 			{ TEXT("Name"), TEXT("FString"), TEXT("") },
