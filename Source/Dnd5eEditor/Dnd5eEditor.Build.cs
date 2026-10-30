@@ -15,7 +15,14 @@ public class Dnd5eEditor : ModuleRules
 			"Dnd5e",
 			"Dnd5eJson",
 			"Json",
-			"UnrealEd"
+			"UnrealEd",
+			"DeveloperSettings",
+			"EditorSubsystem",
+			"Settings",
+			"ToolMenus",
+			"MessageLog",
+			"Slate",
+			"SlateCore",
 		});
 	}
 }
