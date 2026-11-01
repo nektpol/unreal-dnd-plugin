@@ -17,7 +17,7 @@ NormalizeSpellReference on the Blueprint library has the same namespace/referenc
 
 ## Accepted input and matching
 
-SourceFormat must equal `5etools` exactly. SourceReference must start with lowercase `{@spell ` and end with `}`, with no surrounding text. The token may contain at most 65,536 TCHARs, inclusive. The body accepts one to three pipe-separated components: name, optional publication, optional display. Empty fields are retained during splitting. Extended forms with extra pipe characters are unsupported, including nested display markup containing such characters. Name/source components containing braces are unsupported. Display is opaque and the operation preserves the existing Display array rather than rebuilding it from the token.
+SourceFormat must equal `5etools` exactly. SourceReference is one complete balanced lowercase spell token without surrounding text, at most 65,536 TCHARs. A shared token parser checks its envelope/depth and splits one to three top-level components: name, optional publication, optional display. Nested display markup/pipes are supported; additional outer fields and braces in identity arguments remain unsupported. Empty optional publication remains omitted, with no inferred default.
 
 Name and source are trimmed at the adapter boundary; the namespace is passed unchanged. Matching then follows the catalog's exact namespace, whole case-insensitive canonical name/primary-source comparisons, and explicit missing-source/ambiguity policy. Aliases, contributing publications, preferred editions, and default sources are excluded. The ID returned by matching is copied unchanged; no ID is synthesized from normalized casing.
 
@@ -40,7 +40,7 @@ An unexpected future matcher status is guarded by an Error with code Dnd5e.Json.
 
 Diagnostics is `TArray<FDnd5eDiagnostic>` and is reset on every call. Failures return one diagnostic; success clears previous diagnostics. RelativeFilePath/JsonPointer remain empty because this operation receives no source-location context. Diagnostics use controlled messages rather than quoting source passages.
 
-On every outcome, NormalizedReference begins as an independent value copy of the input. Only Normalized changes bHasTargetRecordId and TargetRecordId. Display, SourceFormat, and SourceReference remain intact. Failures preserve any previously declared target, including an inactive target value. Consumers must check the status before treating the output as newly reconciled. Success may deliberately replace an existing declared ID using the retained token as authority. Native input/output aliasing is supported.
+On every outcome, NormalizedReference begins as an independent value copy of the input. Only Normalized sets bHasTargetSelector/TargetSelector and bHasTargetRecordId/TargetRecordId. The typed selector retains the parsed name/publication spelling while the target ID comes from the matched canonical record. Display, SourceFormat, and SourceReference remain intact. Failures preserve any previously declared target, including an inactive target value. Consumers must check the status before treating the output as newly reconciled. Success may deliberately replace an existing declared ID using the retained token as authority. Native input/output aliasing is supported.
 
 ## Consumption and limits
 

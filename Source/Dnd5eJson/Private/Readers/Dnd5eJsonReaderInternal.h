@@ -1,3 +1,5 @@
+// Developed by Neko Creative Technologies
+
 #pragma once
 
 #include "Readers/Dnd5eJsonReadContext.h"
@@ -74,4 +76,15 @@ namespace Dnd5eJsonReader
 	bool ReadSpellArray(const TSharedPtr<FJsonValue>& Root, const TArray<TSharedPtr<FJsonValue>>*& OutArray, FReadState& State);
 	bool ReadSpellObject(const FJsonObject& Object, const FString& Pointer, FDnd5eSpell& OutSpell, FReadState& State);
 	bool ReadAvailabilityEntry(const FJsonObject& Root, const FString& SpellName, const FString& SpellSourceId, bool& bHasEntry, TArray<FDnd5eSpellAvailability>& Availability, FReadState& State);
+	void UnsupportedInline(const FString& Token, const FString& Pointer, TArray<FDnd5eInlineContent>& Inlines, FReadState& State);
+	bool ReadAdditionalAnnotation(const FString& Tag, const TArray<FString>& Parts, const FString& Token, const FString& Pointer, TArray<FDnd5eInlineContent>& Inlines, FReadState& State, int32 Depth, bool& bHandled);
+	bool IsRecordReferenceTag(const FString& Tag);
+	bool TryReadRecordSelector(const FString& Tag, const TArray<FString>& Parts, FDnd5eRecordSelector& Selector, FString& Display);
+	bool ReadRecordReference(const FString& Tag, const TArray<FString>& Parts, const FString& Token, const FString& Pointer, TArray<FDnd5eInlineContent>& Inlines, FReadState& State, int32 Depth);
+	bool ConsumeContentBudget(const FString& Pointer, FReadState& State);
+	bool ReadDestination(const FString& Tag, const TArray<FString>& Parts, const FString& Token, const FString& Pointer, TArray<FDnd5eInlineContent>& Inlines, FReadState& State, int32 Depth, bool& Handled);
+	bool ReadTypedSpellMetadata(const FJsonObject& Object, const FString& Pointer, FDnd5eSpell& Spell, FReadState& State);
+	bool ValidateEditionAssignments(const TArray<FDnd5eSourceEditionAssignment>& Assignments, const FString& PolicyId, FReadState& State);
+	bool ApplyEditionAssignment(const TArray<FDnd5eSourceEditionAssignment>& Assignments, const FString& PolicyId, FDnd5eSpell& Spell, FReadState& State);
+	bool SerializeValue(const TSharedPtr<FJsonValue>& Value, FString& OutJson, const FString& Pointer, FReadState& State);
 }

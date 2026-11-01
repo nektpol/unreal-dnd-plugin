@@ -109,6 +109,12 @@ const TArray<FExtractorCase>& Extractors()
 {
     static const TArray<FExtractorCase> Cases =
     {
+        { TEXT("DocumentLink"), TEXT("TryGetDocumentLink"), &FDnd5eInlineContent::StaticStruct, &FDnd5eDocumentLinkContent::StaticStruct,
+          +[](FAutomationTestBase& Test) { return CheckExtractor<FDnd5eInlineContent, FDnd5eDocumentLinkContent>(Test, Dnd5e::Content::Inline::DocumentLink, ChildTag(Dnd5e::Content::Inline::DocumentLink), &UDnd5eContentLibrary::TryGetDocumentLink); } },
+        { TEXT("QuickReference"), TEXT("TryGetQuickReference"), &FDnd5eInlineContent::StaticStruct, &FDnd5eQuickReferenceContent::StaticStruct,
+          +[](FAutomationTestBase& Test) { return CheckExtractor<FDnd5eInlineContent, FDnd5eQuickReferenceContent>(Test, Dnd5e::Content::Inline::QuickReference, ChildTag(Dnd5e::Content::Inline::QuickReference), &UDnd5eContentLibrary::TryGetQuickReference); } },
+        { TEXT("QueryLink"), TEXT("TryGetQueryLink"), &FDnd5eInlineContent::StaticStruct, &FDnd5eQueryLinkContent::StaticStruct,
+          +[](FAutomationTestBase& Test) { return CheckExtractor<FDnd5eInlineContent, FDnd5eQueryLinkContent>(Test, Dnd5e::Content::Inline::QueryLink, ChildTag(Dnd5e::Content::Inline::QueryLink), &UDnd5eContentLibrary::TryGetQueryLink); } },
         { TEXT("Section"), TEXT("TryGetSection"), &FDnd5eContentBlock::StaticStruct, &FDnd5eSectionContent::StaticStruct,
           +[](FAutomationTestBase& Test) { return CheckExtractor<FDnd5eContentBlock, FDnd5eSectionContent>(Test, Dnd5e::Content::Block::Section, ChildTag(Dnd5e::Content::Block::Section), &UDnd5eContentLibrary::TryGetSection); } },
         { TEXT("Paragraph"), TEXT("TryGetParagraph"), &FDnd5eContentBlock::StaticStruct, &FDnd5eParagraphContent::StaticStruct,
@@ -220,6 +226,10 @@ bool FDnd5eBlueprintApiTest::RunTest(const FString& Parameters)
 {
     TArray<FExtractorCase> Cases = Extractors();
     Cases.Add({ TEXT("DiceExpression"), TEXT("TryGetAnnotationDiceExpression"), &FDnd5eAnnotationContent::StaticStruct, &FDnd5eDiceExpression::StaticStruct, nullptr });
+    Cases.Add({ TEXT("DifficultyClass"), TEXT("TryGetAnnotationDifficultyClass"), &FDnd5eAnnotationContent::StaticStruct, &FDnd5eNumber::StaticStruct, nullptr });
+    Cases.Add({ TEXT("D20Roll"), TEXT("TryGetAnnotationD20Roll"), &FDnd5eAnnotationContent::StaticStruct, &FDnd5eD20Roll::StaticStruct, nullptr });
+    Cases.Add({ TEXT("PercentChance"), TEXT("TryGetAnnotationPercentChance"), &FDnd5eAnnotationContent::StaticStruct, &FDnd5eChanceContentValue::StaticStruct, nullptr });
+    Cases.Add({ TEXT("ScaledRoll"), TEXT("TryGetAnnotationScaledRoll"), &FDnd5eAnnotationContent::StaticStruct, &FDnd5eScaledRoll::StaticStruct, nullptr });
     for (const FExtractorCase& Case : Cases)
     {
         UFunction* Function = UDnd5eContentLibrary::StaticClass()->FindFunctionByName(Case.Function);

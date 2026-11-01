@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [473-case standard suite](testing.md) covers all 64 runtime model schemas/defaults and 285 reflected fields, copy/serialization, 17 enums, Content helpers, spell readers/catalogs/loading/reference lookup/selector matching, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). The spell-specific selector request/status is defined in the [catalog API](spell-catalog.md#spell-selector-matching); the separate [JSON normalizer](spell-reference-normalization.md) reconciles a retained spell token with loaded IDs. Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference normalization, and rich Content rendering remain pending.
+Status: current shared declarations and remaining logical contracts. The [543-case standard suite](testing.md) covers 67 reviewed runtime model schemas/defaults and 298 reflected fields, copy/serialization, 17 enums, Content helpers, spell readers/catalogs/loading/reference lookup/selector matching, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). The spell-specific selector request/status is defined in the [catalog API](spell-catalog.md#spell-selector-matching); the separate [JSON normalizer](spell-reference-normalization.md) reconciles a retained spell token with loaded IDs. Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference normalization, and rich Content rendering remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -12,6 +12,19 @@ The implemented Content and supporting value types are a normalized model, not t
 
 ## Contents
 
+- [Selectors, destinations, and supplementary values](#selectors-destinations-and-supplementary-values)
+  - [FDnd5eRecordSelector](#fdnd5erecordselector)
+  - [FDnd5eClassFeatureSelector](#fdnd5eclassfeatureselector)
+  - [FDnd5eSourceMembership](#fdnd5esourcemembership)
+  - [FDnd5eSourceEditionAssignment](#fdnd5esourceeditionassignment)
+  - [FDnd5eDocumentLinkContent](#fdnd5edocumentlinkcontent)
+  - [FDnd5eQuickReferenceContent](#fdnd5equickreferencecontent)
+  - [FDnd5eQueryClause](#fdnd5equeryclause)
+  - [FDnd5eQueryLinkContent](#fdnd5equerylinkcontent)
+  - [FDnd5eSupplementaryContent](#fdnd5esupplementarycontent)
+  - [FDnd5eContentValidationIssue](#fdnd5econtentvalidationissue)
+  - [FDnd5eContentValidationResult](#fdnd5econtentvalidationresult)
+
 - [Record identity](#record-identity)
     - [Record header](#record-header)
     - [Record ID](#record-id)
@@ -20,6 +33,8 @@ The implemented Content and supporting value types are a normalized model, not t
 - [Diagnostics](#diagnostics)
 - [Reusable values](#reusable-values)
     - [Dice expression](#dice-expression)
+    - [D20 roll](#d20-roll)
+    - [Scaled roll](#scaled-roll)
     - [Numeric value](#numeric-value)
     - [Media reference](#media-reference)
 - [Measurements and timing](#measurements-and-timing)
@@ -67,6 +82,7 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Inline content](#inline-content)
         - [Formatted inline content](#formatted-inline-content)
         - [Annotation content](#annotation-content)
+        - [Percent-chance annotation value](#percent-chance-annotation-value)
         - [Numeric content](#numeric-content)
     - [References and links](#references-and-links)
         - [Inline record references](#inline-record-references)
@@ -112,6 +128,7 @@ FDnd5eRecordProvenance fields:
 | IdentityFieldsJson | `FString`, empty | Optional JSON object retaining original category-specific identity fields |
 | ClassificationEvidenceJson | `FString`, empty | Optional JSON object retaining original classification values and the basis of any derived tags |
 | AdditionalMetadataJson | `FString`, empty | Optional JSON object retaining other record metadata not otherwise represented |
+| Memberships | `TArray<FDnd5eSourceMembership>`, empty | Explicit source-inclusion states; absent differs from excluded |
 
 When available, Provenance[0] is the primary source record; subsequent entries retain contributing origins in deterministic order. Ordering does not itself define inheritance or override precedence. The adapter must define assembly rules. Per-record provenance complements per-node Content Metadata.
 
@@ -200,6 +217,37 @@ Implemented: exported, Blueprint-visible `FDnd5eDiceExpression` is declared in `
 Both fields must be nonempty when an expression is supplied. This is syntax-preserving storage, not a parsed syntax tree or an assertion that an expression is executable. Do not universally split expressions into count, die size, and modifier: the source also supports arithmetic, alternatives, variables, prompts, and scaling forms. Do not interpret an unknown syntax as the initial syntax. Validation of a supported grammar and any future normalized expression representation require separate contracts.
 
 An expression does not carry its display label, damage classification, source token, or UI action. Those belong to its containing model. No dice rolling, random-number generation, prompt execution, or character-state evaluation is included.
+
+### D20 roll
+
+Implemented: exported, Blueprint-visible `FDnd5eD20Roll` is declared in [Dnd5eD20Roll.h](../Source/Dnd5e/Public/Values/Dnd5eD20Roll.h). It is shared value storage for an attack or other d20 modifier, independent of spell ownership and gameplay execution.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| DieSides | `int32 = 20` | Base die size for this d20 value |
+| Modifier | `FDnd5eNumber`, default struct | Signed numeric modifier, including retained source spelling |
+| RollName | `FString`, empty | Optional source-provided roll label |
+
+The annotation kind distinguishes AttackRoll from D20Roll. The current adapter accepts checked int32 literal modifiers; formula/contextual modifiers remain explicit fallbacks. Signed literals such as `+4` and `-0` are retained without claiming they were JSON numeric tokens. Storage extraction does not roll dice or validate every manually authored field.
+
+### Scaled roll
+
+Implemented: exported, Blueprint-visible `FDnd5eScaledRoll` is declared in [Dnd5eScaledRoll.h](../Source/Dnd5e/Public/Values/Dnd5eScaledRoll.h). It stores a source-defined roll progression independently of spell records or an evaluator.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| BaseExpressions | `TArray<FDnd5eDiceExpression>`, empty | Ordered source alternatives, kept separately |
+| InputValues | `TArray<int32>`, empty | Unique ascending progression choices |
+| Increment | `FDnd5eDiceExpression`, default struct | Unevaluated expression per progression step |
+| InputKind | `FGameplayTag`, invalid | Meaning of the input choices: shared Scaling.Input.SpellSlotLevel or PsiPoints for supported source forms |
+| SourceProgression | `FString`, empty | Original progression syntax, including whitespace/order/duplicates before normalization |
+| SourceRenderMode | `FString`, empty | Original optional source mode |
+
+The adapter splits semicolon-separated base alternatives, preserving each expression's spelling with Syntax=`5etools`. It parses comma-separated integers/inclusive ranges into distinct sorted inputs from 1 through 9. This bound belongs to the supported source grammar, not every possible scaling resource. Empty bounds, reversed ranges, decimal/exponent/signed/leading-zero input tokens, and out-of-range values are unsupported.
+
+An omitted/empty mode maps explicitly to SpellSlotLevel under the inspected scaling-tag convention; exact `psi` maps to PsiPoints. Unknown modes remain complete source fallbacks. This mapping does not infer a publication, character level, or gameplay choice. The annotation retains the complete token separately.
+
+ScaledDiceRoll and ScaledDamageRoll annotations share this payload while retaining distinct roles. TryGetAnnotationScaledRoll checks the exact role/type, copies all fields, and resets output on failure. Expressions are stored without full grammar validation or evaluation. Irregular progression choices are not converted into a guessed uniform formula or computed damage table.
 
 ### Numeric value
 
@@ -774,14 +822,16 @@ Decision: represent a formatted span with `FDnd5eFormattedContent`.
 | --- | --- | --- |
 | Formatting | `FGameplayTagContainer` | Formatting classifications, initially bold and italic; multiple classifications may apply together |
 | Inlines | `TArray<FDnd5eInlineContent>` | Ordered inline children within the formatted span |
+| SourceFormat | `FString`, empty | Optional source-format identity |
+| SourceReference | `FString`, empty | Complete original formatting/note token |
 
 Store this payload in an inline wrapper whose kind identifies formatted content. The wrapper kind identifies the payload category; the Formatting tags describe presentation of its children. Children can contain literal text, nested formatting, record references, or other supported inline content.
 
-The plugin preserves formatting information; a consuming UI determines its visual rendering. Do not flatten formatted spans into strings or discard embedded reference semantics. The implemented wrapper kind is `Dnd5e.Content.Inline.Formatted`; native formatting tags are `Dnd5e.Content.Formatting.Bold` and `Dnd5e.Content.Formatting.Italic`. `TryGetFormatted` follows the typed extraction contract. Additional source formatting and detailed nesting validation remain incomplete.
+The plugin preserves formatting information; a consuming UI determines its visual rendering. Do not flatten formatted spans into strings or discard embedded reference semantics. The implemented wrapper kind is `Dnd5e.Content.Inline.Formatted`; native formatting tags include `Dnd5e.Content.Formatting.Bold`, `Dnd5e.Content.Formatting.Italic`, and `Dnd5e.Content.Formatting.Note`. Notes carry Note and Italic together. `TryGetFormatted` follows the typed extraction contract. Source tokens are retained; the separate [Content validator](content-validation.md) checks nested wrapper/value consistency without executing content.
 
 #### Annotation content
 
-Implemented: exported, Blueprint-visible `FDnd5eAnnotationContent` is declared in `Dnd5eContentType.h`, after the inline wrapper. An annotation adds semantic information to its display content. Its kind selects a typed value, allowing different annotation families without adding unrelated optional fields to one struct. Storage, native tags, typed extraction, copy/reset behavior, serialization, and dice/damage token conversion are covered by the current [automation suite](testing.md). The [reader coverage](json-spell-reader.md#current-annotation-coverage) distinguishes the two implemented annotation kinds from remaining families.
+Implemented: exported, Blueprint-visible `FDnd5eAnnotationContent` is declared in `Dnd5eContentType.h`, after the inline wrapper. An annotation adds semantic information to its display content. Its kind selects a typed value, allowing different annotation families without adding unrelated optional fields to one struct. Storage, native tags, typed extraction, copy/reset behavior, serialization, and dice/damage token conversion are covered by the current [automation suite](testing.md). The [reader coverage](json-spell-reader.md#current-annotation-coverage) lists the implemented annotation roles and remaining families.
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -795,14 +845,33 @@ The implemented enclosing kind is `Dnd5e::Content::Inline::Annotation`, backed b
 
 The two tags describe different levels: the inline kind chooses the content payload, while the annotation kind describes the meaning of its value. Additional annotation families can introduce their own typed values later. Do not encode their fields in JSON strings as a replacement for a future supported type. Unmodeled constructs use the implemented unsupported-content policy rather than pretending to be a supported DiceRoll annotation.
 
-The implemented reader maps `@dice` to DiceRoll and `@damage` to DamageRoll. It stores the first argument as FDnd5eDiceExpression.Expression with Syntax=`5etools`, retains the complete token, and reads the explicit nonempty display argument or the expression into Display. Formula grammar validation and evaluation are not implemented; storing the typed unevaluated expression fulfills its reference-data role. Additional arguments remain in SourceAnnotation until their normalized contracts exist. `@autodice`, `@hit`, `@d20`, `@dc`, `@dcYourSpellSave`, chance, recharge, scaling, ability/check annotations, and legacy dice objects remain planned typed coverage. Each needs an appropriate contract and verified mapping; the reader currently preserves unmodeled tokens as Unsupported with warnings. Never infer a damage type from the DamageRoll kind alone.
+The implemented reader maps `@dice` to DiceRoll and `@damage` to DamageRoll. It stores the first argument as FDnd5eDiceExpression.Expression with Syntax=`5etools`, retains the complete token, and reads the explicit nonempty display argument or the expression into Display. Formula grammar validation and evaluation are not implemented; storing the typed unevaluated expression fulfills its reference-data role. Additional arguments remain in SourceAnnotation until their normalized contracts exist. Literal `@dc`, `@hit`, `@d20`, and `@chance` are typed by the additional-annotation reader. DC carries FDnd5eNumber; attack/generic d20 roles carry FDnd5eD20Roll; percentage/outcomes carry FDnd5eChanceContentValue. `@autodice`, contextual `@dcYourSpellSave`, recharge, ability/check annotations, and legacy dice objects remain outside the implemented annotation subset. Scaled dice/damage now carry FDnd5eScaledRoll. Each needs an appropriate contract and verified mapping; the reader preserves unmodeled tokens as Unsupported with warnings. Never infer a damage type from the DamageRoll kind alone.
 
 The implemented APIs on `UDnd5eContentLibrary` are:
 
 - `TryGetAnnotation(const FDnd5eInlineContent& InlineContent, FDnd5eAnnotationContent& Annotation)`: check the enclosing Annotation kind and exact payload type, copy out on success, otherwise reset and return false.
 - `TryGetAnnotationDiceExpression(const FDnd5eAnnotationContent& Annotation, FDnd5eDiceExpression& Expression)`: accept exactly the DiceRoll or DamageRoll semantic kind and an exact FDnd5eDiceExpression Value, copy out on success, otherwise reset and return false.
+- `TryGetAnnotationDifficultyClass`: DifficultyClass kind and exact FDnd5eNumber value.
+- `TryGetAnnotationD20Roll`: AttackRoll or D20Roll kind and exact FDnd5eD20Roll value.
+- `TryGetAnnotationScaledRoll`: ScaledDiceRoll or ScaledDamageRoll kind and exact FDnd5eScaledRoll value.
+- `TryGetAnnotationPercentChance`: PercentChance kind and exact FDnd5eChanceContentValue value. These helpers copy out or completely reset on failure, including DieSides=20 and Percent=-1 defaults.
 
 The outer extractor does not recursively validate the semantic value. The inner extractor does not parse or evaluate the expression. Neither helper requires nonempty Display or performs source normalization. A future validator checks required fields and nesting. Imported annotations retain SourceFormat and the complete SourceAnnotation; manually authored annotations need not invent a source token. A supplied source token requires its format identifier. Provenance remains on the enclosing inline wrapper.
+
+#### Percent-chance annotation value
+
+Implemented: exported, Blueprint-visible `FDnd5eChanceContentValue` is declared in [Dnd5eContentType.h](../Source/Dnd5e/Public/Content/Dnd5eContentType.h). It belongs to Content because its outcome descriptions are recursive inline Content.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Percent | `int32 = -1` | Literal threshold from 0 through 100 when valid; -1 is uninitialized |
+| RollName | `FString`, empty | Optional source-provided roll label |
+| Success | `TArray<FDnd5eInlineContent>`, empty | Source-provided success description |
+| Failure | `TArray<FDnd5eInlineContent>`, empty | Source-provided failure description |
+
+PercentChance annotations carry this exact Value type. Their outer Display is independent from Success/Failure. The adapter retains the complete source token and uses the explicit display label or original percentage text. It does not roll a percentile die or apply either outcome.
+
+TryGetAnnotationPercentChance copies the exact matching value or resets output to its complete default. The record-reference collector explicitly traverses this Content-bearing annotation Value before its ordinary Display, giving Success then Failure then Display reference order. It still leaves unrelated arbitrary annotation Value payloads opaque. Structural mismatch of a PercentChance value fails collection rather than silently omitting potential outcome references.
 
 #### Numeric content
 
@@ -829,7 +898,7 @@ Decision: preserve display content, the target record identity when resolvable, 
 
 An unresolved descriptive link produces a warning rather than failing the entire catalog load. Required structural relationships still follow the stricter catalog-loading policy; a descriptive mention is not equivalent to a required parent or feature relationship. This supports readable content when only part of a dataset is imported.
 
-Implemented: `FDnd5eReferenceContent` is an exported, Blueprint-visible payload in `Dnd5eContentType.h`, declared after `FDnd5eInlineContent`. Its fields, native tag, and accessor were source-reviewed and compiled successfully in the host editor target on 2026-10-28. No new automated tests were added or run for this batch.
+Implemented: `FDnd5eReferenceContent` is an exported, Blueprint-visible payload in `Dnd5eContentType.h`, declared after `FDnd5eInlineContent`. Its fields, native tag, accessor, typed selectors, copy/serialization behavior, and reader/normalizer integration are covered by [automated verification](testing.md).
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -838,6 +907,8 @@ Implemented: `FDnd5eReferenceContent` is an exported, Blueprint-visible payload 
 | SourceReference | `FString`, empty | Complete original reference token, including its tag name and supplied arguments |
 | bHasTargetRecordId | `bool = false` | Whether TargetRecordId contains a normalized ID |
 | TargetRecordId | `FDnd5eRecordId`, empty | Normalized record identity, meaningful only when the flag is true |
+| bHasTargetSelector | `bool = false` | Whether a typed selector was parsed/supplied |
+| TargetSelector | `FDnd5eRecordSelector`, default | Requested domain/name/source and optional typed qualifier; independent of a target ID |
 
 The implemented wrapper kind is `Dnd5e::Content::Inline::Reference`, backed by `Dnd5e.Content.Inline.Reference`. The extraction API is `TryGetReference(const FDnd5eInlineContent& InlineContent, FDnd5eReferenceContent& Reference)` on `UDnd5eContentLibrary`, following the existing exact-kind, exact-type, copy-out, and reset-on-failure contract.
 
@@ -960,3 +1031,120 @@ A future adapter may create a fallback for an unknown source kind or an unsuppor
 Malformed selected JSON, invalid required identity fields, and unsupported required structural relationships remain load failures. Fallback must not make corrupt known payloads, missing mandatory references, or invalid required data appear valid. Specific child contracts, such as a gallery admitting an explicit unsupported placeholder, require an intentional rule; a fallback is not permission for arbitrary nesting.
 
 The [spell reader](json-spell-reader.md#limits-and-diagnostics) enforces fixed input/depth/value limits plus shared Content conversion and table-expansion budgets. Broader loading still needs configurable retention/loading policies. Exceeding a limit must not silently truncate a fragment and claim full preservation. The shared storage types themselves add no parser, loader, cache, or limit enforcement.
+
+
+## Selectors, destinations, and supplementary values
+
+These shared types are exported Blueprint-visible values. Their storage/default/copy/serialization contracts are tested; parsing, target lookup, and gameplay execution remain separate operations. Inactive optional fields are ignored by Content validation.
+
+### FDnd5eRecordSelector
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Category | `FGameplayTag`, empty | Requested domain tag; does not assert its importer/catalog exists |
+| Name | `FString`, empty | Requested record/topic name |
+| bHasSource | `bool`, false | Whether an explicit publication is present |
+| SourceId | `FString`, empty | Explicit publication, active only when its presence flag is true |
+| Qualifier | `FInstancedStruct`, empty | Domain-specific typed selector value; empty for generic selectors |
+
+### FDnd5eClassFeatureSelector
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| ClassName | `FString`, empty | Owning class name |
+| bHasClassSource | `bool`, false | Whether the owning-class source was supplied |
+| ClassSourceId | `FString`, empty | Explicit owning-class publication |
+| Level | `int32`, -1 | Required class-feature level, supported range 1–20 |
+
+### FDnd5eSourceMembership
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| MembershipId | `FString`, empty | Source membership/version identity, not a rules-edition inference |
+| Inclusion | `EDnd5eSourceInclusion`, EDnd5eSourceInclusion::Unspecified | Explicit exclusion/inclusion/name-bearing state |
+| AlternateName | `FString`, empty | Source-provided alternate name when IncludedWithAlternateName |
+
+### FDnd5eSourceEditionAssignment
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| DatasetNamespace | `FString`, empty | Exact logical dataset scope |
+| SourceId | `FString`, empty | Explicit publication, active only when its presence flag is true |
+| EditionTags | `FGameplayTagContainer`, empty | Caller-assigned Original2014/Revised2024 classifications |
+
+### FDnd5eDocumentLinkContent
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Display | `TArray<FDnd5eInlineContent>`, empty | Ordered recursive inline label |
+| DocumentKind | `FGameplayTag`, empty | Document.Kind.Book or Adventure |
+| DocumentId | `FString`, empty | Source document identity |
+| bHasChapter | `bool`, false | Whether a chapter index was supplied |
+| ChapterIndex | `int32`, -1 | Zero-based source chapter locator |
+| SectionName | `FString`, empty | Optional named-section locator |
+| bHasNamedSectionIndex | `bool`, false | Whether the repeated-section index was supplied |
+| NamedSectionIndex | `int32`, -1 | Zero-based index among named sections |
+| SourceFormat | `FString`, empty | Optional retained source-format identity |
+| SourceReference | `FString`, empty | Whole original source token |
+
+### FDnd5eQuickReferenceContent
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Display | `TArray<FDnd5eInlineContent>`, empty | Ordered recursive inline label |
+| Name | `FString`, empty | Requested record/topic name |
+| bHasSource | `bool`, false | Whether an explicit publication is present |
+| SourceId | `FString`, empty | Explicit publication, active only when its presence flag is true |
+| bHasChapter | `bool`, false | Whether a chapter index was supplied |
+| ChapterIndex | `int32`, -1 | Zero-based source chapter locator |
+| HeaderLocator | `FString`, empty | Optional source header locator |
+| SourceFormat | `FString`, empty | Optional retained source-format identity |
+| SourceReference | `FString`, empty | Whole original source token |
+
+### FDnd5eQueryClause
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Field | `FString`, empty | Filter field name |
+| RawValue | `FString`, empty | Unevaluated source DSL value, possibly empty |
+| SourceClause | `FString`, empty | Whole original field/value clause |
+
+### FDnd5eQueryLinkContent
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Display | `TArray<FDnd5eInlineContent>`, empty | Ordered recursive inline label |
+| TargetPage | `FString`, empty | Source query-page identity, not a URL |
+| Clauses | `TArray<FDnd5eQueryClause>`, empty | Ordered retained query clauses; not executed |
+| SourceFormat | `FString`, empty | Optional retained source-format identity |
+| SourceReference | `FString`, empty | Whole original source token |
+
+### FDnd5eSupplementaryContent
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Entries | `TArray<FDnd5eContentBlock>`, empty | Supplementary prose blocks, separate from mechanical Description |
+| Images | `TArray<FDnd5eContentBlock>`, empty | Image blocks or explicit preserved Unsupported image forms |
+
+### FDnd5eContentValidationIssue
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| OwnerRecordId | `FDnd5eRecordId`, default-constructed | Copied owning record identity for diagnostics |
+| ContentPath | `FString`, empty | Current model location, separate from source JSON Pointer |
+| Diagnostic | `FDnd5eDiagnostic`, default-constructed | Severity/code/message; original file/pointer left empty for model validation |
+
+### FDnd5eContentValidationResult
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| bValid | `bool`, false | True when structural/value validation completed without an Error |
+| Issues | `TArray<FDnd5eContentValidationIssue>`, empty | Ordered model issues; opaque leaves produce a warning without claiming semantic interpretation |
+
+SourceInclusion has Unspecified, Excluded, Included, IncludedWithAlternateName. DataAvailability has Unknown, Absent, Present. An absent source membership property creates no entry; explicit false creates Excluded. Hints report source availability, independently of loaded supplementary data. Native document kinds are Dnd5e.Document.Kind.Book/Adventure; inline wrappers are Content.Inline.DocumentLink/QuickReference/QueryLink with exact corresponding payloads. TryGetDocumentLink, TryGetQuickReference, and TryGetQueryLink follow the existing exact-kind/type, reset-on-failure, independent-copy contract.
+
+The spell adapter maps generic spell/item/creature/condition/status/action/skill/sense/hazard/variantrule/race/feat/background selectors and typed classFeature qualifiers. Only explicit-source spells receive the existing v1 spell ID. Other domains and omitted publications remain typed selectors without fabricated IDs. Document and query destinations retain locators/DSL and do not masquerade as record IDs or executable queries.
+
+Presentation additionally supports Content.Presentation.HangingList and NoWrap. Hanging lists use MarkerStyle=None while preserving labels/body order; fractional column weights and known alignments coexist with NoWrap. Unknown layout evidence remains retained, and evidence accumulation merges existing JSON instead of overwriting it.
+
+See [supplementary input and metadata](spell-data-inputs.md) and [Content validation](content-validation.md) for reader/join/policy/validation behavior. None of these value declarations loads resources or changes character state.

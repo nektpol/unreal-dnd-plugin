@@ -1,8 +1,11 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
 
 #include "Catalog/Dnd5eSpellCatalog.h"
+#include "Dnd5eJsonReaderInternal.h"
+#include "Dnd5eJsonInlineSyntax.h"
+
 
 namespace
 {
@@ -24,34 +27,39 @@ EDnd5eJsonSpellReferenceNormalizeStatus FDnd5eJsonSpellReferenceNormalizer::Norm
 	const FDnd5eReferenceContent Original = Reference;
 	NormalizedReference = Original;
 	Diagnostics.Reset();
-	const FString& Token = Original.SourceReference;
-	if (!Original.SourceFormat.Equals(TEXT("5etools"), ESearchCase::CaseSensitive) || Token.Len() > 65536 ||
-		!Token.StartsWith(TEXT("{@spell "), ESearchCase::CaseSensitive) || !Token.EndsWith(TEXT("}"), ESearchCase::CaseSensitive))
+
+	using namespace Dnd5eJsonReader;
+	FString Tag, Display; TArray<FString> Parts; FDnd5eRecordSelector Parsed;
+	if (!Original.SourceFormat.Equals(TEXT("5etools"), ESearchCase::CaseSensitive) ||
+		!TryParseInlineToken(Original.SourceReference, Tag, Parts) || !Tag.Equals(TEXT("spell"), ESearchCase::CaseSensitive))
 	{
 		return UnsupportedReference(Diagnostics);
 	}
-
-	// Remove the eight-character opening marker and the final closing brace.
-	const FString Body = Token.Mid(8, Token.Len() - 9);
-	TArray<FString> Parts;
-	Body.ParseIntoArray(Parts, TEXT("|"), false);
-	if (Parts.IsEmpty() || Parts.Num() > 3) { return UnsupportedReference(Diagnostics); }
-
+	if (!TryReadRecordSelector(Tag, Parts, Parsed, Display))
+	{
+		// Preserve the existing InvalidSelector contract for empty/unusable names/sources;
+		// source syntax/extra fields remain UnsupportedReference.
+		if (Parts.IsEmpty() || Parts.Num() > 3) { return UnsupportedReference(Diagnostics); }
+		const FString Name = Parts[0].TrimStartAndEnd();
+		const FString Source = Parts.Num() > 1 ? Parts[1].TrimStartAndEnd() : FString{};
+		if (Name.Contains(TEXT("{")) || Name.Contains(TEXT("}")) || Source.Contains(TEXT("{")) || Source.Contains(TEXT("}"))) { return UnsupportedReference(Diagnostics); }
+		FDnd5eDiagnostic Diagnostic; Diagnostic.Severity = EDnd5eDiagnosticSeverity::Error;
+		Diagnostic.Code = TEXT("Dnd5e.Catalog.Selector.Invalid"); Diagnostic.Message = TEXT("Retained spell selector has an unusable name or source.");
+		Diagnostics.Add(MoveTemp(Diagnostic));
+		return EDnd5eJsonSpellReferenceNormalizeStatus::InvalidSelector;
+	}
 	FDnd5eSpellSelector Selector;
 	Selector.DatasetNamespace = DatasetNamespace;
-	Selector.Name = Parts[0].TrimStartAndEnd();
-	Selector.SourceId = Parts.Num() > 1 ? Parts[1].TrimStartAndEnd() : FString{};
-	if (Selector.Name.Contains(TEXT("{")) || Selector.Name.Contains(TEXT("}")) ||
-		Selector.SourceId.Contains(TEXT("{")) || Selector.SourceId.Contains(TEXT("}")))
-	{
-		return UnsupportedReference(Diagnostics);
-	}
+	Selector.Name = Parsed.Name;
+	Selector.SourceId = Parsed.SourceId;
 
 	TArray<FDnd5eRecordId> CandidateIds;
 	const EDnd5eSpellSelectorMatchStatus Status = Catalog.MatchSpellSelector(Selector, CandidateIds, Diagnostics);
 	switch (Status)
 	{
 	case EDnd5eSpellSelectorMatchStatus::Matched:
+		NormalizedReference.bHasTargetSelector = true;
+		NormalizedReference.TargetSelector = Parsed;
 		NormalizedReference.bHasTargetRecordId = true;
 		NormalizedReference.TargetRecordId = CandidateIds[0];
 		return EDnd5eJsonSpellReferenceNormalizeStatus::Normalized;

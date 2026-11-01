@@ -27,18 +27,29 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Number, "Dnd5e.Content.Inline.Number", "Inline content containing a number value");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ExternalLink, "Dnd5e.Content.Inline.ExternalLink", "Inline content linking to an external URL");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(AnchorLink, "Dnd5e.Content.Inline.AnchorLink", "Inline content linking to an anchor within the content");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(DocumentLink, "Dnd5e.Content.Inline.DocumentLink", "Document destination");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(QuickReference, "Dnd5e.Content.Inline.QuickReference", "Quick-reference destination");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(QueryLink, "Dnd5e.Content.Inline.QueryLink", "Retained query destination");
 	}
 
 	namespace Content::Annotation
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(DiceRoll, "Dnd5e.Content.Annotation.DiceRoll", "Annotation content containing a dice roll expression");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(DamageRoll, "Dnd5e.Content.Annotation.DamageRoll", "Annotation content containing a damage roll expression");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(DifficultyClass, "Dnd5e.Content.Annotation.DifficultyClass", "Annotation content containing a difficulty class roll expression");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(AttackRoll, "Dnd5e.Content.Annotation.AttackRoll", "Annotation content containing an attack roll expression");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(D20Roll, "Dnd5e.Content.Annotation.D20Roll", "Annotation content containing a d20 roll expression");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(PercentChance, "Dnd5e.Content.Annotation.PercentChance", "Annotation content containing a percent chance roll expression");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ScaledDiceRoll, "Dnd5e.Content.Annotation.ScaledDiceRoll", "Annotation content containing a scaled dice roll expression");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ScaledDamageRoll, "Dnd5e.Content.Annotation.ScaledDamageRoll", "Annotation content containing a scaled damage roll expression");
+
 	}
 
 	namespace Content::Formatting
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Bold, "Dnd5e.Content.Formatting.Bold", "Tag for bold formatting");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Italic, "Dnd5e.Content.Formatting.Italic", "Tag for italic formatting");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Note, "Dnd5e.Content.Formatting.Note", "Note presentation, distinct from ordinary italic text");
 	}
 
 	namespace Content::Presentation
@@ -46,6 +57,8 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ReadAloud, "Dnd5e.Content.Presentation.ReadAloud", "Tag for content that should be read aloud");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ExpectsLightBackground, "Dnd5e.Content.Presentation.ExpectsLightBackground", "Tag for content that expects a light background");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ExpectsDarkBackground, "Dnd5e.Content.Presentation.ExpectsDarkBackground", "Tag for content that expects a dark background");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(HangingList, "Dnd5e.Content.Presentation.HangingList", "List with hanging item labels");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(NoWrap, "Dnd5e.Content.Presentation.NoWrap", "Content should not wrap within its layout cell");
 	}
 
 	namespace Content::ImageRole
@@ -65,6 +78,22 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(OptionalFeature, "Dnd5e.Category.OptionalFeature", "Optional feature record category");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(CharacterOption, "Dnd5e.Category.CharacterOption", "Character creation option record category");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Reward, "Dnd5e.Category.Reward", "Reward record category");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Item, "Dnd5e.Category.Item", "Item selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Creature, "Dnd5e.Category.Creature", "Creature selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Condition, "Dnd5e.Category.Condition", "Condition selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status, "Dnd5e.Category.Status", "Status selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Action, "Dnd5e.Category.Action", "Action selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Skill, "Dnd5e.Category.Skill", "Skill selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Sense, "Dnd5e.Category.Sense", "Sense selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Hazard, "Dnd5e.Category.Hazard", "Hazard selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Rule, "Dnd5e.Category.Rule", "Rule selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ClassFeature, "Dnd5e.Category.ClassFeature", "Class-feature selector domain");
+	}
+
+	namespace Document::Kind
+	{
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Book, "Dnd5e.Document.Kind.Book", "Book document destination");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Adventure, "Dnd5e.Document.Kind.Adventure", "Adventure document destination");
 	}
 
 	namespace Activation::Time
@@ -219,5 +248,17 @@ namespace Dnd5e
 	namespace Record::Relationship
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ReprintedAs, "Dnd5e.Record.Relationship.ReprintedAs", "Reference classification: ReprintedAs");
+	}
+
+	namespace Scaling::Input
+	{
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(SpellSlotLevel, "Dnd5e.Scaling.Input.SpellSlotLevel", "Scaling input represents a spell slot level");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(PsiPoints, "Dnd5e.Scaling.Input.PsiPoints", "Scaling input represents a psi-point expenditure");
+	}
+
+	namespace Rules::Edition
+	{
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Original2014, "Dnd5e.Rules.Edition.Original2014", "Explicit original fifth-edition classification");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Revised2024, "Dnd5e.Rules.Edition.Revised2024", "Explicit revised fifth-edition classification");
 	}
 }

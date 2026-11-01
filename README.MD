@@ -4,11 +4,11 @@ An Unreal Engine plugin being developed to represent user-supplied fifth-edition
 
 ## Status
 
-Early development. The runtime module contains shared identity, provenance, measurements, costs, dice-expression, media, spell, and structured Content values with read-only extraction helpers and an in-memory spell catalog. A Blueprint-visible UObject owns each catalog and exposes read-only lookup/filtering and validated replacement. The JSON adapter builds catalogs from supplied documents through native and Blueprint APIs, optionally joins a supplied availability lookup, and retains unmodeled Content with warnings. General reference resolution, navigation, execution, media loading, and complete rule semantics remain pending.
+Early development. The runtime module contains shared identity, provenance, measurements, costs, dice-expression, media, spell, and structured Content values with read-only extraction helpers and an in-memory spell catalog. A Blueprint-visible UObject owns each catalog and exposes read-only lookup/filtering and validated replacement. The JSON adapter builds catalogs from supplied documents through native and Blueprint APIs, optionally joins supplied availability and supplementary text/image documents, supports explicit edition policy and Content validation, and retains unknown future Content with warnings. General reference resolution, navigation, execution, media loading, and complete rule semantics remain pending.
 
-The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, selected references, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
+The spell reader maps material requirements/copper costs/consumption, point and area ranges, all four duration kinds, combat classifications, typed character-level dice scaling, sections/lists/tables/quotes/insets, formatting, dice annotations, typed generic/class-feature selectors, document/query destinations, notes, image definitions, and HTTP(S) links. The catalog supports exact-ID lookup and filters for name/aliases, source, level, schools, traits, and availability providers. Unknown rule annotations, future Content forms, and unsupported presentation details remain explicit retained data.
 
-The standard editor automation suite has 473 passing cases on 2026-10-30. The combined opt-in run passed 496 cases, converted all 969 records across the supplied snapshot's 18 spell files, joined 14,448 availability associations, and exercised runtime/editor loading, the spell browser, selector matching, reference/relationship lookup, and 389 audited reprint targets. See [Automated tests](docs/testing.md) for evidence and limits.
+Verified on 2026-11-01: 746 standard cases plus 25 explicit-data audit cases pass (771 combined). The audit converts all 969 primary records, 92 supplementary rows and 91 images, with source/typed counts matching all 27 observed inline token kinds and no opaque payloads in this snapshot. Availability, all 389 reprint targets, runtime/editor behavior and atomic failure remain covered. See [Automated tests](docs/testing.md) for evidence and limits.
 
 The [JSON spell reader](docs/json-spell-reader.md) accepts supplied text and an explicit spell-array index. It constructs identity/provenance and typed values, retains supported metadata and fallbacks, and returns diagnostics. Unknown required top-level values fail with a default output spell. The runtime reader performs no file or network access.
 
@@ -28,7 +28,7 @@ The [editor spell browser](docs/editor-dataset-loading.md#reference-report-inspe
 
 Unsupported block/inline payloads retain whole JSON nodes or inline token fragments when typed mapping is incomplete. Successful source acceptance with fallback warnings does not establish full semantic rule support.
 
-Annotation infrastructure is implemented: `@dice` and `@damage` become typed DiceRoll/DamageRoll annotations containing unevaluated dice expressions, display content, and their original tokens. Other annotation kinds currently remain preserved fallbacks. See [current annotation coverage](docs/json-spell-reader.md#current-annotation-coverage); extending typed representation does not require implementing gameplay execution.
+Annotation infrastructure is implemented: `@dice` and `@damage` become typed DiceRoll/DamageRoll annotations containing unevaluated dice expressions, display content, and their original tokens. Literal DC, attack/generic d20 modifiers, and percentage/outcome annotations are now typed as well; remaining annotation kinds retain explicit fallbacks. See [current annotation coverage](docs/json-spell-reader.md#current-annotation-coverage); extending typed representation does not require implementing gameplay execution.
 
 ## Planned capabilities
 
@@ -70,6 +70,8 @@ The [file loader reference](docs/json-spell-file-loader.md) documents runtime/Bl
 - [Editor dataset loading](docs/editor-dataset-loading.md): file selection, local preferences, Tools commands, Message Log results, and searchable read-only spell browsing.
 - [Spell availability and catalog](docs/spell-catalog.md): supplied-document builds, availability joins, atomic replacement, exact-ID/reference lookup, and read-only filters.
 - [Source-format compatibility](docs/source-format-compatibility.md): verified source mappings, normalization requirements, and known gaps for the audited dataset snapshot.
+- [Supplementary input and metadata](docs/spell-data-inputs.md): supplied prose/images, exact joins, source memberships/hints, and explicit edition assignments.
+- [Content validation](docs/content-validation.md): read-only structural/value validation, model issue paths, and opt-in atomic builder integration.
 - [Shared models](docs/shared-models.md): reusable metadata, measurements, money, components, and structured content.
 - [Spell model](docs/spell-model.md): implemented spell fields, classification roles, relationships, and spell-specific area/duration context.
 

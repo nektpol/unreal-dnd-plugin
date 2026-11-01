@@ -6,6 +6,7 @@ The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h
 
 ## Contents
 
+- [Supplementary input, edition policy, and validation](#supplementary-input-edition-policy-and-validation)
 - [Build and query](#build-and-query)
 - [Blueprint ownership and operations](#blueprint-ownership-and-operations)
 - [JSON document value](#json-document-value)
@@ -146,6 +147,10 @@ FDnd5eJsonSpellCatalogBuildRequest:
 | SpellDocuments | `TArray<FDnd5eJsonDocument>`, empty | Ordered documents whose spell arrays are converted completely |
 | bHasAvailabilityLookup | `bool = false` | Whether AvailabilityLookup is supplied for this build |
 | AvailabilityLookup | `FDnd5eJsonDocument`, default-constructed | Optional generated source-association lookup |
+| SpellFluffDocuments | `TArray<FDnd5eJsonDocument>`, empty | Explicit supplementary prose/image documents |
+| EditionPolicyId | `FString`, empty | Versioned caller policy identity |
+| EditionAssignments | `TArray<FDnd5eSourceEditionAssignment>`, empty | Exact namespace/source classification assignments |
+| bValidateContent | `bool`, false | Validate candidate Content after joins, before replacement |
 
 FDnd5eJsonSpellCatalogBuildResult:
 
@@ -154,6 +159,8 @@ FDnd5eJsonSpellCatalogBuildResult:
 | Status | `EDnd5eJsonReadStatus = EDnd5eJsonReadStatus::NotAttempted` | Producer outcome |
 | SpellCount | `int32 = 0` | Installed record count on Success; zero on Failure |
 | Diagnostics | `TArray<FDnd5eDiagnostic>`, empty | Accumulated conversion/build diagnostics |
+| UnmatchedSupplements | `TArray<FDnd5eJsonSpellSupplement>`, empty | Successful-build rows with no exact primary match |
+| ContentValidationIssues | `TArray<FDnd5eContentValidationIssue>`, empty, BlueprintReadOnly | Dedicated model locations/issues, including on validation failure |
 
 An empty request fails. To deliberately clear a catalog through the builder, supply a valid document containing `{"spell":[]}`. If bHasAvailabilityLookup=false, its inactive value is ignored. When true, the lookup and every spell document must have exactly the same DatasetNamespace; the builder does not apply a lookup to another collection. Without a lookup, documents can carry different explicit namespaces.
 
@@ -313,3 +320,7 @@ Availability provenance retains the lookup label and escaped provider JSON Point
 The [automation suite](testing.md) covers all new value contracts, exact identity/reflected equality, copy-out, atomic failures, availability shapes/presence/qualification, joins, and query behavior. The explicitly selected external snapshot build produced 969 spells with 969 matched lookup entries and 14,448 associations. No source records, passages, lookup file, or real-data reports are bundled in the repository.
 
 Provider-record resolution, omitted-source/ambiguous reference policy, media/fluff loading, explicit edition policy, rich Content rendering, and complete typed rule semantics remain pending. Blueprint construction/query wrappers, [explicit file loading](json-spell-file-loader.md), and [editor selection/settings/loading with searchable read-only spell browsing](editor-dataset-loading.md) are implemented. Browser name-substring search is a local presentation filter and does not change the catalog's exact-name query contract. A consuming project's earlier prototype helper remains outside the plugin API. Catalog availability is a reference-data index and does not implement a character's spell selection or casting system.
+
+## Supplementary input, edition policy, and validation
+
+[Supplementary input and source metadata](spell-data-inputs.md) defines the additional supplied documents, exact joins, unmatched output, typed membership/hints, and explicit edition assignments. All document families share the 1024-document / 67,108,864-TCHAR input and 1,000,000-converted-value budgets. Active availability remains namespace-qualified. No edition/publication is inferred by default. [Content validation](content-validation.md) runs only when requested and reports model locations separately from source JSON diagnostics.

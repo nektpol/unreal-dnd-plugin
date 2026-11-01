@@ -16,7 +16,7 @@ The loader opens caller-selected filesystem paths. It downloads nothing, perform
 
 ## Request and result
 
-The exported Blueprint-visible request and native loader are declared in [Dnd5eJsonSpellCatalogLoader.h](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLoader.h). FDnd5eJsonSpellCatalogLoadRequest has five EditAnywhere/BlueprintReadWrite fields in Dnd5e|Json|Catalog:
+The exported Blueprint-visible request and native loader are declared in [Dnd5eJsonSpellCatalogLoader.h](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLoader.h). FDnd5eJsonSpellCatalogLoadRequest has the following EditAnywhere/BlueprintReadWrite fields in Dnd5e|Json|Catalog:
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -25,8 +25,12 @@ The exported Blueprint-visible request and native loader are declared in [Dnd5eJ
 | SpellFiles | `TArray<FString>`, empty | Ordered portable filenames relative to DatasetRoot |
 | bHasAvailabilityLookup | `bool = false` | Whether AvailabilityFile is active |
 | AvailabilityFile | `FString`, empty | Relative lookup filename when active |
+| SpellFluffFiles | `TArray<FString>`, empty | Explicit supplementary filenames under the same root |
+| EditionPolicyId | `FString`, empty | Explicit caller classification policy |
+| EditionAssignments | `TArray<FDnd5eSourceEditionAssignment>`, empty | Exact namespace/source edition assignments |
+| bValidateContent | `bool`, false | Opt-in candidate Content validation |
 
-Both operations reuse [FDnd5eJsonSpellCatalogBuildResult](spell-catalog.md#catalog-builder): Status, SpellCount, and Diagnostics. NotAttempted remains its default authoring value; the operation returns Success or Failure. Success can include warnings or Info diagnostics. Failure returns SpellCount=0 and at least one Error while preserving the previously installed catalog, if any. The result count is not the size of a preserved old catalog after failure.
+Both operations reuse [FDnd5eJsonSpellCatalogBuildResult](spell-catalog.md#catalog-builder): Status, SpellCount, Diagnostics, UnmatchedSupplements, and ContentValidationIssues. NotAttempted remains its default authoring value; the operation returns Success or Failure. Success can include warnings or Info diagnostics. Failure returns SpellCount=0 and at least one Error while preserving the previously installed catalog, if any. The result count is not the size of a preserved old catalog after failure.
 
 ## Calling from C++
 
@@ -56,7 +60,7 @@ The new route replaces application-side document preparation when input is a fil
 
 ## Selection and provenance
 
-At least one spell file is required, with at most 1,024 selected spell files. A selected file containing `{"spell":[]}` deliberately installs an empty catalog; an empty selection is an error. Every selected file contributes its entire exact spell array under the existing [accepted source/preservation policy](json-spell-reader.md#accepted-spell-subset). Files are not silently skipped.
+At least one spell file is required, with at most 1,024 primary/supplementary/active-lookup files combined. A selected file containing `{"spell":[]}` deliberately installs an empty catalog; an empty selection is an error. Every selected file contributes its entire exact spell array under the existing [accepted source/preservation policy](json-spell-reader.md#accepted-spell-subset). Files are not silently skipped.
 
 The complete active selection is validated before any selected file is opened. DatasetNamespace follows the existing context rules. DatasetRoot must be nonempty, absolute, free of edge whitespace/control/wildcard/reserved characters or a URL scheme, and resolve to an existing directory. Filesystem separators are normalized on a copied root. Windows requires a drive-qualified or UNC root and rejects drive-relative/current-drive-relative forms. Other platforms use the engine's ordinary absolute-path handling.
 
@@ -97,3 +101,7 @@ Failure at validation, a later read, lookup conversion, normalization, duplicate
 See [Automated tests](testing.md) for current evidence, synthetic temporary-file cases, reflected invocation, and opt-in external-directory checks. Source files, local paths, and generated real-data reports stay outside the plugin repository.
 
 The separate [editor integration](editor-dataset-loading.md) supplies file pickers, remembered per-user selection, explicit Tools loading with a Message Log, and searchable read-only spell browsing. The native loader remains independent of that UI/configuration. Rich Content rendering, asynchronous loading, provider/reference resolution, and complete typed rule semantics remain later work. This operation loads reference data and does not apply character or gameplay changes.
+
+## Supplementary and policy inputs
+
+SpellFluffFiles are explicitly selected, not discovered. All selected primary/supplementary/active-lookup filenames are validated and deduplicated together before reads. They share the 1024-file count and one 64 MiB byte accumulator (16 MiB per file). The loader forwards edition and validation options to the same [builder](spell-data-inputs.md); the native/Blueprint result includes unmatched successful rows and dedicated model issues. Editor preferences currently expose primary/availability fields only; these additions do not silently select supplementary files or enable validation.

@@ -1,11 +1,12 @@
 # Spell model
 
-Status: FDnd5eSpell and its supporting values are implemented, including typed level-based dice scaling and supplementary availability associations. The [JSON spell reader](json-spell-reader.md) maps the inspected primary spell fields and structured Content. The [catalog builder and query API](spell-catalog.md) join a supplied availability lookup and index normalized spells. Unmodeled Content is retained with warnings. General reference resolution and complete rule semantics remain pending. See [automated verification](testing.md) for current build/test evidence.
+Status: FDnd5eSpell and its supporting values are implemented, including typed level-based dice scaling, supplementary availability associations, separately supplied prose/images, source inclusion/hints, and explicit edition policy support. The [JSON spell reader](json-spell-reader.md) maps the inspected primary spell fields and structured Content. The [catalog builder and query API](spell-catalog.md) join a supplied availability lookup and index normalized spells. Unmodeled Content is retained with warnings. General reference resolution and complete rule semantics remain pending. See [automated verification](testing.md) for current build/test evidence.
 
 The exported, Blueprint-visible record is declared in [Dnd5eSpell.h](../Source/Dnd5e/Public/Spells/Dnd5eSpell.h). Its area/duration associations and two level-scaling structs are in [Dnd5eSpellTypes.h](../Source/Dnd5e/Public/Spells/Dnd5eSpellTypes.h). These declarations represent reference data; consumers own character state and gameplay execution. [Source-format compatibility](source-format-compatibility.md) distinguishes storage, mapped input, preservation, and semantic support.
 
 ## Contents
 
+- [Supplementary input and classification policy](#supplementary-input-and-classification-policy)
 - [Scope](#scope)
 - [Implemented fields](#implemented-fields)
 - [Shared definitions](#shared-definitions)
@@ -39,6 +40,10 @@ All 25 fields are reflected with EditAnywhere/BlueprintReadWrite in category Dnd
 | Durations | `TArray<FDnd5eSpellDuration>`, empty | Source-ordered duration entries with associated requirements |
 | Description | `TArray<FDnd5eContentBlock>`, empty | Main structured description |
 | HigherLevelDescription | `TArray<FDnd5eContentBlock>`, empty | Separate higher-level/scaling description |
+| bHasSupplementaryContent | `bool`, false | A supplementary row was supplied and attached, including known-empty rows |
+| SupplementaryContent | `FDnd5eSupplementaryContent`, default | Separate prose/image blocks |
+| SupplementaryTextHint | `EDnd5eDataAvailability`, Unknown | Source availability hint, independent of attachment |
+| SupplementaryImagesHint | `EDnd5eDataAvailability`, Unknown | Source image-availability hint, independent of resource loading |
 | Traits | `FGameplayTagContainer`, empty | Additional supported spell classifications; initially Ritual |
 | DamageInflicted | `FGameplayTagContainer`, empty | Damage types indexed as inflicted by the source |
 | DamageResisted | `FGameplayTagContainer`, empty | Damage types indexed under the source resistance role |
@@ -202,3 +207,7 @@ The reader maps scalingLevelDice, known combat classifications, and selected pub
 Further work includes more typed inline/rule semantics, provider/general reference resolution, additional supplementary files, complete document/media support, explicit edition policy, and comprehensive 2014/2024 rule coverage. Acceptance with retained fallbacks does not establish full semantic interpretation. Reference data and classifications do not implement casting, combat, or character progression.
 
 Annotation work is an expansion of existing support: the reader already creates typed DiceRoll and DamageRoll annotations with unevaluated FDnd5eDiceExpression values. [Other annotation families](json-spell-reader.md#current-annotation-coverage) still need typed contracts/mappings. The goal remains structured reference data; rolling expressions or applying their effects is consumer-owned.
+
+## Supplementary input and classification policy
+
+See [supplementary input and source metadata](spell-data-inputs.md) for exact joins, unmatched rows, typed source memberships, and caller-supplied edition assignments. [Content validation](content-validation.md) is an explicit read-only operation and an opt-in builder/loader step, not a spell constructor or gameplay execution system.

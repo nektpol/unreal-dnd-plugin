@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 
 #include "Spells/Dnd5eSpellContentLibrary.h"
@@ -28,17 +28,13 @@ namespace
 	bool IsContentStruct(const UScriptStruct* Type)
 	{
 		static const TSet<const UScriptStruct*> Types = {
-			FDnd5eContentBlock::StaticStruct(), FDnd5eInlineContent::StaticStruct(),
-			FDnd5eSectionContent::StaticStruct(), FDnd5eParagraphContent::StaticStruct(),
-			FDnd5eListContent::StaticStruct(), FDnd5eListItemContent::StaticStruct(),
-			FDnd5eTableContent::StaticStruct(), FDnd5eTableColumnContent::StaticStruct(),
-			FDnd5eTableRowContent::StaticStruct(), FDnd5eTableCellContent::StaticStruct(),
-			FDnd5eQuoteContent::StaticStruct(), FDnd5eInsetContent::StaticStruct(),
-			FDnd5eImageContent::StaticStruct(), FDnd5eGalleryContent::StaticStruct(),
-			FDnd5eTextContent::StaticStruct(), FDnd5eFormattedContent::StaticStruct(),
-			FDnd5eReferenceContent::StaticStruct(), FDnd5eAnnotationContent::StaticStruct(),
-			FDnd5eNumberContent::StaticStruct(), FDnd5eExternalLinkContent::StaticStruct(),
-			FDnd5eAnchorLinkContent::StaticStruct(), FDnd5eUnsupportedContent::StaticStruct()
+			FDnd5eContentBlock::StaticStruct(),				FDnd5eInlineContent::StaticStruct(),		FDnd5eSectionContent::StaticStruct(),		FDnd5eParagraphContent::StaticStruct(),
+			FDnd5eListContent::StaticStruct(),				FDnd5eListItemContent::StaticStruct(),		FDnd5eTableContent::StaticStruct(),			FDnd5eTableColumnContent::StaticStruct(),
+			FDnd5eTableRowContent::StaticStruct(),			FDnd5eTableCellContent::StaticStruct(),		FDnd5eQuoteContent::StaticStruct(),			FDnd5eInsetContent::StaticStruct(),
+			FDnd5eImageContent::StaticStruct(),				FDnd5eGalleryContent::StaticStruct(),		FDnd5eTextContent::StaticStruct(),			FDnd5eFormattedContent::StaticStruct(),
+			FDnd5eReferenceContent::StaticStruct(),			FDnd5eAnnotationContent::StaticStruct(),	FDnd5eChanceContentValue::StaticStruct(),	FDnd5eNumberContent::StaticStruct(),
+			FDnd5eExternalLinkContent::StaticStruct(),		FDnd5eAnchorLinkContent::StaticStruct(),	FDnd5eUnsupportedContent::StaticStruct(),	FDnd5eDocumentLinkContent::StaticStruct(),
+			FDnd5eQuickReferenceContent::StaticStruct(),	FDnd5eQueryLinkContent::StaticStruct(),
 		};
 		return Types.Contains(Type);
 	}
@@ -67,6 +63,9 @@ namespace
 			if (Kind == Dnd5e::Content::Inline::ExternalLink) { return FDnd5eExternalLinkContent::StaticStruct(); }
 			if (Kind == Dnd5e::Content::Inline::AnchorLink) { return FDnd5eAnchorLinkContent::StaticStruct(); }
 			if (Kind == Dnd5e::Content::Inline::Unsupported) { return FDnd5eUnsupportedContent::StaticStruct(); }
+			if (Kind == Dnd5e::Content::Inline::DocumentLink) { return FDnd5eDocumentLinkContent::StaticStruct(); }
+			if (Kind == Dnd5e::Content::Inline::QuickReference) { return FDnd5eQuickReferenceContent::StaticStruct(); }
+			if (Kind == Dnd5e::Content::Inline::QueryLink) { return FDnd5eQueryLinkContent::StaticStruct(); }
 		}
 		return nullptr;
 	}
@@ -106,6 +105,18 @@ namespace
 			}
 			State.Pending.Emplace(Path, static_cast<const FDnd5eReferenceContent*>(Data));
 		}
+		if (Type == FDnd5eAnnotationContent::StaticStruct())
+		{
+			const auto& Annotation = *static_cast<const FDnd5eAnnotationContent*>(Data);
+			if (Annotation.Kind == Dnd5e::Content::Annotation::PercentChance)
+			{
+				if (Annotation.Value.GetScriptStruct() != FDnd5eChanceContentValue::StaticStruct())
+				{
+					return Fail(State, TEXT("Dnd5e.Content.References.InvalidContent"), TEXT("A percent-chance annotation has a mismatched value payload."));
+				}
+				if (!Visit(FDnd5eChanceContentValue::StaticStruct(), Annotation.Value.GetMemory(), Path + TEXT("/Value"), Depth + 1, State)) { return false; }
+			}
+		}
 		for (TFieldIterator<FProperty> It(Type); It; ++It)
 		{
 			const auto* Array = CastField<FArrayProperty>(*It);
@@ -139,6 +150,7 @@ bool UDnd5eSpellContentLibrary::CollectSpellReferences(const FDnd5eSpell& Spell,
 	if (!VisitBlocks(Spell.Description, TEXT("/Description"), State) ||
 		!VisitBlocks(Spell.HigherLevelDescription, TEXT("/HigherLevelDescription"), State)) { return false; }
 	Occurrences.Reserve(State.Pending.Num());
+
 	for (const auto& Item : State.Pending)
 	{
 		FDnd5eContentReferenceOccurrence Occurrence;

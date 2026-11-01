@@ -1,3 +1,4 @@
+#include "Dnd5eJsonInlineSyntax.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 
 #include "Dnd5eTags.h"
@@ -79,12 +80,23 @@ namespace Dnd5eJsonReader
 
 	bool PreservePresentation(const FJsonObject& Object, const TCHAR* Key, FDnd5eContentMetadata& Metadata, const FString& Pointer, FReadState& State)
 	{
-		const auto Value = FindExactField(Object, Key);
-		if (!Value.IsValid()) { return true; }
-		TSharedRef<FJsonObject> Evidence = MakeShared<FJsonObject>();
+		const auto Value = FindExactField(Object, Key); if (!Value.IsValid()) { return true; }
+		TSharedPtr<FJsonObject> Evidence;
+		if (!Metadata.AdditionalMetadataJson.IsEmpty())
+		{
+			if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Metadata.AdditionalMetadataJson), Evidence,
+				FJsonSerializer::EFlags::StoreNumbersAsStrings) || !Evidence.IsValid())
+			{
+				return Fail(State, Codes::SerializationFailure, Pointer, TEXT("Could not merge retained presentation evidence."));
+			}
+		}
+		else { Evidence = MakeShared<FJsonObject>(); }
 		Evidence->SetField(Key, Value);
-		if (!SerializeValue(MakeShared<FJsonValueObject>(Evidence), Metadata.AdditionalMetadataJson, Pointer, State)) { return false; }
-		AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata, AppendPointer(Pointer, Key), TEXT("Presentation metadata is retained without a complete typed layout mapping."));
+		FString Candidate;
+		if (!SerializeValue(MakeShared<FJsonValueObject>(Evidence), Candidate, Pointer, State)) { return false; }
+		Metadata.AdditionalMetadataJson = MoveTemp(Candidate);
+		AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata,
+			AppendPointer(Pointer, Key), TEXT("Unhandled presentation is retained with its original evidence."));
 		return true;
 	}
 
@@ -119,20 +131,6 @@ namespace Dnd5eJsonReader
 		AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedContent, Pointer, TEXT("The complete unmodeled inline token is retained as text."));
 	}
 
-	TArray<FString> SplitInlineArguments(const FString& Body)
-	{
-		TArray<FString> Parts;
-		int32 Depth = 0, Start = 0;
-		for (int32 Index = 0; Index < Body.Len(); ++Index)
-		{
-			if (Body[Index] == TEXT('{')) { ++Depth; }
-			else if (Body[Index] == TEXT('}')) { --Depth; }
-			else if (Body[Index] == TEXT('|') && Depth == 0) { Parts.Add(Body.Mid(Start, Index - Start)); Start = Index + 1; }
-		}
-		Parts.Add(Body.Mid(Start));
-		return Parts;
-	}
-
 	bool ReadInlineToken(const FString& Token, const FString& Pointer, TArray<FDnd5eInlineContent>& Inlines, FReadState& State, int32 Depth)
 	{
 		int32 BodyStart = 2;
@@ -142,10 +140,18 @@ namespace Dnd5eJsonReader
 		const FString Body = Token.Mid(BodyStart, Token.Len() - BodyStart - 1);
 		const auto Parts = SplitInlineArguments(Body);
 		const auto Metadata = MakeContentMetadata(Pointer, State);
-		if (Tag.Equals(TEXT("b"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("bold"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("i"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("italic"), ESearchCase::CaseSensitive))
+		if (Tag.Equals(TEXT("b"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("bold"), ESearchCase::CaseSensitive) ||
+			Tag.Equals(TEXT("i"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("italic"), ESearchCase::CaseSensitive) ||
+			Tag.Equals(TEXT("note"), ESearchCase::CaseSensitive))
 		{
 			FDnd5eFormattedContent Formatted;
-			Formatted.Formatting.AddTag(Tag.Equals(TEXT("b"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("bold"), ESearchCase::CaseSensitive) ? Dnd5e::Content::Formatting::Bold : Dnd5e::Content::Formatting::Italic);
+			Formatted.SourceFormat = TEXT("5etools"); Formatted.SourceReference = Token;
+			if (Tag.Equals(TEXT("note"), ESearchCase::CaseSensitive))
+			{
+				Formatted.Formatting.AddTag(Dnd5e::Content::Formatting::Note);
+				Formatted.Formatting.AddTag(Dnd5e::Content::Formatting::Italic);
+			}
+			else { Formatted.Formatting.AddTag(Tag.Equals(TEXT("b"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("bold"), ESearchCase::CaseSensitive) ? Dnd5e::Content::Formatting::Bold : Dnd5e::Content::Formatting::Italic); }
 			if (!ReadInlines(Body, Pointer, Formatted.Inlines, State, Depth + 1)) { return false; }
 			Inlines.Add(MakeInline(Dnd5e::Content::Inline::Formatted, Formatted, Metadata));
 		}
@@ -162,23 +168,9 @@ namespace Dnd5eJsonReader
 			if (!ReadInlines(Parts.Num() > 1 && !Parts[1].IsEmpty() ? Parts[1] : Parts[0], Pointer, Annotation.Display, State, Depth + 1)) { return false; }
 			Inlines.Add(MakeInline(Dnd5e::Content::Inline::Annotation, Annotation, Metadata));
 		}
-		else if (Tag.Equals(TEXT("spell"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("item"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("creature"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("condition"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("feat"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("race"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("background"), ESearchCase::CaseSensitive))
+		else if (IsRecordReferenceTag(Tag))
 		{
-			if (Parts.Num() > 3 || Parts[0].TrimStartAndEnd().IsEmpty()) { UnsupportedInline(Token, Pointer, Inlines, State); return true; }
-			FDnd5eReferenceContent Reference;
-			Reference.SourceFormat = TEXT("5etools");
-			Reference.SourceReference = Token;
-			const FString Name = Parts[0].TrimStartAndEnd();
-			if (!ReadInlines(Parts.Num() > 2 && !Parts[2].IsEmpty() ? Parts[2] : Name, Pointer, Reference.Display, State, Depth + 1)) { return false; }
-			if (Tag.Equals(TEXT("spell"), ESearchCase::CaseSensitive) && Parts.Num() > 1 && !Parts[1].TrimStartAndEnd().IsEmpty())
-			{
-				const FString Source = Parts[1].TrimStartAndEnd();
-				if (!ValidateIdentityText(Name, Pointer, State) || !ValidateIdentityText(Source, Pointer, State)) { return false; }
-				Reference.bHasTargetRecordId = true;
-				Reference.TargetRecordId = MakeSpellRecordId(Name, Source, State.Context.DatasetNamespace);
-			}
-			else { AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, Pointer, TEXT("Reference retained without inventing an omitted source or unsupported category identity.")); }
-			Inlines.Add(MakeInline(Dnd5e::Content::Inline::Reference, Reference, Metadata));
+			if (!ReadRecordReference(Tag, Parts, Token, Pointer, Inlines, State, Depth)) { return false; }
 		}
 		else if (Tag.Equals(TEXT("link"), ESearchCase::CaseSensitive) && Parts.Num() == 2 && (Parts[1].StartsWith(TEXT("https://"), ESearchCase::IgnoreCase) || Parts[1].StartsWith(TEXT("http://"), ESearchCase::IgnoreCase)))
 		{
@@ -189,7 +181,16 @@ namespace Dnd5eJsonReader
 			if (!ReadInlines(Parts[0], Pointer, Link.Display, State, Depth + 1)) { return false; }
 			Inlines.Add(MakeInline(Dnd5e::Content::Inline::ExternalLink, Link, Metadata));
 		}
-		else { UnsupportedInline(Token, Pointer, Inlines, State); }
+		else
+		{
+			bool Handled = false;
+			if (!ReadDestination(Tag, Parts, Token, Pointer, Inlines, State, Depth, Handled)) { return false; }
+			if (!Handled)
+			{
+				if (!ReadAdditionalAnnotation(Tag, Parts, Token, Pointer, Inlines, State, Depth, Handled)) { return false; }
+				if (!Handled) { UnsupportedInline(Token, Pointer, Inlines, State); }
+			}
+		}
 		return true;
 	}
 
@@ -258,6 +259,41 @@ namespace Dnd5eJsonReader
 	{
 		const auto Value = FindExactField(Object, Key);
 		return !Value.IsValid() || ReadBlocks(Value, AppendPointer(Pointer, Key), OutBlocks, State, Depth + 1);
+	}
+
+	bool ReadImage(const FJsonObject& Object, const FString& Pointer, FDnd5eContentBlock& OutBlock,
+		const FDnd5eContentMetadata& Metadata, FReadState& State, int32 Depth)
+	{
+		auto Unsupported = [&]() { return UnsupportedBlock(MakeShared<FJsonValueObject>(MakeShared<FJsonObject>(Object)), Pointer, OutBlock, State); };
+		if (!HasOnlyKeys(Object, {TEXT("type"), TEXT("href"), TEXT("width"), TEXT("height"), TEXT("title"), TEXT("credit"), TEXT("source"), TEXT("page"), TEXT("id")})) { return Unsupported(); }
+		FDnd5eImageContent Image; TSharedPtr<FJsonObject> Href; FString Type;
+		if (!ReadRequiredObject(Object, TEXT("href"), Pointer, Href, State) || !ReadRequiredString(*Href, TEXT("type"), AppendPointer(Pointer, TEXT("href")), Type, State)) { return false; }
+		if (Type.Equals(TEXT("internal"), ESearchCase::CaseSensitive))
+		{
+			if (!HasOnlyKeys(*Href, {TEXT("type"), TEXT("path")})) { return Unsupported(); }
+			if (!ReadRequiredString(*Href, TEXT("path"), AppendPointer(Pointer, TEXT("href")), Image.Resource.RelativePath, State)) { return false; }
+			if (!Dnd5eMedia::IsDatasetRelativePath(Image.Resource.RelativePath)) { return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("href")), TEXT("Image resource needs a safe dataset-relative path.")); }
+			Image.Resource.Kind = EDnd5eMediaReferenceKind::DatasetRelative;
+		}
+		else if (Type.Equals(TEXT("external"), ESearchCase::CaseSensitive))
+		{
+			if (!HasOnlyKeys(*Href, {TEXT("type"), TEXT("url")})) { return Unsupported(); }
+			if (!ReadRequiredString(*Href, TEXT("url"), AppendPointer(Pointer, TEXT("href")), Image.Resource.Url, State)) { return false; }
+			if (!Image.Resource.Url.StartsWith(TEXT("https://"), ESearchCase::IgnoreCase) && !Image.Resource.Url.StartsWith(TEXT("http://"), ESearchCase::IgnoreCase)) { return Unsupported(); }
+			Image.Resource.Kind = EDnd5eMediaReferenceKind::ExternalUrl;
+		}
+		else { return Unsupported(); }
+		FString Literal;
+		if (FindExactField(Object, TEXT("width")))
+		{
+			if (!ReadRequiredInteger(Object, TEXT("width"), Pointer, 1, MAX_int32, Image.Width, Literal, State)) { return false; } Image.bHasWidth = true;
+		}
+		if (FindExactField(Object, TEXT("height")))
+		{
+			if (!ReadRequiredInteger(Object, TEXT("height"), Pointer, 1, MAX_int32, Image.Height, Literal, State)) { return false; } Image.bHasHeight = true;
+		}
+		if (!ReadInlineField(Object, TEXT("title"), Pointer, Image.Title, State, Depth) || !ReadInlineField(Object, TEXT("credit"), Pointer, Image.Credit, State, Depth)) { return false; }
+		OutBlock = MakeBlock(Dnd5e::Content::Block::Image, Image, Metadata); return true;
 	}
 
 	bool ReadRollInteger(const FJsonObject& Object, const TCHAR* Key, const FString& Pointer, int32& OutInteger, FReadState& State)
@@ -455,6 +491,7 @@ namespace Dnd5eJsonReader
 					if (Class.Equals(TEXT("text-center"), ESearchCase::CaseSensitive)) { Table.Columns[Index].Alignment = EDnd5eContentAlignment::Center; }
 					else if (Class.Equals(TEXT("text-right"), ESearchCase::CaseSensitive)) { Table.Columns[Index].Alignment = EDnd5eContentAlignment::Right; }
 					else if (Class.Equals(TEXT("text-left"), ESearchCase::CaseSensitive)) { Table.Columns[Index].Alignment = EDnd5eContentAlignment::Left; }
+					else if (Class.Equals(TEXT("no-wrap"), ESearchCase::CaseSensitive)) { Table.Columns[Index].Presentation.AddTag(Dnd5e::Content::Presentation::NoWrap); }
 					else if (Class.StartsWith(TEXT("col-"), ESearchCase::CaseSensitive))
 					{
 						FString Digits = Class.Mid(4);
@@ -522,6 +559,10 @@ namespace Dnd5eJsonReader
 			if (!ReadInlineField(*Object, TEXT("name"), Pointer, Section.Heading, ChildState, Depth) || !ReadBlocks(Entries, AppendPointer(Pointer, TEXT("entries")), Section.Blocks, ChildState, Depth + 1)) { return false; }
 			OutBlock = MakeBlock(Dnd5e::Content::Block::Section, Section, Metadata);
 		}
+		else if (Type.Equals(TEXT("image"), ESearchCase::CaseSensitive))
+		{
+			return ReadImage(*Object, Pointer, OutBlock, Metadata, ChildState, Depth);
+		}
 		else if (Type.Equals(TEXT("list"), ESearchCase::CaseSensitive))
 		{
 			if (!HasOnlyKeys(*Object, {TEXT("type"), TEXT("items"), TEXT("name"), TEXT("style"), TEXT("start"), TEXT("columns"), TEXT("source"), TEXT("page"), TEXT("id")})) { return UnsupportedBlock(Value, Pointer, OutBlock, State); }
@@ -543,6 +584,11 @@ namespace Dnd5eJsonReader
 				else if (Style.Equals(TEXT("list-lower-roman"), ESearchCase::CaseSensitive)) { List.MarkerStyle = EDnd5eListMarkerStyle::LowerRoman; }
 				else if (Style.Equals(TEXT("list-upper-roman"), ESearchCase::CaseSensitive)) { List.MarkerStyle = EDnd5eListMarkerStyle::UpperRoman; }
 				else if (Style.Equals(TEXT("list-no-bullets"), ESearchCase::CaseSensitive)) { List.MarkerStyle = EDnd5eListMarkerStyle::None; }
+				else if (Style.Equals(TEXT("list-hang-notitle"), ESearchCase::CaseSensitive))
+				{
+					List.Presentation.AddTag(Dnd5e::Content::Presentation::HangingList);
+					List.MarkerStyle = EDnd5eListMarkerStyle::None;
+				}
 				else if (!PreservePresentation(*Object, TEXT("style"), Metadata, Pointer, State)) { return false; }
 			}
 			const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;

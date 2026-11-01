@@ -90,7 +90,7 @@ bool FDnd5eReferenceReportMatrixTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Second resolution only after Normalized"), Entry.NormalizedResolutionStatus, Case->Normalization == N::Normalized ? R::Resolved : R::NotAttempted);
 		TestTrue(TEXT("No diagnostics from unattempted/successful second lookup"), Entry.NormalizedResolutionDiagnostics.IsEmpty());
 		auto Expected = Case->Reference;
-		if (Case->Normalization == N::Normalized) { Expected.bHasTargetRecordId = true; Expected.TargetRecordId = Records[0].Header.RecordId; }
+		if (Case->Normalization == N::Normalized) { Expected.bHasTargetRecordId = true; Expected.TargetRecordId = Records[0].Header.RecordId; Expected.bHasTargetSelector = true; Expected.TargetSelector.Category = Dnd5e::Category::Spell; Expected.TargetSelector.Name = TEXT("invented beacon"); Expected.TargetSelector.bHasSource = true; Expected.TargetSelector.SourceId = TEXT("syn"); }
 		TestTrue(TEXT("Normalized copy follows the normalizer policy"), Equal(FDnd5eReferenceContent::StaticStruct(), &Entry.NormalizedReference, &Expected));
 	}
 	TestTrue(TEXT("Owner immutable"), Equal(FDnd5eSpell::StaticStruct(), &Owner, &Before));

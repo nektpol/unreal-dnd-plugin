@@ -110,6 +110,9 @@ bool FDnd5eNormalizationMatrixTest::RunTest(const FString& Parameters)
 	if (Status == FNormalizeStatus::Normalized)
 	{
 		Expected.bHasTargetRecordId = true; Expected.TargetRecordId = Records[0].Header.RecordId;
+		Expected.bHasTargetSelector = true; Expected.TargetSelector.Category = Dnd5e::Category::Spell; Expected.TargetSelector.bHasSource = true;
+		Expected.TargetSelector.Name = (Case->Name == TEXT("CaseFolded") || Case->Name == TEXT("Display") || Case->Name == TEXT("EmptyDisplay")) ? TEXT("invented beacon") : TEXT("Invented Beacon");
+		Expected.TargetSelector.SourceId = Case->Name == TEXT("Exact") || Case->Name == TEXT("Trimmed") ? TEXT("SYN-B") : TEXT("syn-b");
 		TestTrue(TEXT("Success clears diagnostics"), Diagnostics.IsEmpty());
 		FDnd5eSpell Resolved;
 		TestEqual(TEXT("Canonical reference resolves"), Catalog.ResolveSpellReference(Output, Resolved, Diagnostics), EDnd5eReferenceResolveStatus::Resolved);

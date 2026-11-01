@@ -53,18 +53,19 @@ namespace
 		return true;
 	}
 
-	bool ValidateLoadSelection(const FDnd5eJsonSpellCatalogLoadRequest& Request, FString& Root, TArray<FString>& SpellPaths, FString& AvailabilityPath, TArray<FDnd5eDiagnostic>& Diagnostics)
+	bool ValidateLoadSelection(const FDnd5eJsonSpellCatalogLoadRequest& Request, FString& Root, TArray<FString>& SpellPaths, TArray<FString>& FluffPaths, FString& AvailabilityPath, TArray<FDnd5eDiagnostic>& Diagnostics)
 	{
 		Root.Reset();
-		SpellPaths.Reset();
+		SpellPaths.Reset(); FluffPaths.Reset();
 		AvailabilityPath.Reset();
 	    if (Request.SpellFiles.IsEmpty())
 		{
 		    return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.InvalidRequest"), TEXT("Select at least one spell file."));
 		}
-		if (Request.SpellFiles.Num() > 1024)
+		const int64 Count = static_cast<int64>(Request.SpellFiles.Num()) + Request.SpellFluffFiles.Num() + (Request.bHasAvailabilityLookup ? 1 : 0);
+		if (Count > 1024)
 		{
-			return LoadError(Diagnostics, TEXT("Dnd5e.Json.ResourceLimitExceeded"), TEXT("Select at most 1024 spell files."));
+			return LoadError(Diagnostics, TEXT("Dnd5e.Json.ResourceLimitExceeded"), TEXT("Select at most 1024 total input files."));
 		}
 		FDnd5eJsonReadContext Context;
 		Context.DatasetNamespace = Request.DatasetNamespace;
@@ -90,13 +91,13 @@ namespace
 		{
 			return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.InvalidDatasetRoot"), TEXT("The dataset directory must be absolute."));
 		}
-#if PLATFORM_WINDOWS
+	#if PLATFORM_WINDOWS
 		const bool bDriveRooted = Root.Len() >= 3 && FChar::IsAlpha(Root[0]) && Root[1] == TEXT(':') && Root[2] == TEXT('/');
 		if (!bDriveRooted && !Root.StartsWith(TEXT("//")))
 		{
 			return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.InvalidDatasetRoot"), TEXT("Supply a drive-qualified or UNC dataset directory."));
 		}
-#endif
+	#endif
 		if (!FPaths::CollapseRelativeDirectories(Root) || !IFileManager::Get().DirectoryExists(*Root))
 		{
 			return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.InvalidDatasetRoot"), TEXT("The dataset directory does not exist or cannot be resolved."));
@@ -113,10 +114,21 @@ namespace
 		    }
 		    SpellPaths.Add(MoveTemp(FullPath));
 		}
+		TArray<FString> AllPaths = SpellPaths;
+		for (const FString& Relative : Request.SpellFluffFiles)
+		{
+			FString Full;
+			if (!ResolveSelectedFile(Root, Relative, Request.DatasetNamespace, Full, Diagnostics)) { return false; }
+			if (AllPaths.ContainsByPredicate([&Full](const FString& Existing) { return FPaths::IsSamePath(Existing, Full); }))
+			{
+				return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.DuplicateFile"), TEXT("Each selected input file must be distinct."), Relative);
+			}
+			AllPaths.Add(Full); FluffPaths.Add(MoveTemp(Full));
+		}
 		if (Request.bHasAvailabilityLookup)
 		{
 		    if (!ResolveSelectedFile(Root, Request.AvailabilityFile, Request.DatasetNamespace, AvailabilityPath, Diagnostics)) { return false; }
-		    if (SpellPaths.ContainsByPredicate([&AvailabilityPath](const FString& Existing) { return FPaths::IsSamePath(Existing, AvailabilityPath); }))
+		    if (AllPaths.ContainsByPredicate([&AvailabilityPath](const FString& Existing) { return FPaths::IsSamePath(Existing, AvailabilityPath); }))
 		    {
 			    return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.DuplicateFile"), TEXT("The availability lookup must be a separate selected file."), Request.AvailabilityFile);
 		    }
@@ -162,16 +174,25 @@ FDnd5eJsonSpellCatalogBuildResult FDnd5eJsonSpellCatalogLoader::LoadCatalog(cons
 	FDnd5eJsonSpellCatalogBuildResult Result;
 	Result.Status = EDnd5eJsonReadStatus::Failure;
 	FString Root, AvailabilityPath;
-	TArray<FString> SpellPaths;
-	if (!ValidateLoadSelection(Request, Root, SpellPaths, AvailabilityPath, Result.Diagnostics)) { return Result; }
+	TArray<FString> SpellPaths, FluffPaths;
+	if (!ValidateLoadSelection(Request, Root, SpellPaths, FluffPaths, AvailabilityPath, Result.Diagnostics)) { return Result; }
 
 	FDnd5eJsonSpellCatalogBuildRequest BuildRequest;
+	BuildRequest.bValidateContent = Request.bValidateContent;
+	BuildRequest.EditionPolicyId = Request.EditionPolicyId;
+	BuildRequest.EditionAssignments = Request.EditionAssignments;
 	int64 TotalBytes = 0;
 	for (int32 Index = 0; Index < SpellPaths.Num(); ++Index)
 	{
 		FDnd5eJsonDocument Document;
 		if (!ReadDocument(SpellPaths[Index], Request.SpellFiles[Index], Request.DatasetNamespace, TotalBytes, Document, Result.Diagnostics)) { return Result; }
 		BuildRequest.SpellDocuments.Add(MoveTemp(Document));
+	}
+	for (int32 Index = 0; Index < FluffPaths.Num(); ++Index)
+	{
+		FDnd5eJsonDocument Document;
+		if (!ReadDocument(FluffPaths[Index], Request.SpellFluffFiles[Index], Request.DatasetNamespace, TotalBytes, Document, Result.Diagnostics)) { return Result; }
+		BuildRequest.SpellFluffDocuments.Add(MoveTemp(Document));
 	}
 	BuildRequest.bHasAvailabilityLookup = Request.bHasAvailabilityLookup;
 	if (Request.bHasAvailabilityLookup)

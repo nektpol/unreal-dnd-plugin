@@ -589,7 +589,7 @@ bool FDnd5eJsonContentTreeTest::RunTest(const FString& Parameters)
 		]},
 		{"type":"quote","entries":["Invented quotation"],"by":"Invented author","skipMarks":true},
 		{"type":"insetReadaloud","name":"Invented inset","source":"EXTRA","page":3,"entries":["Inset body"]},
-		"Link {@link an invented label|https://example.invalid/} and unknown {@dc 15}."
+		"Link {@link an invented label|https://example.invalid/} and unknown {@unmodeledAnnotation 15}."
 	])json")));
 	const auto Result = FDnd5eJsonSpellReader::ReadSpell(MakeRequest(Spell));
 	if (!TestTrue(TEXT("Recursive Content accepted"), Result.Status == EDnd5eJsonReadStatus::Success)) { return false; }

@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #pragma once
 
@@ -28,3 +28,5 @@ struct DND5E_API FDnd5eMediaReference
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|MediaReference", meta = (EditCondition = "Kind == EDnd5eMediaReferenceKind::ExternalUrl"))
 	FString Url;
 };
+
+namespace Dnd5eMedia { DND5E_API bool IsDatasetRelativePath(const FString& Path); }

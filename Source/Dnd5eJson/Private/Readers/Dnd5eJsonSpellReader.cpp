@@ -679,6 +679,7 @@ namespace Dnd5eJsonReader
 			Metadata->SetField(TEXT("referenceSources"), References);
 		}
 		if (!Metadata->Values.IsEmpty() && !SerializeObject(Metadata, Provenance.AdditionalMetadataJson, RecordPointer, State)) { return false; }
+		if (!ReadTypedSpellMetadata(Object, RecordPointer, Candidate, State)) { return false; }
 		if (const TSharedPtr<FJsonValue> Value = FindExactField(Object, TEXT("reprintedAs")))
 		{
 			const FString Pointer = AppendPointer(RecordPointer, TEXT("reprintedAs"));

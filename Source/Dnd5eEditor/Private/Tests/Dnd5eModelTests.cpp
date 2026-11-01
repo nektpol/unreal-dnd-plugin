@@ -34,9 +34,9 @@ bool FDnd5eModelContractTest::RunTest(const FString& Parameters)
 		const FString CppType = Property->GetCPPType(&ExtendedType) + ExtendedType;
 		TestEqual(*FString::Printf(TEXT("%s keeps its public type and array element type"), Field.Name),
 			CppType, FString(Field.CppType));
-		TestTrue(*FString::Printf(TEXT("%s is editable"), Field.Name), Property->HasAnyPropertyFlags(CPF_Edit));
+		TestTrue(*FString::Printf(TEXT("%s is editable"), Field.Name), Property->HasAnyPropertyFlags(CPF_Edit) == !Field.bReadOnly);
 		TestTrue(*FString::Printf(TEXT("%s is Blueprint-visible"), Field.Name), Property->HasAnyPropertyFlags(CPF_BlueprintVisible));
-		TestFalse(*FString::Printf(TEXT("%s remains Blueprint-writable"), Field.Name), Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly));
+		TestTrue(*FString::Printf(TEXT("%s keeps its Blueprint access contract"), Field.Name), Property->HasAnyPropertyFlags(CPF_BlueprintReadOnly) == Field.bReadOnly);
 	}
 	FInstancedStruct Defaults(Type);
 	CheckDefaults(*this, Type, Defaults.GetMemory(), Case->Name);
@@ -84,6 +84,8 @@ namespace
 	{
 		static const TArray<FEnumContract> Cases =
 		{
+			{ TEXT("EDnd5eSourceInclusion"), &StaticEnum<EDnd5eSourceInclusion>, { TEXT("Unspecified"), TEXT("Excluded"), TEXT("Included"), TEXT("IncludedWithAlternateName") } },
+			{ TEXT("EDnd5eDataAvailability"), &StaticEnum<EDnd5eDataAvailability>, { TEXT("Unknown"), TEXT("Absent"), TEXT("Present") } },
 			{ TEXT("EDnd5eListMarkerStyle"), &StaticEnum<EDnd5eListMarkerStyle>, { TEXT("Unspecified"), TEXT("Bullet"), TEXT("Decimal"), TEXT("LowerRoman"), TEXT("UpperRoman"), TEXT("None") } },
 			{ TEXT("EDnd5eContentAlignment"), &StaticEnum<EDnd5eContentAlignment>, { TEXT("Unspecified"), TEXT("Left"), TEXT("Center"), TEXT("Right"), TEXT("Justify") } },
 			{ TEXT("EDnd5ePageReferenceKind"), &StaticEnum<EDnd5ePageReferenceKind>, { TEXT("Unspecified"), TEXT("Number"), TEXT("Text") } },

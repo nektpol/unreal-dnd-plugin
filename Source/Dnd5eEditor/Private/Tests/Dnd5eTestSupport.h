@@ -6,6 +6,7 @@
 #include "Misc/AutomationTest.h"
 #include "Content/Dnd5eContentLibrary.h"
 #include "Dnd5eTags.h"
+#include "Content/Dnd5eContentValidationLibrary.h"
 #include "Spells/Dnd5eSpell.h"
 #include "Spells/Dnd5eSpellContentLibrary.h"
 #include "Values/Dnd5eMoney.h"
@@ -28,6 +29,7 @@ namespace Dnd5eTests
 		const TCHAR* Name;
 		const TCHAR* CppType;
 		const TCHAR* Default;
+		bool bReadOnly = false;
 	};
 
 	struct FModelContract
