@@ -1,4 +1,4 @@
-#include "Readers/Dnd5eJsonSpellCatalogBuilder.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogBuilder.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 
 FDnd5eJsonSpellCatalogBuildResult FDnd5eJsonSpellCatalogBuilder::BuildCatalog(const FDnd5eJsonSpellCatalogBuildRequest& Request, FDnd5eSpellCatalog& Catalog)

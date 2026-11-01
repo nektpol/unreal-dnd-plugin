@@ -1,4 +1,4 @@
-#include "Readers/Dnd5eJsonSpellCatalogLoader.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLoader.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"

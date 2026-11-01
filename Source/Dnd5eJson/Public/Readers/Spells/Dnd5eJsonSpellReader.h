@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "Readers/Dnd5eJsonSpellReadRequest.h"
-#include "Readers/Dnd5eJsonSpellReadResult.h"
+#include "Readers/Spells/Dnd5eJsonSpellReadRequest.h"
+#include "Readers/Spells/Dnd5eJsonSpellReadResult.h"
 
 class DND5EJSON_API FDnd5eJsonSpellReader
 {

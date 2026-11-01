@@ -2,7 +2,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
-#include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h"
 #include "UObject/Package.h"
 
 using namespace Dnd5eTests;

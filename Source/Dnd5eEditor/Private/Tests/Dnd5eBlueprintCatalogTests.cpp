@@ -2,7 +2,7 @@
 
 #include "Dnd5eTestSupport.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
-#include "Readers/Dnd5eJsonSpellCatalogLibrary.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
 #include "UObject/GarbageCollection.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/StructOnScope.h"

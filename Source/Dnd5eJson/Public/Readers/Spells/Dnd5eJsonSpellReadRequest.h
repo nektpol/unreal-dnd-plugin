@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Dnd5eJsonReadContext.h"
+#include "../Dnd5eJsonReadContext.h"
 #include "Dnd5eJsonSpellReadRequest.generated.h"
 
 USTRUCT(BlueprintType)

@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Spells/Dnd5eSpell.h"
 #include "UObject/Object.h"
-#include "Readers/Dnd5eJsonSpellReferenceReporter.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceReporter.h"
 #include "Dnd5eSpellBrowserSelection.generated.h"
 
 UCLASS(Transient)

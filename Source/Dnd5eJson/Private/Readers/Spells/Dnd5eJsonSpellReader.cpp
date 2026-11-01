@@ -1,4 +1,4 @@
-#include "Readers/Dnd5eJsonSpellReader.h"
+#include "Readers/Spells/Dnd5eJsonSpellReader.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 
 #include "Dnd5eTags.h"

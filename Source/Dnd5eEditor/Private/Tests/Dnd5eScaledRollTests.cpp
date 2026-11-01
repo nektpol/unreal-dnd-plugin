@@ -3,7 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
-#include "Readers/Dnd5eJsonSpellReader.h"
+#include "Readers/Spells/Dnd5eJsonSpellReader.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Misc/CommandLine.h"

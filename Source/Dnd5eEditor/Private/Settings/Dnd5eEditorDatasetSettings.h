@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
 #include "UObject/SoftObjectPath.h"
-#include "Readers/Dnd5eJsonSpellCatalogLoader.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLoader.h"
 #include "Dnd5eEditorDatasetSettings.generated.h"
 
 /**

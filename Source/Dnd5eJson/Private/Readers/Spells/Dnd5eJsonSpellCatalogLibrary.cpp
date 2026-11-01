@@ -1,9 +1,9 @@
 ﻿// Developed by Neko Creative Technologies
 
-#include "Readers/Dnd5eJsonSpellCatalogLibrary.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
 
 #include "Catalog/Dnd5eSpellCatalogObject.h"
-#include "Readers/Dnd5eJsonSpellCatalogLoader.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLoader.h"
 
 FDnd5eJsonSpellCatalogBuildResult UDnd5eJsonSpellCatalogLibrary::BuildSpellCatalog(UDnd5eSpellCatalogObject* CatalogObject, const FDnd5eJsonSpellCatalogBuildRequest& Request)
 {

@@ -2,7 +2,7 @@
 
 The plugin can build an in-memory spell catalog from supplied JSON documents, optionally join a supplied spell-availability lookup, and answer read-only queries. The caller supplies all text and chooses when to replace the catalog. These APIs perform no filesystem or network access, select no default publication/edition, and apply no character or gameplay changes.
 
-The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h) and its [Blueprint object wrapper](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalogObject.h) live in Dnd5e. The [availability reader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellAvailabilityReader.h), [native builder](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogBuilder.h), and [Blueprint library](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h) live in Dnd5eJson. The single-record readers remain native C++ APIs; catalog construction, replacement, queries, and normalized spell-reference lookup are also callable from Blueprint. Separate [editor loading tools](editor-dataset-loading.md) provide local selection and an editor-owned catalog.
+The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h) and its [Blueprint object wrapper](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalogObject.h) live in Dnd5e. The [availability reader](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellAvailabilityReader.h), [native builder](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellCatalogBuilder.h), and [Blueprint library](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h) live in Dnd5eJson. The single-record readers remain native C++ APIs; catalog construction, replacement, queries, and normalized spell-reference lookup are also callable from Blueprint. Separate [editor loading tools](editor-dataset-loading.md) provide local selection and an editor-owned catalog.
 
 ## Contents
 
@@ -24,7 +24,7 @@ The core [FDnd5eSpellCatalog](../Source/Dnd5e/Public/Catalog/Dnd5eSpellCatalog.h
 ## Build and query
 
 ```cpp
-#include "Readers/Dnd5eJsonSpellCatalogBuilder.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogBuilder.h"
 
 FDnd5eJsonSpellCatalogBuildRequest Request;
 FDnd5eJsonDocument Document;

@@ -2,7 +2,7 @@
 
 The JSON adapter can explicitly reconcile one retained `5etools` spell token with a loaded catalog. It returns a copied reference with the actual stored target ID on success. It performs no file/network access, catalog replacement, automatic import repair, or gameplay execution.
 
-The native [FDnd5eJsonSpellReferenceNormalizer](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReferenceNormalizer.h) lives in Dnd5eJson. The [UDnd5eJsonSpellCatalogLibrary](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h) exposes NormalizeSpellReference to Blueprint. Parsing source syntax belongs to this adapter; the core [selector matcher](spell-catalog.md#spell-selector-matching) remains format-independent.
+The native [FDnd5eJsonSpellReferenceNormalizer](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h) lives in Dnd5eJson. The [UDnd5eJsonSpellCatalogLibrary](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h) exposes NormalizeSpellReference to Blueprint. Parsing source syntax belongs to this adapter; the core [selector matcher](spell-catalog.md#spell-selector-matching) remains format-independent.
 
 ## Native API
 

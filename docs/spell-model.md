@@ -196,7 +196,7 @@ Damage/condition indexes do not establish an unconditional effect, amount, targe
 
 The retained field spellings ConditionInflicted and bHasTargetRecord follow the implementation. Reprint links do not make records equivalent or automatically choose a newer edition. The reader normalizes supported explicit name/source reprints, and the separate [ResolveSpellRelationship operation](spell-catalog.md#spell-reference-resolution) can look up a declared target without changing either record. The [reader identity contract](json-spell-reader.md#identity-and-provenance) defines the shared versioned spell keys; other categories, omitted-source references, and extended selectors need their own policies.
 
-The JSON module supplies [FDnd5eJsonSpellReadRequest](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadRequest.h), [FDnd5eJsonSpellReadResult](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h), and the [ReadSpell operation](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReader.h). The operation enforces its documented Success/Failure contract; manually authored result values are ordinary mutable storage.
+The JSON module supplies [FDnd5eJsonSpellReadRequest](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReadRequest.h), [FDnd5eJsonSpellReadResult](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReadResult.h), and the [ReadSpell operation](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReader.h). The operation enforces its documented Success/Failure contract; manually authored result values are ordinary mutable storage.
 
 ## Remaining design work
 

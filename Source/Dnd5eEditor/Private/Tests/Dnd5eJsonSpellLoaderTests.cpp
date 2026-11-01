@@ -2,7 +2,7 @@
 
 #include "Dnd5eTestSupport.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
-#include "Readers/Dnd5eJsonSpellCatalogLibrary.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
 #include "HAL/FileManager.h"
 #include "Dom/JsonObject.h"
 #include "Misc/CommandLine.h"

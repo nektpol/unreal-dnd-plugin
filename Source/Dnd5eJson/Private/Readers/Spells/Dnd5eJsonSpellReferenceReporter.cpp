@@ -1,6 +1,6 @@
 ﻿// Developed by Neko Creative Technologies
 
-#include "Readers/Dnd5eJsonSpellReferenceReporter.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceReporter.h"
 
 #include "Catalog/Dnd5eSpellCatalog.h"
 

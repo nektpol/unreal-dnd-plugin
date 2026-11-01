@@ -1,6 +1,6 @@
 // Developed by Neko Creative Technologies
 
-#include "Readers/Dnd5eJsonSpellSupplementReader.h"
+#include "Readers/Spells/Dnd5eJsonSpellSupplementReader.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 #include "Dnd5eTags.h"
 

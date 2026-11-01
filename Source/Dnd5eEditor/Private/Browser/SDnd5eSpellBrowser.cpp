@@ -16,7 +16,7 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
-#include "Readers/Dnd5eJsonSpellReferenceReporter.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceReporter.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eSpellBrowser"
 

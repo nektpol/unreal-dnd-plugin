@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Readers/Dnd5eJsonSpellCatalogBuilder.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogBuilder.h"
 #include "Dnd5eJsonSpellCatalogLoader.generated.h"
 
 USTRUCT(BlueprintType)

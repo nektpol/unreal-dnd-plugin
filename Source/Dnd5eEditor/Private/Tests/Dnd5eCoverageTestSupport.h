@@ -1,7 +1,7 @@
 // Original synthetic fixtures; no external database content is embedded.
 #pragma once
 #include "Dnd5eTestSupport.h"
-#include "Readers/Dnd5eJsonSpellReader.h"
+#include "Readers/Spells/Dnd5eJsonSpellReader.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 

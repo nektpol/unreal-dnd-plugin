@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
-#include "Readers/Dnd5eJsonSpellCatalogLoader.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLoader.h"
 #include "Dnd5eEditorDatasetSubsystem.generated.h"
 
 /**

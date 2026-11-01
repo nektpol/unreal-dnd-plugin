@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Spells/Dnd5eSpellContentLibrary.h"
 #include "Records/Dnd5eReferenceResolution.h"
-#include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h"
 #include "Dnd5eJsonSpellReferenceReporter.generated.h"
 
 class FDnd5eSpellCatalog;

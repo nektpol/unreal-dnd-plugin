@@ -1,10 +1,10 @@
 // Developed by Neko Creative Technologies
 
-#include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h"
 
 #include "Catalog/Dnd5eSpellCatalog.h"
-#include "Dnd5eJsonReaderInternal.h"
-#include "Dnd5eJsonInlineSyntax.h"
+#include "Readers/Dnd5eJsonReaderInternal.h"
+#include "Readers/Dnd5eJsonInlineSyntax.h"
 
 
 namespace

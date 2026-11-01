@@ -2,8 +2,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
-#include "Readers/Dnd5eJsonSpellCatalogLibrary.h"
-#include "Readers/Dnd5eJsonSpellReader.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
+#include "Readers/Spells/Dnd5eJsonSpellReader.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
 #include "UObject/StrongObjectPtr.h"
 

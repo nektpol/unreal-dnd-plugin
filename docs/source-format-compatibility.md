@@ -84,7 +84,7 @@ The storage batch completed an in-memory record declaration. The expanded reader
 
 The shared FDnd5eDiagnostic and Dnd5eJson context/request/result declarations were compiled and verified in their original 141-test batch across 49 public structs/215 fields. The current suite also includes the later reader/scaling expansion; see [Automated tests](testing.md). The original value cases check controlled FName codes, correct module ownership/exports, raw request preservation, and complete result-value replacement.
 
-These value declarations alone do not parse source records or enforce result consistency. The actual [request](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadRequest.h) and [result](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h) headers declare their fields/defaults. The later [reader operation](json-spell-reader.md) now emits diagnostics, constructs identity, and enforces its producer contract; file selection/loading and catalog construction remain outside that runtime operation.
+These value declarations alone do not parse source records or enforce result consistency. The actual [request](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReadRequest.h) and [result](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReadResult.h) headers declare their fields/defaults. The later [reader operation](json-spell-reader.md) now emits diagnostics, constructs identity, and enforces its producer contract; file selection/loading and catalog construction remain outside that runtime operation.
 
 ## Native tag taxonomy review
 

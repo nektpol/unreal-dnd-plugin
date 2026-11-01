@@ -199,7 +199,7 @@ Code is a controlled program identifier, not a Gameplay Tag or arbitrary source 
 
 RelativeFilePath is source context, not a file to open. JsonPointer is opaque location text in the core, matching existing provenance conventions; no JSON parser dependency is introduced. An empty pointer identifies no narrower known location, including a whole-document problem. Do not invent a record ID when input fails before identity can be established. No diagnostic emitter, source validation, logging side effect, or UI is implemented by this struct.
 
-The JSON adapter composes arrays of this type into [FDnd5eJsonSpellReadResult](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReadResult.h) and its [availability/catalog results](spell-catalog.md). Core catalog operations also return these diagnostics without depending on Dnd5eJson.
+The JSON adapter composes arrays of this type into [FDnd5eJsonSpellReadResult](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReadResult.h) and its [availability/catalog results](spell-catalog.md). Core catalog operations also return these diagnostics without depending on Dnd5eJson.
 
 ## Reusable values
 

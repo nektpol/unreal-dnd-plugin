@@ -4,7 +4,7 @@
 #include "Catalog/Dnd5eSpellCatalog.h"
 #include "Readers/Dnd5eJsonDocument.h"
 #include "Readers/Dnd5eJsonReadStatus.h"
-#include "Readers/Dnd5eJsonSpellSupplementReader.h"
+#include "Readers/Spells/Dnd5eJsonSpellSupplementReader.h"
 #include "Content/Dnd5eContentValidationLibrary.h"
 #include "Dnd5eJsonSpellCatalogBuilder.generated.h"
 

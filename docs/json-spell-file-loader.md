@@ -16,7 +16,7 @@ The loader opens caller-selected filesystem paths. It downloads nothing, perform
 
 ## Request and result
 
-The exported Blueprint-visible request and native loader are declared in [Dnd5eJsonSpellCatalogLoader.h](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLoader.h). FDnd5eJsonSpellCatalogLoadRequest has the following EditAnywhere/BlueprintReadWrite fields in Dnd5e|Json|Catalog:
+The exported Blueprint-visible request and native loader are declared in [Dnd5eJsonSpellCatalogLoader.h](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellCatalogLoader.h). FDnd5eJsonSpellCatalogLoadRequest has the following EditAnywhere/BlueprintReadWrite fields in Dnd5e|Json|Catalog:
 
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ Both operations reuse [FDnd5eJsonSpellCatalogBuildResult](spell-catalog.md#catal
 ## Calling from C++
 
 ```cpp
-#include "Readers/Dnd5eJsonSpellCatalogLoader.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLoader.h"
 
 FDnd5eJsonSpellCatalogLoadRequest Request;
 Request.DatasetRoot = CallerSelectedAbsoluteDirectory;
@@ -50,7 +50,7 @@ The caller supplies the directory and files. For a lookup, explicitly enable bHa
 
 ## Calling from Blueprint
 
-Use the existing [catalog object ownership](spell-catalog.md#blueprint-ownership-and-operations) pattern: construct UDnd5eSpellCatalogObject and retain it in a strong object-reference variable. Make a load request, connect a String array to SpellFiles, and call Load Spell Catalog from the [JSON library](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h).
+Use the existing [catalog object ownership](spell-catalog.md#blueprint-ownership-and-operations) pattern: construct UDnd5eSpellCatalogObject and retain it in a strong object-reference variable. Make a load request, connect a String array to SpellFiles, and call Load Spell Catalog from the [JSON library](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h).
 
 This is a static BlueprintCallable execution node, not a pure node. It checks CatalogObject with IsValid before reading anything. A null/invalid target returns the same Dnd5e.Json.InvalidCatalogObject result as the supplied-text build wrapper. Otherwise it delegates to the native loader without modifying the request.
 

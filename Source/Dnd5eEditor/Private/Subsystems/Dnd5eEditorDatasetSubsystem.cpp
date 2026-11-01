@@ -4,7 +4,7 @@
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 
 #include "Catalog/Dnd5eSpellCatalogObject.h"
-#include "Readers/Dnd5eJsonSpellCatalogLibrary.h"
+#include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
 
 const FDnd5eJsonSpellCatalogBuildResult& UDnd5eEditorDatasetSubsystem::LoadSelection(const FDnd5eJsonSpellCatalogLoadRequest& Request)
 {

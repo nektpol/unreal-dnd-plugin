@@ -6,7 +6,7 @@ Primary spells, supplementary prose/images, source membership, explicit edition 
 
 FDnd5eSpell has bHasSupplementaryContent=false and FDnd5eSupplementaryContent SupplementaryContent. Its [shared value](shared-models.md#fdnd5esupplementarycontent) stores Entries (`TArray<FDnd5eContentBlock>`) and Images (`TArray<FDnd5eContentBlock>`). Images contains typed Image wrappers or explicit Unsupported preserved image forms. Supplementary prose is not appended to mechanical Description. A supplied known-empty matching row sets the presence flag; not supplied leaves it false.
 
-[FDnd5eJsonSpellSupplementReader](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellSupplementReader.h) exposes:
+[FDnd5eJsonSpellSupplementReader](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellSupplementReader.h) exposes:
 
 ```cpp
 static bool ReadDocument(const FDnd5eJsonDocument& Document,

@@ -1,6 +1,6 @@
 # Spell reference report
 
-The [native reporter](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellReferenceReporter.h) combines [Content reference collection](spell-content-references.md), [exact reference lookup](spell-catalog.md#spell-reference-resolution), and [retained-token normalization](spell-reference-normalization.md) into a read-only report for one spell. It lives in Dnd5eJson and performs no file/network access, catalog replacement, source-default inference, reference rewriting, or gameplay execution.
+The [native reporter](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellReferenceReporter.h) combines [Content reference collection](spell-content-references.md), [exact reference lookup](spell-catalog.md#spell-reference-resolution), and [retained-token normalization](spell-reference-normalization.md) into a read-only report for one spell. It lives in Dnd5eJson and performs no file/network access, catalog replacement, source-default inference, reference rewriting, or gameplay execution.
 
 ## API
 
@@ -9,7 +9,7 @@ static FDnd5eJsonSpellReferenceReport BuildReport(
     const FDnd5eSpellCatalog& Catalog, const FDnd5eSpell& Spell);
 ```
 
-[UDnd5eJsonSpellCatalogLibrary](../Source/Dnd5eJson/Public/Readers/Dnd5eJsonSpellCatalogLibrary.h) exposes static BlueprintCallable ReportSpellReferences(CatalogObject, Spell), returning the same report with execution pins. The caller supplies the catalog and spell explicitly. The spell need not itself be installed in that catalog.
+[UDnd5eJsonSpellCatalogLibrary](../Source/Dnd5eJson/Public/Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h) exposes static BlueprintCallable ReportSpellReferences(CatalogObject, Spell), returning the same report with execution pins. The caller supplies the catalog and spell explicitly. The spell need not itself be installed in that catalog.
 
 ## Report models
 

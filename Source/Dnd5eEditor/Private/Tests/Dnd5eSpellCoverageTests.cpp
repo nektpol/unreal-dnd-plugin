@@ -1,6 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Dnd5eCoverageTestSupport.h"
-#include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h"
 using namespace Dnd5eTests;
 using namespace Dnd5eCoverageTests;
 

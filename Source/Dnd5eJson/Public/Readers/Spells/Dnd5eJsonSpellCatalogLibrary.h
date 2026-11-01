@@ -6,8 +6,8 @@
 #include "Dnd5eJsonSpellCatalogBuilder.h"
 #include "Dnd5eJsonSpellCatalogLoader.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "Readers/Dnd5eJsonSpellReferenceNormalizer.h"
-#include "Readers/Dnd5eJsonSpellReferenceReporter.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h"
+#include "Readers/Spells/Dnd5eJsonSpellReferenceReporter.h"
 #include "Dnd5eJsonSpellCatalogLibrary.generated.h"
 
 class UDnd5eSpellCatalogObject;
