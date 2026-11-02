@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "CoreMinimal.h"
 #include "Content/Dnd5eContentType.h"
+#include "Values/Dnd5eAttunementIndex.h"
 #include "Dnd5eAttunementRequirement.generated.h"
 
 UENUM(BlueprintType)
@@ -20,4 +21,8 @@ struct DND5E_API FDnd5eAttunementRequirement
 	EDnd5eAttunementMode Mode = EDnd5eAttunementMode::Unspecified;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Attunement")
 	TArray<FDnd5eInlineContent> Conditions;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Attunement")
+	bool bHasIndex = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Attunement", meta = (EditCondition = "bHasIndex"))
+	FDnd5eAttunementIndex Index;
 };

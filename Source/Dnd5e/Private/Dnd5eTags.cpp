@@ -243,6 +243,16 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Charisma, "Dnd5e.Ability.Charisma", "Reference classification: Charisma");
 	}
 
+	namespace Alignment
+	{
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Lawful, "Dnd5e.Alignment.Lawful", "Reference classification: Lawful");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Neutral, "Dnd5e.Alignment.Neutral", "Reference classification: Neutral");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Chaotic, "Dnd5e.Alignment.Chaotic", "Reference classification: Chaotic");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Good, "Dnd5e.Alignment.Good", "Reference classification: Good");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Evil, "Dnd5e.Alignment.Evil", "Reference classification: Evil");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Unaligned, "Dnd5e.Alignment.Unaligned", "Reference classification: Unaligned");
+	}
+
 	namespace Creature::Type
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Aberration, "Dnd5e.Creature.Type.Aberration", "Reference classification: Aberration");

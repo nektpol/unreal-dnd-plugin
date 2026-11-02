@@ -84,6 +84,7 @@ namespace
 	{
 		static const TArray<FEnumContract> Cases =
 		{
+			{ TEXT("EDnd5eSize"), &StaticEnum<EDnd5eSize>, { TEXT("Unspecified"), TEXT("Tiny"), TEXT("Small"), TEXT("Medium"), TEXT("Large"), TEXT("Huge"), TEXT("Gargantuan") } },
 			{ TEXT("EDnd5eMassUnit"), &StaticEnum<EDnd5eMassUnit>, { TEXT("Unspecified"), TEXT("Ounces"), TEXT("Pounds"), TEXT("Grams"), TEXT("Kilograms") } },
 			{ TEXT("EDnd5eValuePresence"), &StaticEnum<EDnd5eValuePresence>, { TEXT("Unspecified"), TEXT("ExplicitNull"), TEXT("Present") } },
 			{ TEXT("EDnd5eAttunementMode"), &StaticEnum<EDnd5eAttunementMode>, { TEXT("Unspecified"), TEXT("NotRequired"), TEXT("Required"), TEXT("Optional") } },

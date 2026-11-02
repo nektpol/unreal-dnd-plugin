@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation and shared price, mass and readable attunement storage are implemented. Item JSON importing, structured attunement/index semantics, equipment facts, definition lookup, copy/variant assembly, item-specific validation, and an item catalog remain pending. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement index storage are implemented. Item JSON importing, index normalization/validation, equipment facts, definition lookup, copy/variant assembly, item-specific validation, and an item catalog remain pending. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -55,8 +55,8 @@ This batch adds no item-specific extraction/traversal/validation API. ValidateSp
 
 The canonical [Price](shared-models.md#price), [Mass](shared-models.md#mass) and [Attunement requirement](shared-models.md#attunement-requirement) definitions own these reusable fields. Item composition keeps fixed-price absence/null/zero distinct, weight separate from its multiplier/note, and primary attunement separate from alternative attunement. The alternative neither overwrites the primary nor automatically relaxes its conditions.
 
-Storage computes no effective cost, weight or eligibility and performs no unit conversion. Attunement wording does not yet model the source's structured attunement index. False presence flags leave inactive storage intact; EditCondition metadata guides authoring without enforcing validity.
+Storage computes no effective cost, weight or eligibility and performs no unit conversion. Each attunement value can also carry an independent [structured index](shared-models.md#attunement-index). Group boundaries, alternative alignment combinations, explicit boolean presence and unsupported fragments are retained. Index completeness describes represented input; it does not establish prose completeness or eligibility. False presence flags leave inactive storage intact; EditCondition metadata guides authoring without enforcing validity.
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. Foundation storage alone does not import them. Shared price/mass/readable attunement values now exist; their source mappings, structured attunement/index semantics and equipment facts remain prerequisites for full item conversion. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. Foundation storage alone does not import them. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and equipment facts remain prerequisites for full item conversion. Source data and generated variants remain externally supplied; none is bundled with this model.

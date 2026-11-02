@@ -1,9 +1,35 @@
-// Reviewed public storage contract, extended and reviewed as test expectations on 2026-11-01.
+// Reviewed public storage contract, extended and reviewed as test expectations on 2026-11-03.
 // This file is compiled; the suite never reads source headers or external data.
 const TArray<FModelContract>& ModelContracts()
 {
 	static const TArray<FModelContract> Cases =
 	{
+		{ TEXT("FDnd5eAbilityScoreMinimum"), &FDnd5eAbilityScoreMinimum::StaticStruct, {
+			{ TEXT("Ability"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Minimum"), TEXT("int32"), TEXT("0") },
+		} },
+		{ TEXT("FDnd5eAlignmentRequirement"), &FDnd5eAlignmentRequirement::StaticStruct, {
+			{ TEXT("RequiredTraits"), TEXT("FGameplayTagContainer"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eAttunementIndexGroup"), &FDnd5eAttunementIndexGroup::StaticStruct, {
+			{ TEXT("RecordRequirements"), TEXT("TArray<FDnd5eRecordSelector>"), TEXT("") },
+			{ TEXT("LanguageProficiencies"), TEXT("TArray<FString>"), TEXT("") },
+			{ TEXT("CreatureType"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Size"), TEXT("EDnd5eSize"), TEXT("EDnd5eSize::Unspecified") },
+			{ TEXT("bHasAlignmentFilter"), TEXT("bool"), TEXT("false") },
+			{ TEXT("AlignmentOptions"), TEXT("TArray<FDnd5eAlignmentRequirement>"), TEXT("") },
+			{ TEXT("MinimumAbilityScores"), TEXT("TArray<FDnd5eAbilityScoreMinimum>"), TEXT("") },
+			{ TEXT("bHasSpellcasting"), TEXT("bool"), TEXT("false") },
+			{ TEXT("bSpellcasting"), TEXT("bool"), TEXT("false") },
+			{ TEXT("bHasPsionics"), TEXT("bool"), TEXT("false") },
+			{ TEXT("bPsionics"), TEXT("bool"), TEXT("false") },
+			{ TEXT("UnsupportedContent"), TEXT("TArray<FDnd5eUnsupportedContent>"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eAttunementIndex"), &FDnd5eAttunementIndex::StaticStruct, {
+			{ TEXT("Groups"), TEXT("TArray<FDnd5eAttunementIndexGroup>"), TEXT("") },
+			{ TEXT("bIsFullyRepresented"), TEXT("bool"), TEXT("false") },
+			{ TEXT("UnsupportedContent"), TEXT("TArray<FDnd5eUnsupportedContent>"), TEXT("") },
+		} },
 		{ TEXT("FDnd5eMass"), &FDnd5eMass::StaticStruct, {
 			{ TEXT("Amount"), TEXT("FDnd5eNumber"), TEXT("") },
 			{ TEXT("Unit"), TEXT("EDnd5eMassUnit"), TEXT("EDnd5eMassUnit::Unspecified") },
@@ -17,6 +43,8 @@ const TArray<FModelContract>& ModelContracts()
 		{ TEXT("FDnd5eAttunementRequirement"), &FDnd5eAttunementRequirement::StaticStruct, {
 			{ TEXT("Mode"), TEXT("EDnd5eAttunementMode"), TEXT("EDnd5eAttunementMode::Unspecified") },
 			{ TEXT("Conditions"), TEXT("TArray<FDnd5eInlineContent>"), TEXT("") },
+			{ TEXT("bHasIndex"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Index"), TEXT("FDnd5eAttunementIndex"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eItemDefinitionSelector"), &FDnd5eItemDefinitionSelector::StaticStruct, {
 			{ TEXT("Category"), TEXT("FGameplayTag"), TEXT("") },

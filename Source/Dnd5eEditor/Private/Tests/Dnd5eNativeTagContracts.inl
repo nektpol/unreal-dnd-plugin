@@ -1,4 +1,4 @@
-// Reviewed native identities, frozen 2026-11-01.
+// Reviewed native identities, frozen 2026-11-03.
 { &Dnd5e::Content::Block::Unsupported, TEXT("Dnd5e.Content.Block.Unsupported") },
 { &Dnd5e::Content::Block::Section, TEXT("Dnd5e.Content.Block.Section") },
 { &Dnd5e::Content::Block::Paragraph, TEXT("Dnd5e.Content.Block.Paragraph") },
@@ -169,3 +169,9 @@
 { &Dnd5e::Item::Rarity::Unknown, TEXT("Dnd5e.Item.Rarity.Unknown") },
 { &Dnd5e::Item::Rarity::UnknownMagic, TEXT("Dnd5e.Item.Rarity.UnknownMagic") },
 { &Dnd5e::Item::Rarity::Varies, TEXT("Dnd5e.Item.Rarity.Varies") },
+{ &Dnd5e::Alignment::Lawful, TEXT("Dnd5e.Alignment.Lawful") },
+{ &Dnd5e::Alignment::Neutral, TEXT("Dnd5e.Alignment.Neutral") },
+{ &Dnd5e::Alignment::Chaotic, TEXT("Dnd5e.Alignment.Chaotic") },
+{ &Dnd5e::Alignment::Good, TEXT("Dnd5e.Alignment.Good") },
+{ &Dnd5e::Alignment::Evil, TEXT("Dnd5e.Alignment.Evil") },
+{ &Dnd5e::Alignment::Unaligned, TEXT("Dnd5e.Alignment.Unaligned") },

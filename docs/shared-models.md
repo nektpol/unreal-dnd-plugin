@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [automated suite](testing.md) covers reviewed runtime schemas/defaults, reflected fields/access flags, copy/serialization, enums/native tags, Content helpers, and reader/catalog/editor behavior. The current item model reuses the record header, shared Content, price, mass and readable attunement values; its domain composition is documented in [Item model](item-model.md). The [catalog API](spell-catalog.md#spell-selector-matching) and [JSON normalizer](spell-reference-normalization.md) retain their separate spell contracts. Complete semantic rule interpretation, omitted-source/other-domain reference resolution and rich rendering remain pending.
+Status: current shared declarations and remaining logical contracts. The [automated suite](testing.md) covers reviewed runtime schemas/defaults, reflected fields/access flags, copy/serialization, enums/native tags, Content helpers, and reader/catalog/editor behavior. The current item model reuses the record header, shared Content, price, mass, readable attunement and structured index values; its domain composition is documented in [Item model](item-model.md). The [catalog API](spell-catalog.md#spell-selector-matching) and [JSON normalizer](spell-reference-normalization.md) retain their separate spell contracts. Complete semantic rule interpretation, omitted-source/other-domain reference resolution and rich rendering remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -33,12 +33,15 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Reference resolution status](#reference-resolution-status)
 - [Diagnostics](#diagnostics)
 - [Reusable values](#reusable-values)
+    - [Ability-score minimum](#ability-score-minimum)
+    - [Alignment requirement](#alignment-requirement)
     - [Dice expression](#dice-expression)
     - [D20 roll](#d20-roll)
     - [Scaled roll](#scaled-roll)
     - [Numeric value](#numeric-value)
     - [Media reference](#media-reference)
 - [Measurements and timing](#measurements-and-timing)
+    - [Size](#size)
     - [Mass](#mass)
     - [Distance](#distance)
     - [Range](#range)
@@ -52,6 +55,8 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Value presence](#value-presence)
     - [Price](#price)
     - [Attunement requirement](#attunement-requirement)
+        - [Attunement index group](#attunement-index-group)
+        - [Attunement index](#attunement-index)
     - [Components](#components)
         - [Material component](#material-component)
     - [Supporting value tags](#supporting-value-tags)
@@ -210,6 +215,39 @@ The JSON adapter composes arrays of this type into [FDnd5eJsonSpellReadResult](.
 
 Values that domain models and content payloads can share without requiring a document wrapper.
 
+### Ability-score minimum
+
+[FDnd5eAbilityScoreMinimum](../Source/Dnd5e/Public/Values/Dnd5eAbilityScoreMinimum.h) is an exported, editable Blueprint value describing an inclusive whole-score threshold.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Ability | `FGameplayTag`, invalid | One shared Ability leaf |
+| Minimum | `int32 = 0` | Inclusive threshold |
+
+The containing array supplies presence. Construction does not validate the ability identity or threshold, and this value does not inspect a character.
+
+### Alignment requirement
+
+[FDnd5eAlignmentRequirement](../Source/Dnd5e/Public/Values/Dnd5eAlignmentRequirement.h) stores composable identities under the shared `Dnd5e.Alignment` namespace: Lawful, Neutral, Chaotic, Good, Evil and Unaligned.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| RequiredTraits | `FGameplayTagContainer`, empty | One alignment requirement option, interpreted as a whole combination |
+
+| Combination | Represented restriction |
+| --- | --- |
+| Lawful + Good / Evil | Lawful Good / Lawful Evil |
+| Chaotic + Good / Evil | Chaotic Good / Chaotic Evil |
+| Neutral + Good / Evil | Neutral Good / Neutral Evil |
+| Lawful / Chaotic + Neutral | Lawful Neutral / Chaotic Neutral |
+| Neutral alone | True Neutral |
+| Good, Evil, Lawful or Chaotic alone | Any grid alignment with that trait |
+| Unaligned alone | Unaligned, separately from neutral and missing data |
+
+The singleton Neutral convention means a tag-subset check is insufficient: both Neutral Good and Lawful Neutral contain Neutral, but neither is True Neutral. A future interpreter must recognize the whole combination. An "any neutral alignment" restriction requires separate options for its allowed combinations; it is not the singleton Neutral encoding. Empty, conflicting or unsupported combinations are not implicit wildcards. Construction and serialization do not enforce these semantic contracts; no alignment matcher or validator is implemented.
+
+Alternatives stay in separate values. Lawful Good OR Chaotic Evil is two FDnd5eAlignmentRequirement entries, not one flattened container containing all four traits. Unaligned does not automatically satisfy a partial grid-alignment restriction. Source alignment tokens require explicit combination-aware normalization before creating these values.
+
 ### Dice expression
 
 Implemented: exported, Blueprint-visible `FDnd5eDiceExpression` is declared in `Source/Dnd5e/Public/Values/Dnd5eDiceExpression.h`. This shared value can be used by descriptions and future spell, weapon, or creature models without depending on a content wrapper. Its storage declaration was source-reviewed and compiled in the host editor target on 2026-10-28; expression parsing and evaluation are not implemented.
@@ -294,6 +332,10 @@ The inspected renderer supports both internal and external media hrefs. All imag
 ## Measurements and timing
 
 Reusable measurements, geometry, and timing values. All declarations below are exported and Blueprint-visible. Source-reviewed and compiled in the host editor target on 2026-10-29 using the temporary `-DisablePlugin=Fab` override. Storage declarations are implemented; semantic validation and source conversion remain unimplemented. Tests were not run.
+
+### Size
+
+[EDnd5eSize](../Source/Dnd5e/Public/Values/Dnd5eSize.h) is a Blueprint-visible uint8 enum: Unspecified, Tiny, Small, Medium, Large, Huge and Gargantuan. It represents one size without introducing Size Gameplay Tags. Composite or unsupported source sizes require another representation or explicit retention; they must not be silently reduced to one member.
 
 ### Mass
 
@@ -432,8 +474,45 @@ Present with a zero Copper amount differs from Unspecified and ExplicitNull. Fiv
 | --- | --- | --- |
 | Mode | `EDnd5eAttunementMode = EDnd5eAttunementMode::Unspecified` | Explicit declaration; Unspecified makes no NotRequired assertion |
 | Conditions | `TArray<FDnd5eInlineContent>`, empty | Ordered readable condition wording with shared inline structure |
+| bHasIndex | `bool = false` | Whether a separate structured index was supplied |
+| Index | `FDnd5eAttunementIndex`, default | Active when bHasIndex is true |
 
-Conditions are not an eligibility predicate. Structured source attunement/index fields still need models and mappings. A containing item can retain primary and alternative declarations independently; this type does not select one, evaluate eligibility or track attuned equipment.
+Conditions retain readable wording independently of the structured index. Missing and supplied empty indexes differ through bHasIndex; index presence does not infer Mode. A containing item retains primary and alternative declarations independently. Neither layer selects a declaration, evaluates eligibility or tracks attuned equipment. Source importing and index validation remain pending.
+
+#### Attunement index group
+
+[FDnd5eAttunementIndexGroup](../Source/Dnd5e/Public/Values/Dnd5eAttunementIndex.h) keeps conditions reported together in one group. The containing index stores alternative groups; AlignmentOptions stores alternatives within this group.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| RecordRequirements | `TArray<FDnd5eRecordSelector>`, empty | Class/species/background membership or skill proficiency, distinguished by Category |
+| LanguageProficiencies | `TArray<FString>`, empty | Explicit language terms, without invented IDs/publications |
+| CreatureType | `FGameplayTag`, invalid | One existing Creature::Type leaf |
+| Size | `EDnd5eSize = EDnd5eSize::Unspecified` | One represented size |
+| bHasAlignmentFilter | `bool = false` | Whether an alignment restriction is supplied |
+| AlignmentOptions | `TArray<FDnd5eAlignmentRequirement>`, empty | Separate allowed combinations, active when the flag is true |
+| MinimumAbilityScores | `TArray<FDnd5eAbilityScoreMinimum>`, empty | Inclusive ability-score thresholds |
+| bHasSpellcasting | `bool = false` | Whether the spellcasting assertion is supplied |
+| bSpellcasting | `bool = false` | Supplied value, active when its flag is true |
+| bHasPsionics | `bool = false` | Whether the psionics assertion is supplied |
+| bPsionics | `bool = false` | Supplied value, active when its flag is true |
+| UnsupportedContent | `TArray<FDnd5eUnsupportedContent>`, empty | Unknown/unrepresentable fragments retained within this group |
+
+Explicit false assertions differ from absence. An active alignment filter with an empty option array is distinct from no filter; an empty option is not automatically usable. Record selectors retain omitted publications without borrowing the item's publication. Categories explain membership/proficiency roles; no reference lookup is performed.
+
+#### Attunement index
+
+FDnd5eAttunementIndex is declared in the same header.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Groups | `TArray<FDnd5eAttunementIndexGroup>`, empty | Ordered alternative groups with their boundaries preserved |
+| bIsFullyRepresented | `bool = false` | All supplied index components are represented without unsupported remainder |
+| UnsupportedContent | `TArray<FDnd5eUnsupportedContent>`, empty | Index-level malformed/unsupported fragments |
+
+Completeness describes the supplied index, not complete prose interpretation, reference resolution or character eligibility. Any retained unsupported remainder requires false under the intended authoring/adapter contract. The structs store the flag without enforcing it. A future adapter must retain unknown clauses and emit diagnostics rather than silently widening a requirement. Empty/default groups do not establish eligibility.
+
+These types describe reference-data restrictions and preservation. They add no source reader, evaluator, resolver, group matcher, validation helper or automatic prose-to-rule conversion.
 
 These shared structs are exported and Blueprint-visible. Editor EditCondition metadata enables active storage; it does not clear inactive payloads or enforce semantic validity. Copies and serialization retain stored data. Nonnegative finite fixed quantities are the intended authoring contract; validators are not added by these declarations.
 
