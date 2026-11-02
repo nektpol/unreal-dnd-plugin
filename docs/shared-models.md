@@ -1,6 +1,6 @@
 # Shared models
 
-Status: current shared declarations and remaining logical contracts. The [543-case standard suite](testing.md) covers 67 reviewed runtime model schemas/defaults and 298 reflected fields, copy/serialization, 17 enums, Content helpers, spell readers/catalogs/loading/reference lookup/selector matching, and the separate [editor selection/session/browser integration](editor-dataset-loading.md). The spell-specific selector request/status is defined in the [catalog API](spell-catalog.md#spell-selector-matching); the separate [JSON normalizer](spell-reference-normalization.md) reconciles a retained spell token with loaded IDs. Editor settings and the transient browser selection object are not additional domain structs. Opt-in auditing is recorded separately. Earlier notes retain their historical scope. Complete semantic rule interpretation, omitted-source/other-domain reference normalization, and rich Content rendering remain pending.
+Status: current shared declarations and remaining logical contracts. The [automated suite](testing.md) covers reviewed runtime schemas/defaults, reflected fields/access flags, copy/serialization, enums/native tags, Content helpers, and reader/catalog/editor behavior. The current item model reuses the record header, shared Content, price, mass and readable attunement values; its domain composition is documented in [Item model](item-model.md). The [catalog API](spell-catalog.md#spell-selector-matching) and [JSON normalizer](spell-reference-normalization.md) retain their separate spell contracts. Complete semantic rule interpretation, omitted-source/other-domain reference resolution and rich rendering remain pending.
 
 This document is the canonical definition of reusable value and content types. Domain documents link here and define only their own composition and context. Keep one definition per shared concept rather than copying it into each domain document or creating a separate document for every struct.
 
@@ -13,6 +13,7 @@ The implemented Content and supporting value types are a normalized model, not t
 ## Contents
 
 - [Selectors, destinations, and supplementary values](#selectors-destinations-and-supplementary-values)
+  - [Item definition selector](#item-definition-selector)
   - [FDnd5eRecordSelector](#fdnd5erecordselector)
   - [FDnd5eClassFeatureSelector](#fdnd5eclassfeatureselector)
   - [FDnd5eSourceMembership](#fdnd5esourcemembership)
@@ -38,6 +39,7 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Numeric value](#numeric-value)
     - [Media reference](#media-reference)
 - [Measurements and timing](#measurements-and-timing)
+    - [Mass](#mass)
     - [Distance](#distance)
     - [Range](#range)
     - [Area](#area)
@@ -47,6 +49,9 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Casting time](#casting-time)
 - [Costs and components](#costs-and-components)
     - [Money](#money)
+    - [Value presence](#value-presence)
+    - [Price](#price)
+    - [Attunement requirement](#attunement-requirement)
     - [Components](#components)
         - [Material component](#material-component)
     - [Supporting value tags](#supporting-value-tags)
@@ -290,6 +295,17 @@ The inspected renderer supports both internal and external media hrefs. All imag
 
 Reusable measurements, geometry, and timing values. All declarations below are exported and Blueprint-visible. Source-reviewed and compiled in the host editor target on 2026-10-29 using the temporary `-DisablePlugin=Fab` override. Storage declarations are implemented; semantic validation and source conversion remain unimplemented. Tests were not run.
 
+### Mass
+
+`FDnd5eMass` and `EDnd5eMassUnit : uint8` are declared in [Dnd5eMass.h](../Source/Dnd5e/Public/Values/Dnd5eMass.h). Units are Unspecified, Ounces, Pounds, Grams and Kilograms.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Amount | `FDnd5eNumber`, default | Declared quantity, including fractional/source-literal representation |
+| Unit | `EDnd5eMassUnit = EDnd5eMassUnit::Unspecified` | One supplied mass unit |
+
+Storage preserves the quantity and unit without conversion or rounding. The containing model owns presence; a default numeric value does not assert a supplied zero. Ordinary source item weight is in pounds even when a renderer chooses ounces for display. No item reader maps that input yet.
+
 ### Distance
 
 `EDnd5eDistanceUnit : uint8` and `FDnd5eDistance` are in `Values/Dnd5eDistance.h` under the runtime public directory. Enum members: Unspecified, Inches, Feet, Yards, Miles.
@@ -390,6 +406,36 @@ Reusable monetary and component requirements. The declarations are exported and 
 | Currency | `EDnd5eCurrency = EDnd5eCurrency::Unspecified` | Denomination of that amount |
 
 Supplied amounts must be nonnegative and have a known denomination. Zero is an explicit amount; Unspecified is different. Costs hold arrays of these values so mixed denominations remain separate, such as five gold and one copper. Preserve denominations without automatic combining or conversion. The inspected spell material-cost field maps to one Copper entry. This is not a wallet.
+
+### Value presence
+
+[EDnd5eValuePresence](../Source/Dnd5e/Public/Values/Dnd5eValuePresence.h) is a Blueprint-visible uint8 enum: Unspecified, ExplicitNull and Present. It distinguishes an unrepresented value, an explicit null, and an explicitly supplied value (including zero). It records value state; inheritance, template overrides and existing boolean presence flags retain their separate contracts.
+
+### Price
+
+[FDnd5ePrice](../Source/Dnd5e/Public/Values/Dnd5ePrice.h) composes Money and Number.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| CostPresence | `EDnd5eValuePresence = EDnd5eValuePresence::Unspecified` | Whether fixed cost is absent, explicitly null or supplied |
+| Cost | `TArray<FDnd5eMoney>`, empty | Ordered denominations; active when CostPresence is Present |
+| bHasMultiplier | `bool = false` | Whether a separate multiplier is supplied |
+| Multiplier | `FDnd5eNumber`, default | Active when bHasMultiplier is true |
+
+Present with a zero Copper amount differs from Unspecified and ExplicitNull. Five Gold plus one Copper stays a two-entry array. A multiplier-only price can have Unspecified fixed cost; storage does not find a base price or compute an effective price. Ordinary source item value uses copper unless a custom currency conversion applies; that source mapping remains pending.
+
+### Attunement requirement
+
+[FDnd5eAttunementRequirement](../Source/Dnd5e/Public/Values/Dnd5eAttunementRequirement.h) represents a declared mode and readable wording. `EDnd5eAttunementMode : uint8` contains Unspecified, NotRequired, Required and Optional.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Mode | `EDnd5eAttunementMode = EDnd5eAttunementMode::Unspecified` | Explicit declaration; Unspecified makes no NotRequired assertion |
+| Conditions | `TArray<FDnd5eInlineContent>`, empty | Ordered readable condition wording with shared inline structure |
+
+Conditions are not an eligibility predicate. Structured source attunement/index fields still need models and mappings. A containing item can retain primary and alternative declarations independently; this type does not select one, evaluate eligibility or track attuned equipment.
+
+These shared structs are exported and Blueprint-visible. Editor EditCondition metadata enables active storage; it does not clear inactive payloads or enforce semantic validity. Copies and serialization retain stored data. Nonnegative finite fixed quantities are the intended authoring contract; validators are not added by these declarations.
 
 ### Components
 
@@ -1148,3 +1194,16 @@ The spell adapter maps generic spell/item/creature/condition/status/action/skill
 Presentation additionally supports Content.Presentation.HangingList and NoWrap. Hanging lists use MarkerStyle=None while preserving labels/body order; fractional column weights and known alignments coexist with NoWrap. Unknown layout evidence remains retained, and evidence accumulation merges existing JSON instead of overwriting it.
 
 See [supplementary input and metadata](spell-data-inputs.md) and [Content validation](content-validation.md) for reader/join/policy/validation behavior. None of these value declarations loads resources or changes character state.
+
+### Item definition selector
+
+[FDnd5eItemDefinitionSelector](../Source/Dnd5e/Public/Items/Dnd5eItemTypes.h) is exported, editable and Blueprint-visible. Item type/property definitions use abbreviation/publication keys; the selector is distinct from the existing named-record selector. It represents selection data, not a resolved target or an inheritance operation.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Category | `FGameplayTag`, invalid | ItemType or ItemProperty definition domain |
+| Abbreviation | `FString`, empty | Requested definition abbreviation, preserving spelling |
+| bHasSource | `bool`, false | Whether a publication is explicitly supplied |
+| SourceId | `FString`, empty | Explicit publication, active only when its flag is true |
+
+No default source, owning-item publication, dataset scope or target ID is invented. The future resolver receives an explicit scope/policy. This is storage, not an implemented parser/validator: construction does not reject incomplete selections or assign categories. See the [item composition](item-model.md) and [test evidence](testing.md).

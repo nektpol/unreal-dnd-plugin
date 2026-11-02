@@ -8,6 +8,7 @@
 #include "Dnd5eTags.h"
 #include "Content/Dnd5eContentValidationLibrary.h"
 #include "Spells/Dnd5eSpell.h"
+#include "Items/Dnd5eItem.h"
 #include "Spells/Dnd5eSpellContentLibrary.h"
 #include "Values/Dnd5eMoney.h"
 #include "Values/Dnd5eTimeSpan.h"

@@ -88,6 +88,8 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Hazard, "Dnd5e.Category.Hazard", "Hazard selector domain");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Rule, "Dnd5e.Category.Rule", "Rule selector domain");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ClassFeature, "Dnd5e.Category.ClassFeature", "Class-feature selector domain");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemType, "Dnd5e.Category.ItemType", "Item type definition selector");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemProperty, "Dnd5e.Category.ItemProperty", "Item property definition selector");
 	}
 
 	namespace Document::Kind
@@ -173,6 +175,20 @@ namespace Dnd5e
 	namespace Trait
 	{
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Concentration, "Dnd5e.Trait.Concentration", "Requires concentration in the context carrying this trait; not active character state");
+	}
+
+	namespace Item::Rarity
+	{
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(None, "Dnd5e.Item.Rarity.None", "Source explicitly reports no rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Common, "Dnd5e.Item.Rarity.Common", "Common item rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Uncommon, "Dnd5e.Item.Rarity.Uncommon", "Uncommon item rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Rare, "Dnd5e.Item.Rarity.Rare", "Rare item rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(VeryRare, "Dnd5e.Item.Rarity.VeryRare", "Very rare item rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Legendary, "Dnd5e.Item.Rarity.Legendary", "Legendary item rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Artifact, "Dnd5e.Item.Rarity.Artifact", "Artifact item rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Unknown, "Dnd5e.Item.Rarity.Unknown", "Source reports unknown rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(UnknownMagic, "Dnd5e.Item.Rarity.UnknownMagic", "Source reports unknown magical rarity");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Varies, "Dnd5e.Item.Rarity.Varies", "Source reports variable rarity");
 	}
 
 	namespace Attack::Mode

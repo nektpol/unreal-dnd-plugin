@@ -4,6 +4,45 @@ const TArray<FModelContract>& ModelContracts()
 {
 	static const TArray<FModelContract> Cases =
 	{
+		{ TEXT("FDnd5eMass"), &FDnd5eMass::StaticStruct, {
+			{ TEXT("Amount"), TEXT("FDnd5eNumber"), TEXT("") },
+			{ TEXT("Unit"), TEXT("EDnd5eMassUnit"), TEXT("EDnd5eMassUnit::Unspecified") },
+		} },
+		{ TEXT("FDnd5ePrice"), &FDnd5ePrice::StaticStruct, {
+			{ TEXT("CostPresence"), TEXT("EDnd5eValuePresence"), TEXT("EDnd5eValuePresence::Unspecified") },
+			{ TEXT("Cost"), TEXT("TArray<FDnd5eMoney>"), TEXT("") },
+			{ TEXT("bHasMultiplier"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Multiplier"), TEXT("FDnd5eNumber"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eAttunementRequirement"), &FDnd5eAttunementRequirement::StaticStruct, {
+			{ TEXT("Mode"), TEXT("EDnd5eAttunementMode"), TEXT("EDnd5eAttunementMode::Unspecified") },
+			{ TEXT("Conditions"), TEXT("TArray<FDnd5eInlineContent>"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItemDefinitionSelector"), &FDnd5eItemDefinitionSelector::StaticStruct, {
+			{ TEXT("Category"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Abbreviation"), TEXT("FString"), TEXT("") },
+			{ TEXT("bHasSource"), TEXT("bool"), TEXT("false") },
+			{ TEXT("SourceId"), TEXT("FString"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItem"), &FDnd5eItem::StaticStruct, {
+			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
+			{ TEXT("bHasType"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Type"), TEXT("FDnd5eItemDefinitionSelector"), TEXT("") },
+			{ TEXT("Properties"), TEXT("TArray<FDnd5eItemDefinitionSelector>"), TEXT("") },
+			{ TEXT("Rarity"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Description"), TEXT("TArray<FDnd5eContentBlock>"), TEXT("") },
+			{ TEXT("bHasSupplementaryContent"), TEXT("bool"), TEXT("false") },
+			{ TEXT("SupplementaryContent"), TEXT("FDnd5eSupplementaryContent"), TEXT("") },
+			{ TEXT("Price"), TEXT("FDnd5ePrice"), TEXT("") },
+			{ TEXT("bHasWeight"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Weight"), TEXT("FDnd5eMass"), TEXT("") },
+			{ TEXT("bHasWeightMultiplier"), TEXT("bool"), TEXT("false") },
+			{ TEXT("WeightMultiplier"), TEXT("FDnd5eNumber"), TEXT("") },
+			{ TEXT("WeightNote"), TEXT("TArray<FDnd5eInlineContent>"), TEXT("") },
+			{ TEXT("Attunement"), TEXT("FDnd5eAttunementRequirement"), TEXT("") },
+			{ TEXT("bHasAlternativeAttunement"), TEXT("bool"), TEXT("false") },
+			{ TEXT("AlternativeAttunement"), TEXT("FDnd5eAttunementRequirement"), TEXT("") },
+		} },
 		{ TEXT("FDnd5eClassFeatureSelector"), &FDnd5eClassFeatureSelector::StaticStruct, {
 			{ TEXT("ClassName"), TEXT("FString"), TEXT(""), false },
 			{ TEXT("bHasClassSource"), TEXT("bool"), TEXT("false"), false },
