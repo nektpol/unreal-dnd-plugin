@@ -35,6 +35,8 @@ The implemented Content and supporting value types are a normalized model, not t
 - [Reusable values](#reusable-values)
     - [Ability-score minimum](#ability-score-minimum)
     - [Alignment requirement](#alignment-requirement)
+    - [Damage expression](#damage-expression)
+    - [Armor-class definition](#armor-class-definition)
     - [Dice expression](#dice-expression)
     - [D20 roll](#d20-roll)
     - [Scaled roll](#scaled-roll)
@@ -44,6 +46,7 @@ The implemented Content and supporting value types are a normalized model, not t
     - [Size](#size)
     - [Mass](#mass)
     - [Distance](#distance)
+    - [Attack range](#attack-range)
     - [Range](#range)
     - [Area](#area)
         - [Named dimensions](#named-dimensions)
@@ -248,6 +251,30 @@ The singleton Neutral convention means a tag-subset check is insufficient: both 
 
 Alternatives stay in separate values. Lawful Good OR Chaotic Evil is two FDnd5eAlignmentRequirement entries, not one flattened container containing all four traits. Unaligned does not automatically satisfy a partial grid-alignment restriction. Source alignment tokens require explicit combination-aware normalization before creating these values.
 
+### Damage expression
+
+[FDnd5eDamageExpression](../Source/Dnd5e/Public/Values/Dnd5eDamageExpression.h) pairs a supplied expression with one damage type.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Amount | `FDnd5eDiceExpression`, default | Supplied expression and syntax, including a constant expression |
+| Type | `FGameplayTag`, invalid | One existing Damage::Type identity |
+
+Expressions such as `1`, `1d8` and `2d6+2` remain text in their declared grammar. This type neither rolls nor evaluates them. The containing model owns presence; default storage does not assert zero damage. Multiple amount/type pairs can be composed separately without flattening their types. Existing spell storage is unchanged.
+
+### Armor-class definition
+
+[FDnd5eArmorClassDefinition](../Source/Dnd5e/Public/Values/Dnd5eArmorClassDefinition.h) describes an AC base/bonus and its Dexterity contribution. The header declares two Blueprint-visible uint8 enums: EDnd5eArmorClassValueKind (Unspecified, Base, Bonus) and EDnd5eArmorClassDexterityMode (Unspecified, NotAdded, Uncapped, Capped).
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Value | `FDnd5eNumber`, default | Represented base value or bonus amount |
+| Kind | `EDnd5eArmorClassValueKind = EDnd5eArmorClassValueKind::Unspecified` | Whether Value is a base or additive bonus |
+| DexterityMode | `EDnd5eArmorClassDexterityMode = EDnd5eArmorClassDexterityMode::Unspecified` | Whether/how the Dexterity modifier contributes |
+| DexterityModifierMaximum | `int32 = 0` | Upper bound on the modifier, active only when mode is Capped |
+
+The cap concerns the modifier, not the ability score, and does not impose a minimum. Unspecified behavior differs from NotAdded. Value alone does not establish its role: a shield bonus and a base can store the same number. The containing model owns overall presence. Storage does not choose a formula, calculate final AC, combine equipment or enforce validity. Arbitrary formulas need another representation or retained unsupported evidence; source mapping remains pending.
+
 ### Dice expression
 
 Implemented: exported, Blueprint-visible `FDnd5eDiceExpression` is declared in `Source/Dnd5e/Public/Values/Dnd5eDiceExpression.h`. This shared value can be used by descriptions and future spell, weapon, or creature models without depending on a content wrapper. Its storage declaration was source-reviewed and compiled in the host editor target on 2026-10-28; expression parsing and evaluation are not implemented.
@@ -358,6 +385,18 @@ Storage preserves the quantity and unit without conversion or rounding. The cont
 | Unit | `EDnd5eDistanceUnit = EDnd5eDistanceUnit::Unspecified` | Supplied measurement unit |
 
 Amount uses the existing numeric value: select Integer for the observed integral spell measurements; preserve decimal/literal representations under the numeric contract when needed. An unspecified amount is not zero. Supplied distances require a finite nonnegative amount and a known unit; context may impose stricter constraints. Preserve units rather than converting to Unreal centimeters. Self, Touch, Sight, and Unlimited remain range classifications, not measurement units.
+
+### Attack range
+
+[FDnd5eAttackRange](../Source/Dnd5e/Public/Values/Dnd5eAttackRange.h) composes normal and optional long distances. It supplements the separate one-distance/kind FDnd5eRange model.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Normal | `FDnd5eDistance`, default | Represented normal attack distance |
+| bHasLong | `bool = false` | Whether a separate long distance is supplied |
+| Long | `FDnd5eDistance`, default | Active when bHasLong is true |
+
+A single distance does not manufacture a long distance. Quantities, units and inactive storage remain independent through copying/serialization. The containing model owns overall presence. This type does not replace spell range, describe melee reach, convert units, determine disadvantage or decide whether an attack is possible.
 
 ### Range
 

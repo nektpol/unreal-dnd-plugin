@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement index storage are implemented. Item JSON importing, index normalization/validation, equipment facts, definition lookup, copy/variant assembly, item-specific validation, and an item catalog remain pending. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data storage are implemented. Item JSON importing, index normalization/validation, equipment source mapping, definition lookup, copy/variant assembly, item-specific validation, and an item catalog remain pending. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -11,6 +11,9 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 - [Rarity](#rarity)
 - [Content and presence](#content-and-presence)
 - [Price, mass and attunement](#price-mass-and-attunement)
+- [Weapon and armor data](#weapon-and-armor-data)
+  - [Weapon data](#weapon-data)
+  - [Armor data](#armor-data)
 - [Remaining work](#remaining-work)
 
 ## Fields
@@ -34,6 +37,10 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 | Attunement | `FDnd5eAttunementRequirement`, default | Primary declaration |
 | bHasAlternativeAttunement | `bool = false` | Whether an alternative is supplied |
 | AlternativeAttunement | `FDnd5eAttunementRequirement`, default | Independent alternative declaration, active when supplied |
+| bHasWeaponData | `bool = false` | Whether WeaponData is represented |
+| WeaponData | `FDnd5eItemWeaponData`, default | Active when its flag is true |
+| bHasArmorData | `bool = false` | Whether ArmorData is represented |
+| ArmorData | `FDnd5eItemArmorData`, default | Active when its flag is true |
 
 Default construction supplies no Category::Item or canonical key. Authors/adapters provide identity deliberately. Empty Properties means no normalized properties have been represented; this declaration does not define whether a missing raw template field inherits or an explicit empty array clears earlier properties. The future assembly stage must retain source presence/override evidence.
 
@@ -57,6 +64,43 @@ The canonical [Price](shared-models.md#price), [Mass](shared-models.md#mass) and
 
 Storage computes no effective cost, weight or eligibility and performs no unit conversion. Each attunement value can also carry an independent [structured index](shared-models.md#attunement-index). Group boundaries, alternative alignment combinations, explicit boolean presence and unsupported fragments are retained. Index completeness describes represented input; it does not establish prose completeness or eligibility. False presence flags leave inactive storage intact; EditCondition metadata guides authoring without enforcing validity.
 
+## Weapon and armor data
+
+Both exported Blueprint-visible values are declared in [Dnd5eItemEquipment.h](../Source/Dnd5e/Public/Items/Dnd5eItemEquipment.h). Their independent flags on FDnd5eItem represent supplied data, not equipped state or a mutually exclusive type assertion. Default construction does not infer an item type or classification.
+
+### Weapon data
+
+EDnd5eWeaponCategory is a Blueprint-visible uint8 enum: Unspecified, Simple, Martial. Ranged/firearm are separate concepts, not members of this category.
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Category | `EDnd5eWeaponCategory = EDnd5eWeaponCategory::Unspecified` | Represented simple/martial category |
+| bHasPrimaryDamage | `bool = false` | Whether PrimaryDamage is supplied |
+| PrimaryDamage | `FDnd5eDamageExpression`, default | Active when its flag is true |
+| bHasAlternateDamage | `bool = false` | Whether separate AlternateDamage is supplied |
+| AlternateDamage | `FDnd5eDamageExpression`, default | Active when its flag is true |
+| bHasRange | `bool = false` | Whether attack range is supplied |
+| Range | `FDnd5eAttackRange`, default | Active when its flag is true |
+| bHasReload | `bool = false` | Whether Reload is supplied |
+| Reload | `int32 = 0` | Supplied count, active when its flag is true |
+
+The canonical [damage expression](shared-models.md#damage-expression) and [attack range](shared-models.md#attack-range) definitions own those reusable values. AlternateDamage is independent of primary damage; its use conditions are not inferred as two-handed or executed. Source property templates can refer to it later. Reload stores a count without tracking shots, consuming ammunition or performing an action. Attack mode/proficiency and property definitions retain their separate roles.
+
+### Armor data
+
+| Field | C++ type and default | Meaning |
+| --- | --- | --- |
+| bHasArmorClass | `bool = false` | Whether an AC definition is supplied |
+| ArmorClass | `FDnd5eArmorClassDefinition`, default | Active when its flag is true |
+| StrengthPresence | `EDnd5eValuePresence = EDnd5eValuePresence::Unspecified` | Absent, explicit null or supplied threshold |
+| StrengthMinimum | `FDnd5eAbilityScoreMinimum`, default | Active when Present; Ability must be the shared Strength identity |
+| bHasStealthDisadvantage | `bool = false` | Whether the stealth flag is supplied |
+| bStealthDisadvantage | `bool = false` | Supplied flag, active when its presence flag is true |
+
+Armor data composes the canonical [AC definition](shared-models.md#armor-class-definition), [value presence](shared-models.md#value-presence) and [ability-score minimum](shared-models.md#ability-score-minimum). Missing, explicit null and supplied zero Strength thresholds remain distinct, as do absent and explicitly false stealth flags. The Strength threshold describes the source armor rule without independently prohibiting wear or executing a movement penalty. AC source interpretation requires type/override context; an AC number alone does not establish shield/armor type or a formula.
+
+Editor conditions enable active payloads without clearing inactive data or validating it. Copying and reflected serialization retain both. No damage, AC, movement or equipment system is implemented.
+
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. Foundation storage alone does not import them. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and equipment facts remain prerequisites for full item conversion. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. Foundation storage alone does not import them. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and remaining item facts remain prerequisites for full item conversion. Weapon/armor declarations now exist; their source conversion and assembly rules still need implementation. Source data and generated variants remain externally supplied; none is bundled with this model.

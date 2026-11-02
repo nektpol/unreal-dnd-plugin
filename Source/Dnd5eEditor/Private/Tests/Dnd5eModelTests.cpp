@@ -84,6 +84,9 @@ namespace
 	{
 		static const TArray<FEnumContract> Cases =
 		{
+			{ TEXT("EDnd5eWeaponCategory"), &StaticEnum<EDnd5eWeaponCategory>, { TEXT("Unspecified"), TEXT("Simple"), TEXT("Martial") } },
+			{ TEXT("EDnd5eArmorClassValueKind"), &StaticEnum<EDnd5eArmorClassValueKind>, { TEXT("Unspecified"), TEXT("Base"), TEXT("Bonus") } },
+			{ TEXT("EDnd5eArmorClassDexterityMode"), &StaticEnum<EDnd5eArmorClassDexterityMode>, { TEXT("Unspecified"), TEXT("NotAdded"), TEXT("Uncapped"), TEXT("Capped") } },
 			{ TEXT("EDnd5eSize"), &StaticEnum<EDnd5eSize>, { TEXT("Unspecified"), TEXT("Tiny"), TEXT("Small"), TEXT("Medium"), TEXT("Large"), TEXT("Huge"), TEXT("Gargantuan") } },
 			{ TEXT("EDnd5eMassUnit"), &StaticEnum<EDnd5eMassUnit>, { TEXT("Unspecified"), TEXT("Ounces"), TEXT("Pounds"), TEXT("Grams"), TEXT("Kilograms") } },
 			{ TEXT("EDnd5eValuePresence"), &StaticEnum<EDnd5eValuePresence>, { TEXT("Unspecified"), TEXT("ExplicitNull"), TEXT("Present") } },

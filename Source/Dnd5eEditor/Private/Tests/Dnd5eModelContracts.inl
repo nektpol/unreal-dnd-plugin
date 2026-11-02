@@ -4,6 +4,40 @@ const TArray<FModelContract>& ModelContracts()
 {
 	static const TArray<FModelContract> Cases =
 	{
+		{ TEXT("FDnd5eDamageExpression"), &FDnd5eDamageExpression::StaticStruct, {
+			{ TEXT("Amount"), TEXT("FDnd5eDiceExpression"), TEXT("") },
+			{ TEXT("Type"), TEXT("FGameplayTag"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eAttackRange"), &FDnd5eAttackRange::StaticStruct, {
+			{ TEXT("Normal"), TEXT("FDnd5eDistance"), TEXT("") },
+			{ TEXT("bHasLong"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Long"), TEXT("FDnd5eDistance"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eArmorClassDefinition"), &FDnd5eArmorClassDefinition::StaticStruct, {
+			{ TEXT("Value"), TEXT("FDnd5eNumber"), TEXT("") },
+			{ TEXT("Kind"), TEXT("EDnd5eArmorClassValueKind"), TEXT("EDnd5eArmorClassValueKind::Unspecified") },
+			{ TEXT("DexterityMode"), TEXT("EDnd5eArmorClassDexterityMode"), TEXT("EDnd5eArmorClassDexterityMode::Unspecified") },
+			{ TEXT("DexterityModifierMaximum"), TEXT("int32"), TEXT("0") },
+		} },
+		{ TEXT("FDnd5eItemWeaponData"), &FDnd5eItemWeaponData::StaticStruct, {
+			{ TEXT("Category"), TEXT("EDnd5eWeaponCategory"), TEXT("EDnd5eWeaponCategory::Unspecified") },
+			{ TEXT("bHasPrimaryDamage"), TEXT("bool"), TEXT("false") },
+			{ TEXT("PrimaryDamage"), TEXT("FDnd5eDamageExpression"), TEXT("") },
+			{ TEXT("bHasAlternateDamage"), TEXT("bool"), TEXT("false") },
+			{ TEXT("AlternateDamage"), TEXT("FDnd5eDamageExpression"), TEXT("") },
+			{ TEXT("bHasRange"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Range"), TEXT("FDnd5eAttackRange"), TEXT("") },
+			{ TEXT("bHasReload"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Reload"), TEXT("int32"), TEXT("0") },
+		} },
+		{ TEXT("FDnd5eItemArmorData"), &FDnd5eItemArmorData::StaticStruct, {
+			{ TEXT("bHasArmorClass"), TEXT("bool"), TEXT("false") },
+			{ TEXT("ArmorClass"), TEXT("FDnd5eArmorClassDefinition"), TEXT("") },
+			{ TEXT("StrengthPresence"), TEXT("EDnd5eValuePresence"), TEXT("EDnd5eValuePresence::Unspecified") },
+			{ TEXT("StrengthMinimum"), TEXT("FDnd5eAbilityScoreMinimum"), TEXT("") },
+			{ TEXT("bHasStealthDisadvantage"), TEXT("bool"), TEXT("false") },
+			{ TEXT("bStealthDisadvantage"), TEXT("bool"), TEXT("false") },
+		} },
 		{ TEXT("FDnd5eAbilityScoreMinimum"), &FDnd5eAbilityScoreMinimum::StaticStruct, {
 			{ TEXT("Ability"), TEXT("FGameplayTag"), TEXT("") },
 			{ TEXT("Minimum"), TEXT("int32"), TEXT("0") },
@@ -70,6 +104,10 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("Attunement"), TEXT("FDnd5eAttunementRequirement"), TEXT("") },
 			{ TEXT("bHasAlternativeAttunement"), TEXT("bool"), TEXT("false") },
 			{ TEXT("AlternativeAttunement"), TEXT("FDnd5eAttunementRequirement"), TEXT("") },
+			{ TEXT("bHasWeaponData"), TEXT("bool"), TEXT("false") },
+			{ TEXT("WeaponData"), TEXT("FDnd5eItemWeaponData"), TEXT("") },
+			{ TEXT("bHasArmorData"), TEXT("bool"), TEXT("false") },
+			{ TEXT("ArmorData"), TEXT("FDnd5eItemArmorData"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eClassFeatureSelector"), &FDnd5eClassFeatureSelector::StaticStruct, {
 			{ TEXT("ClassName"), TEXT("FString"), TEXT(""), false },

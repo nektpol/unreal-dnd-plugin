@@ -8,6 +8,7 @@
 #include "Values/Dnd5eMass.h"
 #include "Values/Dnd5ePrice.h"
 #include "Values/Dnd5eAttunementRequirement.h"
+#include "Items/Dnd5eItemEquipment.h"
 #include "Dnd5eItem.generated.h"
 
 USTRUCT(BlueprintType)
@@ -48,4 +49,12 @@ struct DND5E_API FDnd5eItem
 	bool bHasAlternativeAttunement = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item", meta = (EditCondition = "bHasAlternativeAttunement"))
 	FDnd5eAttunementRequirement AlternativeAttunement;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
+	bool bHasWeaponData = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item", meta = (EditCondition = "bHasWeaponData"))
+	FDnd5eItemWeaponData WeaponData;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
+	bool bHasArmorData = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item", meta = (EditCondition = "bHasArmorData"))
+	FDnd5eItemArmorData ArmorData;
 };
