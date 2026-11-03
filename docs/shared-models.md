@@ -1324,6 +1324,6 @@ See [supplementary input and metadata](spell-data-inputs.md) and [Content valida
 | bHasSource | `bool`, false | Whether a publication is explicitly supplied |
 | SourceId | `FString`, empty | Explicit publication, active only when its flag is true |
 
-No default source, owning-item publication, dataset scope or target ID is invented. The future resolver receives an explicit scope/policy. This is storage, not an implemented parser/validator: construction does not reject incomplete selections or assign categories. See the [item composition](item-model.md) and [test evidence](testing.md).
+No default source, owning-item publication, dataset scope or target ID is invented. The definition catalog receives an explicit dataset scope and reports MissingSource when publication is omitted. This is storage, not an implemented parser/validator: construction does not reject incomplete selections or assign categories. See the [item composition](item-model.md) and [test evidence](testing.md).
 
-Type/property [definition records](item-definitions.md) compose this abbreviation selector alongside shared headers/Content. Named mastery references use FDnd5eRecordSelector and Category.ItemMastery instead; a mastery name is not an abbreviation. Registering that category adds no reader, resolver or ID-construction policy.
+Type and property requests use this abbreviation selector. The definition records use shared headers and Content. Named mastery references use FDnd5eRecordSelector and Category.ItemMastery instead; a mastery name is not an abbreviation. The definition catalog shares the named mastery selector and the abbreviation selector across its lookup API. [Catalog contract](item-definitions.md#catalog-and-blueprint-api)

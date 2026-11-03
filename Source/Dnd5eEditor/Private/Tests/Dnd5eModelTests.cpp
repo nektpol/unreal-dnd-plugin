@@ -2,6 +2,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Catalog/Dnd5eItemDefinitionCatalog.h"
 #include "Readers/Spells/Dnd5eJsonSpellReferenceNormalizer.h"
 #include "UObject/Package.h"
 
@@ -84,6 +85,7 @@ namespace
 	{
 		static const TArray<FEnumContract> Cases =
 		{
+			{ TEXT("EDnd5eItemDefinitionMatchStatus"), &StaticEnum<EDnd5eItemDefinitionMatchStatus>, { TEXT("NotAttempted"), TEXT("Matched"), TEXT("MissingSource"), TEXT("InvalidSelector"), TEXT("NoMatch") } },
 			{ TEXT("EDnd5eWeaponCategory"), &StaticEnum<EDnd5eWeaponCategory>, { TEXT("Unspecified"), TEXT("Simple"), TEXT("Martial") } },
 			{ TEXT("EDnd5eArmorClassValueKind"), &StaticEnum<EDnd5eArmorClassValueKind>, { TEXT("Unspecified"), TEXT("Base"), TEXT("Bonus") } },
 			{ TEXT("EDnd5eArmorClassDexterityMode"), &StaticEnum<EDnd5eArmorClassDexterityMode>, { TEXT("Unspecified"), TEXT("NotAdded"), TEXT("Uncapped"), TEXT("Capped") } },
