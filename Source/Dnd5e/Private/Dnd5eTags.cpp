@@ -90,6 +90,7 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ClassFeature, "Dnd5e.Category.ClassFeature", "Class-feature selector domain");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemType, "Dnd5e.Category.ItemType", "Item type definition selector");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemProperty, "Dnd5e.Category.ItemProperty", "Item property definition selector");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemMastery, "Dnd5e.Category.ItemMastery", "Item mastery definition category");
 	}
 
 	namespace Document::Kind

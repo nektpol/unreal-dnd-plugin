@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data storage are implemented. Item JSON importing, index normalization/validation, equipment source mapping, definition lookup, copy/variant assembly, item-specific validation, and an item catalog remain pending. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. Item JSON importing, index normalization/validation, equipment source mapping, definition lookup, copy/variant assembly, item-specific validation, and an item catalog remain pending. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -41,12 +41,13 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 | WeaponData | `FDnd5eItemWeaponData`, default | Active when its flag is true |
 | bHasArmorData | `bool = false` | Whether ArmorData is represented |
 | ArmorData | `FDnd5eItemArmorData`, default | Active when its flag is true |
+| Masteries | `TArray<FDnd5eItemMasteryReference>`, empty | Ordered named mastery references with independent notes |
 
 Default construction supplies no Category::Item or canonical key. Authors/adapters provide identity deliberately. Empty Properties means no normalized properties have been represented; this declaration does not define whether a missing raw template field inherits or an explicit empty array clears earlier properties. The future assembly stage must retain source presence/override evidence.
 
 ## Definition selection
 
-The shared [item-definition selector](shared-models.md#item-definition-selector) carries an abbreviation rather than pretending it is a canonical record name. Native Category.ItemType and Category.ItemProperty identify different definition domains; Category.Item remains the item-record category. No default publication, dataset scope, target ID or lookup result is inferred. The existing named FDnd5eRecordSelector continues to represent named references inside Content.
+The shared [item-definition selector](shared-models.md#item-definition-selector) carries an abbreviation rather than pretending it is a canonical record name. Native Category.ItemType and Category.ItemProperty identify different definition domains; Category.Item remains the item-record category. No default publication, dataset scope, target ID or lookup result is inferred. The existing named FDnd5eRecordSelector continues to represent named references inside Content. Named mastery references also use FDnd5eRecordSelector with Category.ItemMastery. [Item definitions](item-definitions.md) documents the separate type/property/mastery records and the reference Note field. Masteries contains references rather than embedded definitions; an empty normalized array does not decide raw inheritance/clearing behavior.
 
 ## Rarity
 
@@ -103,4 +104,4 @@ Editor conditions enable active payloads without clearing inactive data or valid
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. Foundation storage alone does not import them. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and remaining item facts remain prerequisites for full item conversion. Weapon/armor declarations now exist; their source conversion and assembly rules still need implementation. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. Storage declarations alone do not import them. Type/property/mastery records now exist, while their identity/lookup/input contracts still need implementation. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and remaining item facts remain prerequisites for full item conversion. Weapon/armor declarations now exist; their source conversion and assembly rules still need implementation. Source data and generated variants remain externally supplied; none is bundled with this model.

@@ -4,6 +4,30 @@ const TArray<FModelContract>& ModelContracts()
 {
 	static const TArray<FModelContract> Cases =
 	{
+		{ TEXT("FDnd5eItemTypeDefinition"), &FDnd5eItemTypeDefinition::StaticStruct, {
+			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
+			{ TEXT("Abbreviation"), TEXT("FString"), TEXT("") },
+			{ TEXT("Description"), TEXT("TArray<FDnd5eContentBlock>"), TEXT("") },
+			{ TEXT("Relationships"), TEXT("TArray<FDnd5eRecordRelationship>"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItemPropertyDefinition"), &FDnd5eItemPropertyDefinition::StaticStruct, {
+			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
+			{ TEXT("Abbreviation"), TEXT("FString"), TEXT("") },
+			{ TEXT("Description"), TEXT("TArray<FDnd5eContentBlock>"), TEXT("") },
+			{ TEXT("Relationships"), TEXT("TArray<FDnd5eRecordRelationship>"), TEXT("") },
+			{ TEXT("bHasTemplate"), TEXT("bool"), TEXT("false") },
+			{ TEXT("TemplateSyntax"), TEXT("FString"), TEXT("") },
+			{ TEXT("TemplateText"), TEXT("FString"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItemMasteryDefinition"), &FDnd5eItemMasteryDefinition::StaticStruct, {
+			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
+			{ TEXT("Description"), TEXT("TArray<FDnd5eContentBlock>"), TEXT("") },
+			{ TEXT("Relationships"), TEXT("TArray<FDnd5eRecordRelationship>"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItemMasteryReference"), &FDnd5eItemMasteryReference::StaticStruct, {
+			{ TEXT("Selector"), TEXT("FDnd5eRecordSelector"), TEXT("") },
+			{ TEXT("Note"), TEXT("TArray<FDnd5eInlineContent>"), TEXT("") },
+		} },
 		{ TEXT("FDnd5eDamageExpression"), &FDnd5eDamageExpression::StaticStruct, {
 			{ TEXT("Amount"), TEXT("FDnd5eDiceExpression"), TEXT("") },
 			{ TEXT("Type"), TEXT("FGameplayTag"), TEXT("") },
@@ -108,6 +132,7 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("WeaponData"), TEXT("FDnd5eItemWeaponData"), TEXT("") },
 			{ TEXT("bHasArmorData"), TEXT("bool"), TEXT("false") },
 			{ TEXT("ArmorData"), TEXT("FDnd5eItemArmorData"), TEXT("") },
+			{ TEXT("Masteries"), TEXT("TArray<FDnd5eItemMasteryReference>"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eClassFeatureSelector"), &FDnd5eClassFeatureSelector::StaticStruct, {
 			{ TEXT("ClassName"), TEXT("FString"), TEXT(""), false },

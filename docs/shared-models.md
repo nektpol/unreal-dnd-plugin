@@ -1325,3 +1325,5 @@ See [supplementary input and metadata](spell-data-inputs.md) and [Content valida
 | SourceId | `FString`, empty | Explicit publication, active only when its flag is true |
 
 No default source, owning-item publication, dataset scope or target ID is invented. The future resolver receives an explicit scope/policy. This is storage, not an implemented parser/validator: construction does not reject incomplete selections or assign categories. See the [item composition](item-model.md) and [test evidence](testing.md).
+
+Type/property [definition records](item-definitions.md) compose this abbreviation selector alongside shared headers/Content. Named mastery references use FDnd5eRecordSelector and Category.ItemMastery instead; a mastery name is not an abbreviation. Registering that category adds no reader, resolver or ID-construction policy.

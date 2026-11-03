@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-03, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **792 cases**; the combined explicitly supplied-data run passes **817 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **93 structs (81 Core, 12 JSON), 448 fields, 26 enums, 175 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The thirteen catalog-related reflected operations remain unchanged, with one separate Blueprint-callable validator added.
+Verification on 2026-11-03, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **803 cases**; the combined explicitly supplied-data run passes **828 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **97 structs (85 Core, 12 JSON), 465 fields, 26 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The thirteen catalog-related reflected operations remain unchanged, with one separate Blueprint-callable validator added.
 
 ## Coverage
 
@@ -200,3 +200,9 @@ On 2026-11-03, the Development Editor target builds and all **792 standard / 817
 This batch adds sixteen standard cases: schema/default/access and populated copy/serialization for five structs, three enum contracts, and three equipment behavior cases. The FDnd5eItem contract includes its four new optional-data fields. Native tag and extraction-helper counts are unchanged.
 
 Behavioral tests preserve constant and dice damage expressions with separate types, normal/long distances and units, independent weapon/armor payloads, copy ownership, base versus bonus AC roles, all Dexterity modes and inactive cap storage, Strength absent/null/zero, stealth absent versus explicit false, reload/range presence, inactive payload retention and eleven editor conditions. These verify reference-data storage, not rolling, final AC, movement, ammunition use, equipment state or item JSON conversion. The existing 25 explicitly supplied spell audits remain enabled and do not establish item dataset coverage.
+
+## Item definition verification
+
+The Development Editor build and all **803 standard / 828 combined cases** passed on 2026-11-03, with zero failures, skipped cases or automation warnings. The local report is Saved/Automation/Dnd5eItemDefinitions/index.json.
+
+This batch adds eight schema and copy/serialization cases for four structs, plus three behavior cases for definition ownership and source separation, unexpanded template presence and retention, and independent mastery-reference notes. The item schema includes Masteries and the native vocabulary includes Category.ItemMastery. The external audits cover spells. Definition lookup and JSON conversion are pending.

@@ -175,3 +175,4 @@
 { &Dnd5e::Alignment::Good, TEXT("Dnd5e.Alignment.Good") },
 { &Dnd5e::Alignment::Evil, TEXT("Dnd5e.Alignment.Evil") },
 { &Dnd5e::Alignment::Unaligned, TEXT("Dnd5e.Alignment.Unaligned") },
+{ &Dnd5e::Category::ItemMastery, TEXT("Dnd5e.Category.ItemMastery") },

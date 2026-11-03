@@ -2,6 +2,7 @@
 
 #pragma once
 #include "CoreMinimal.h"
+#include "Dnd5eItemDefinitions.h"
 #include "Records/Dnd5eRecordHeader.h"
 #include "Items/Dnd5eItemTypes.h"
 #include "Content/Dnd5eSupplementaryContent.h"
@@ -57,4 +58,6 @@ struct DND5E_API FDnd5eItem
 	bool bHasArmorData = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item", meta = (EditCondition = "bHasArmorData"))
 	FDnd5eItemArmorData ArmorData;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
+	TArray<FDnd5eItemMasteryReference> Masteries;
 };
