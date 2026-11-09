@@ -212,8 +212,195 @@ namespace
         }
         return true;
     }
+
+	FGameplayTag MapBaseItemDamageType(const FString& Code)
+	{
+	    using namespace Dnd5e::Damage::Type;
+	    if (Code.Equals(TEXT("B"), ESearchCase::CaseSensitive)) { return Bludgeoning; }
+	    if (Code.Equals(TEXT("P"), ESearchCase::CaseSensitive)) { return Piercing; }
+	    if (Code.Equals(TEXT("S"), ESearchCase::CaseSensitive)) { return Slashing; }
+	    if (Code.Equals(TEXT("R"), ESearchCase::CaseSensitive)) { return Radiant; }
+	    if (Code.Equals(TEXT("N"), ESearchCase::CaseSensitive)) { return Necrotic; }
+	    return {};
+	}
+
+	void SetBaseItemFeet(FDnd5eDistance& Distance, int32 Value, const FString& Literal)
+	{
+	    Distance.Unit = EDnd5eDistanceUnit::Feet;
+	    Distance.Amount.Kind = EDnd5eNumberKind::Integer;
+	    Distance.Amount.Integer = Value;
+	    Distance.Amount.SourceLiteral = Literal;
+	}
+
+
+	bool ReadBaseItemArmor(const FJsonObject& Object, const FString& Pointer,
+	    FDnd5eItem& Item, TSet<FString>& Consumed, FReadState& State)
+	{
+	    auto& Armor = Item.ArmorData;
+	    if (FindExactField(Object, TEXT("ac")).IsValid())
+	    {
+	        int32 Value = 0;
+	        FString Literal;
+	        if (!ReadRequiredInteger(Object, TEXT("ac"), Pointer, 1, MAX_int32, Value, Literal, State))
+	        {
+	            return false;
+	        }
+
+	        const FString& Type = Item.Type.Abbreviation;
+	        const bool bLight = Type.Equals(TEXT("LA"), ESearchCase::CaseSensitive);
+	        const bool bMedium = Type.Equals(TEXT("MA"), ESearchCase::CaseSensitive);
+	        const bool bHeavy = Type.Equals(TEXT("HA"), ESearchCase::CaseSensitive);
+	        const bool bShield = Type.Equals(TEXT("S"), ESearchCase::CaseSensitive);
+	        if ((bLight || bMedium || bHeavy || bShield) &&
+	            !FindExactField(Object, TEXT("dexterityMax")).IsValid())
+	        {
+	            auto& AC = Armor.ArmorClass;
+	            AC.Value.Kind = EDnd5eNumberKind::Integer;
+	            AC.Value.Integer = Value;
+	            AC.Value.SourceLiteral = MoveTemp(Literal);
+	            AC.Kind = bShield ? EDnd5eArmorClassValueKind::Bonus : EDnd5eArmorClassValueKind::Base;
+	            if (bLight) { AC.DexterityMode = EDnd5eArmorClassDexterityMode::Uncapped; }
+	            else if (bMedium)
+	            {
+	                AC.DexterityMode = EDnd5eArmorClassDexterityMode::Capped;
+	                AC.DexterityModifierMaximum = 2;
+	            }
+	            else { AC.DexterityMode = EDnd5eArmorClassDexterityMode::NotAdded; }
+	            Armor.bHasArmorClass = true;
+	            Item.bHasArmorData = true;
+	            Consumed.Add(TEXT("ac"));
+	        }
+	    }
+
+	    if (const auto Strength = FindExactField(Object, TEXT("strength")))
+	    {
+	        if (Strength->Type == EJson::Null)
+	        {
+	            Armor.StrengthPresence = EDnd5eValuePresence::ExplicitNull;
+	        }
+	        else
+	        {
+	            FString Token;
+	            int32 Minimum = 0;
+	            if (Strength->Type != EJson::String || !Strength->TryGetString(Token) ||
+	                !TryParseBoundedIntegerToken(Token, 1, MAX_int32, Minimum))
+	            {
+	                return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("strength")),
+	                    TEXT("Expected a positive Strength threshold string or null."));
+	            }
+	            Armor.StrengthMinimum.Ability = Dnd5e::Ability::Strength;
+	            Armor.StrengthMinimum.Minimum = Minimum;
+	            Armor.StrengthPresence = EDnd5eValuePresence::Present;
+	        }
+	        Item.bHasArmorData = true;
+	        Consumed.Add(TEXT("strength"));
+	    }
+
+	    if (FindExactField(Object, TEXT("stealth")).IsValid())
+	    {
+	        if (!ReadOptionalBool(Object, TEXT("stealth"), Pointer, Armor.bStealthDisadvantage, State))
+	        {
+	            return false;
+	        }
+	        Armor.bHasStealthDisadvantage = true;
+	        Item.bHasArmorData = true;
+	        Consumed.Add(TEXT("stealth"));
+	    }
+	    return true;
+	}
+	bool ReadBaseItemWeapon(const FJsonObject& Object, const FString& Pointer,
+	    FDnd5eItem& Item, TSet<FString>& Consumed, FReadState& State)
+	{
+	    auto& Weapon = Item.WeaponData;
+	    if (FindExactField(Object, TEXT("weaponCategory")).IsValid())
+	    {
+	        FString Category;
+	        if (!ReadRequiredString(Object, TEXT("weaponCategory"), Pointer, Category, State)) { return false; }
+	        if (Category.Equals(TEXT("simple"), ESearchCase::CaseSensitive))
+	        {
+	            Weapon.Category = EDnd5eWeaponCategory::Simple;
+	        }
+	        else if (Category.Equals(TEXT("martial"), ESearchCase::CaseSensitive))
+	        {
+	            Weapon.Category = EDnd5eWeaponCategory::Martial;
+	        }
+	        if (Weapon.Category != EDnd5eWeaponCategory::Unspecified)
+	        {
+	            Consumed.Add(TEXT("weaponCategory"));
+	            Item.bHasWeaponData = true;
+	        }
+	    }
+
+	    FGameplayTag DamageType;
+	    const bool bHasDamageType = FindExactField(Object, TEXT("dmgType")).IsValid();
+	    if (bHasDamageType)
+	    {
+	        FString Code;
+	        if (!ReadRequiredString(Object, TEXT("dmgType"), Pointer, Code, State)) { return false; }
+	        DamageType = MapBaseItemDamageType(Code);
+	    }
+
+	    const auto ReadDamage = [&](const TCHAR* Field, FDnd5eDamageExpression& Out, bool& bPresent)
+	    {
+	        if (!FindExactField(Object, Field).IsValid()) { return true; }
+	        FString Expression;
+	        if (!ReadRequiredString(Object, Field, Pointer, Expression, State) ||
+	            !ValidateIdentityText(Expression, AppendPointer(Pointer, Field), State))
+	        {
+	            return false;
+	        }
+	        if (bHasDamageType && !DamageType.IsValid()) { return true; }
+
+	        Out.Amount.Expression = MoveTemp(Expression);
+	        Out.Amount.Syntax = TEXT("5etools");
+	        Out.Type = DamageType;
+	        bPresent = true;
+	        Item.bHasWeaponData = true;
+	        Consumed.Add(Field);
+	        if (bHasDamageType) { Consumed.Add(TEXT("dmgType")); }
+	        return true;
+	    };
+	    if (!ReadDamage(TEXT("dmg1"), Weapon.PrimaryDamage, Weapon.bHasPrimaryDamage) ||
+	        !ReadDamage(TEXT("dmg2"), Weapon.AlternateDamage, Weapon.bHasAlternateDamage))
+	    {
+	        return false;
+	    }
+
+	    if (FindExactField(Object, TEXT("range")).IsValid())
+	    {
+	        FString Range, Normal, Long;
+	        if (!ReadRequiredString(Object, TEXT("range"), Pointer, Range, State)) { return false; }
+	        int32 NormalFeet = 0, LongFeet = 0;
+	        if (!Range.Split(TEXT("/"), &Normal, &Long) ||
+	            !TryParseBoundedIntegerToken(Normal, 1, MAX_int32, NormalFeet) ||
+	            !TryParseBoundedIntegerToken(Long, NormalFeet, MAX_int32, LongFeet))
+	        {
+	            return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("range")),
+	                TEXT("Expected positive normal/long range with long at least normal."));
+	        }
+	        SetBaseItemFeet(Weapon.Range.Normal, NormalFeet, Normal);
+	        SetBaseItemFeet(Weapon.Range.Long, LongFeet, Long);
+	        Weapon.Range.bHasLong = true;
+	        Weapon.bHasRange = true;
+	        Item.bHasWeaponData = true;
+	        Consumed.Add(TEXT("range"));
+	    }
+
+	    if (FindExactField(Object, TEXT("reload")).IsValid())
+	    {
+	        FString Literal;
+	        if (!ReadRequiredInteger(Object, TEXT("reload"), Pointer, 1, MAX_int32,
+	            Weapon.Reload, Literal, State)) { return false; }
+	        Weapon.bHasReload = true;
+	        Item.bHasWeaponData = true;
+	        Consumed.Add(TEXT("reload"));
+	    }
+	    return true;
+	}
+
 	bool ReadBaseItemMetadata(const FJsonObject& Object, const FString& Pointer,
         bool bRetainRawProperty, bool bRetainRawRarity, bool bRetainRawPrice,
+        const TSet<FString>& ConsumedEquipment,
         FDnd5eRecordProvenance& Origin, FReadState& State)
     {
         auto Extra = MakeShared<FJsonObject>();
@@ -226,6 +413,16 @@ namespace
 
         for (const FString& Key : Keys)
         {
+            bool bConsumed = false;
+            for (const FString& Field : ConsumedEquipment)
+            {
+                if (Key.Equals(Field, ESearchCase::CaseSensitive))
+                {
+                    bConsumed = true;
+                    break;
+                }
+            }
+            if (bConsumed) { continue; }
             const auto Value = FindExactField(Object, *Key);
             const auto Is = [&Key](const TCHAR* Expected)
             {
@@ -289,10 +486,13 @@ namespace
         bool bRetainRawProperty = false;
         bool bRetainRawRarity = false;
         bool bRetainRawPrice = false;
-        return ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, State) &&
-            ReadBaseItemValues(Object, Pointer, Item, bRetainRawRarity, bRetainRawPrice, State) &&
-            ReadBaseItemMetadata(Object, Pointer, bRetainRawProperty, bRetainRawRarity,
-                bRetainRawPrice, Origin, State);
+		TSet<FString> ConsumedEquipment;
+		return ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, State) &&
+			ReadBaseItemValues(Object, Pointer, Item, bRetainRawRarity, bRetainRawPrice, State) &&
+			ReadBaseItemWeapon(Object, Pointer, Item, ConsumedEquipment, State) &&
+			ReadBaseItemArmor(Object, Pointer, Item, ConsumedEquipment, State) &&
+			ReadBaseItemMetadata(Object, Pointer, bRetainRawProperty, bRetainRawRarity,
+				bRetainRawPrice, ConsumedEquipment, Origin, State);
     }
 }
 

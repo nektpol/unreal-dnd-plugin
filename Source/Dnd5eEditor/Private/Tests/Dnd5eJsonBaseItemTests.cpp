@@ -27,7 +27,7 @@ bool FDnd5eBaseItemConversionTest::RunTest(const FString& Parameters)
 		"property":[{"uid":"P9|SYN-A","note":"Invented note"}],
 		"mastery":[{"uid":"Invented Mastery|SYN-A","note":"Invented mastery note"}],
 		"rarity":"none","weight":0.25,"value":12.5,"page":0,"basicRules2024":false,
-		"entries":["Invented description."],"dmg1":"1d6"}]
+		"entries":["Invented description."],"ammoType":"SYN-AMMO"}]
 	})json")));
 	if (!TestTrue(TEXT("One item through the Blueprint library"), Result.Status == EDnd5eJsonReadStatus::Success && Result.Items.Num() == 1)) { return false; }
 	const auto& Item = Result.Items[0];
@@ -45,7 +45,7 @@ bool FDnd5eBaseItemConversionTest::RunTest(const FString& Parameters)
 		Origin.Page.Kind == EDnd5ePageReferenceKind::Unspecified &&
 		Origin.AdditionalMetadataJson.Contains(TEXT("\"page\"")) &&
 		Origin.AdditionalMetadataJson.Contains(TEXT("Invented note")) &&
-		Origin.AdditionalMetadataJson.Contains(TEXT("1d6")));
+		Origin.AdditionalMetadataJson.Contains(TEXT("SYN-AMMO")));
 	TestTrue(TEXT("Explicit false membership stays excluded"), Origin.Memberships.Num() == 1 &&
 		Origin.Memberships[0].Inclusion == EDnd5eSourceInclusion::Excluded);
 	return !HasAnyErrors();
@@ -74,6 +74,63 @@ bool FDnd5eBaseItemFailureTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBaseItemEquipmentTest, "Dnd5e.Items.BaseJson.Equipment", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBaseItemEquipmentTest::RunTest(const FString& Parameters)
+{
+	const auto Result = FDnd5eJsonBaseItemReader::Read(BaseItemDocument(TEXT(R"json({"baseitem":[
+		{"name":"Launcher","source":"SYN","type":"T","rarity":"none","weaponCategory":"martial",
+		 "dmg1":"1","dmg2":"1d8","dmgType":"P","range":"20/60","reload":2},
+		{"name":"Armor","source":"SYN","type":"MA|SYN","rarity":"none","ac":14,"strength":"13","stealth":false},
+		{"name":"Shield","source":"SYN","type":"S","rarity":"none","ac":2},
+		{"name":"Custom","source":"SYN","type":"MA","rarity":"none","ac":14,"dexterityMax":1,
+		 "dmg1":"1d6","dmgType":"custom","strength":null,"Range":"retained"}
+	]})json")));
+	if (!TestTrue(TEXT("Equipment fixture reads"), Result.Status == EDnd5eJsonReadStatus::Success && Result.Items.Num() == 4)) { return false; }
+	const auto& Weapon = Result.Items[0].WeaponData;
+	TestTrue(TEXT("Weapon category, damage and range are typed"), Result.Items[0].bHasWeaponData &&
+		Weapon.Category == EDnd5eWeaponCategory::Martial && Weapon.bHasPrimaryDamage &&
+		Weapon.PrimaryDamage.Amount.Expression == TEXT("1") && Weapon.PrimaryDamage.Type == Dnd5e::Damage::Type::Piercing &&
+		Weapon.bHasAlternateDamage && Weapon.AlternateDamage.Amount.Expression == TEXT("1d8") &&
+		Weapon.bHasRange && Weapon.Range.bHasLong && Weapon.Range.Normal.Amount.Integer == 20 &&
+		Weapon.Range.Long.Amount.Integer == 60 && Weapon.Range.Long.Unit == EDnd5eDistanceUnit::Feet &&
+		Weapon.bHasReload && Weapon.Reload == 2);
+	const FString& Evidence = Result.Items[0].Header.Provenance[0].AdditionalMetadataJson;
+	TestTrue(TEXT("Consume exact equipment fields"),
+		!Evidence.Contains(TEXT("\"range\""), ESearchCase::CaseSensitive) &&
+		!Evidence.Contains(TEXT("\"dmg1\""), ESearchCase::CaseSensitive));
+	const auto& Armor = Result.Items[1].ArmorData;
+	TestTrue(TEXT("Medium AC and explicit false stealth are represented"), Result.Items[1].bHasArmorData &&
+		Armor.bHasArmorClass && Armor.ArmorClass.Kind == EDnd5eArmorClassValueKind::Base &&
+		Armor.ArmorClass.Value.Integer == 14 && Armor.ArmorClass.DexterityMode == EDnd5eArmorClassDexterityMode::Capped &&
+		Armor.ArmorClass.DexterityModifierMaximum == 2 && Armor.StrengthPresence == EDnd5eValuePresence::Present &&
+		Armor.StrengthMinimum.Minimum == 13 && Armor.bHasStealthDisadvantage && !Armor.bStealthDisadvantage);
+	const auto& Shield = Result.Items[2].ArmorData;
+	TestTrue(TEXT("Shield is an AC bonus"), Shield.bHasArmorClass && Shield.ArmorClass.Kind == EDnd5eArmorClassValueKind::Bonus &&
+		Shield.ArmorClass.DexterityMode == EDnd5eArmorClassDexterityMode::NotAdded);
+	const auto& Custom = Result.Items[3];
+	const auto& CustomEvidence = Custom.Header.Provenance[0].AdditionalMetadataJson;
+	TestTrue(TEXT("Unknown damage and overridden AC remain raw with explicit null Strength"),
+		!Custom.bHasWeaponData && !Custom.ArmorData.bHasArmorClass &&
+		Custom.ArmorData.StrengthPresence == EDnd5eValuePresence::ExplicitNull &&
+		CustomEvidence.Contains(TEXT("dexterityMax")) && CustomEvidence.Contains(TEXT("\"ac\"")) &&
+		CustomEvidence.Contains(TEXT("custom")) && CustomEvidence.Contains(TEXT("1d6")) &&
+		CustomEvidence.Contains(TEXT("\"Range\""), ESearchCase::CaseSensitive));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBaseItemEquipmentFailureTest, "Dnd5e.Items.BaseJson.EquipmentFailure", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBaseItemEquipmentFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Result = FDnd5eJsonBaseItemReader::Read(BaseItemDocument(TEXT(R"json({"baseitem":[
+		{"name":"Valid","source":"SYN","type":"T","rarity":"none"},
+		{"name":"Invalid","source":"SYN","type":"T","rarity":"none","range":"60/20"}
+	]})json")));
+	TestTrue(TEXT("Invalid range discards all staged rows and locates the error"),
+		Result.Status == EDnd5eJsonReadStatus::Failure && Result.Items.IsEmpty() &&
+		Result.Diagnostics.Num() == 1 && Result.Diagnostics[0].JsonPointer == TEXT("/baseitem/1/range"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_COMPLEX_AUTOMATION_TEST(FDnd5eBaseItemSnapshotTest, "Dnd5e.Items.BaseJson.External", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 void FDnd5eBaseItemSnapshotTest::GetTests(TArray<FString>& Names, TArray<FString>& Commands) const
 {
@@ -98,6 +155,21 @@ bool FDnd5eBaseItemSnapshotTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("Read all 230 base items"), Result.Status == EDnd5eJsonReadStatus::Success && Result.Items.Num() == 230);
+	int32 Categories = 0, Primary = 0, Alternate = 0, Ranges = 0, Reloads = 0, AC = 0, Strength = 0, Stealth = 0;
+	for (const auto& Item : Result.Items)
+	{
+		Categories += Item.WeaponData.Category != EDnd5eWeaponCategory::Unspecified;
+		Primary += Item.WeaponData.bHasPrimaryDamage;
+		Alternate += Item.WeaponData.bHasAlternateDamage;
+		Ranges += Item.WeaponData.bHasRange;
+		Reloads += Item.WeaponData.bHasReload;
+		AC += Item.ArmorData.bHasArmorClass;
+		Strength += Item.ArmorData.StrengthPresence == EDnd5eValuePresence::Present;
+		Stealth += Item.ArmorData.bHasStealthDisadvantage;
+	}
+	TestTrue(TEXT("Typed weapon counts match snapshot"), Categories == 102 && Primary == 101 &&
+		Alternate == 17 && Ranges == 52 && Reloads == 16);
+	TestTrue(TEXT("Typed armor counts match snapshot"), AC == 27 && Strength == 6 && Stealth == 15);
 	return !HasAnyErrors();
 }
 #endif

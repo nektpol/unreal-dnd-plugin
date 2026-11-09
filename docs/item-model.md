@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price and weight. Equipment conversion, attunement normalization, ordinary item assembly and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. Attunement normalization, ordinary item assembly and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -104,7 +104,7 @@ Editor conditions enable active payloads without clearing inactive data or valid
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and remaining item facts remain prerequisites for full item conversion. Weapon/armor declarations now exist; their source conversion and assembly rules still need implementation. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. Shared price/mass/attunement values and structured index storage now exist; source mappings, combination-aware alignment normalization, validation and remaining item facts remain prerequisites for full item conversion. Base-item weapon and armor data is converted for the inspected field shapes. Equipment assembly across dependent records remains a later stage. Source data and generated variants remain externally supplied; none is bundled with this model.
 
 
 ## Supplied base-item JSON
@@ -113,4 +113,21 @@ Pass an FDnd5eJsonDocument to FDnd5eJsonBaseItemReader::Read or the Blueprint Re
 
 The factory uses Category.Item and the key format `dnd5e:item:v1:<escaped-name>|<escaped-source>`. Name and publication are trimmed and case-folded before escaping percent, pipe and colon. The trimmed dataset namespace is case-sensitive. Original names and publications remain in the row data. Type/property/mastery selectors preserve whether a publication was supplied. Property notes stay in the retained property array and mastery notes become inline Content.
 
-The reader maps the snapshot's none and unknown rarity values, numeric standard prices in copper, explicit null prices and weights in pounds. Custom currency inputs stay in provenance. Boolean source memberships become Included or Excluded. Numeric page zero is retained as evidence with the typed page unset. Equipment inputs and other unconverted fields remain in AdditionalMetadataJson with diagnostics. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonBaseItemReader.h) · [Blueprint library](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonBaseItemLibrary.h)
+The reader maps the snapshot's none and unknown rarity values, numeric standard prices in copper, explicit null prices and weights in pounds. Custom currency inputs stay in provenance. Boolean source memberships become Included or Excluded. Numeric page zero is retained as evidence with the typed page unset. Unconverted fields remain in AdditionalMetadataJson with diagnostics. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonBaseItemReader.h) · [Blueprint library](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonBaseItemLibrary.h)
+
+
+### Base-item equipment conversion
+
+| Source field | Typed result |
+| --- | --- |
+| weaponCategory | Simple or Martial |
+| dmg1, dmg2, dmgType | Primary and alternate damage text using the 5etools syntax label and supported damage tags |
+| range | Positive normal/long distances in feet, with long at least normal |
+| reload | Positive integer with explicit presence |
+| ac | Base AC for LA, MA and HA, or bonus AC for S |
+| strength | Positive integer threshold from a string, or explicit null |
+| stealth | Explicit Boolean presence and value |
+
+LA uses uncapped Dexterity and MA caps it at 2. HA and S omit Dexterity. The mapping uses the type abbreviation independently of its publication. For other abbreviations or a supplied dexterityMax, the reader retains the raw AC inputs. Unknown damage codes and their expressions stay raw. The reader retains omitted-field defaults, including an unspecified damage tag when no type is supplied.
+
+Converted exact fields are consumed before raw metadata is collected. Unconverted fields such as ammunition references and classification flags remain in provenance. Invalid equipment inputs in a supported shape return a field diagnostic and discard the staged array.
