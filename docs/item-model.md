@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. Attunement normalization, ordinary item assembly and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected standalone row and readable attunement. Structured attunement, dependency assembly and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -131,3 +131,12 @@ The reader maps the snapshot's none and unknown rarity values, numeric standard 
 LA uses uncapped Dexterity and MA caps it at 2. HA and S omit Dexterity. The mapping uses the type abbreviation independently of its publication. For other abbreviations or a supplied dexterityMax, the reader retains the raw AC inputs. Unknown damage codes and their expressions stay raw. The reader retains omitted-field defaults, including an unspecified damage tag when no type is supplied.
 
 Converted exact fields are consumed before raw metadata is collected. Unconverted fields such as ammunition references and classification flags remain in provenance. Invalid equipment inputs in a supported shape return a field diagnostic and discard the staged array.
+
+
+## Supplied ordinary-item JSON
+
+Pass a document and a zero-based source index to FDnd5eJsonItemReader::ReadAtIndex or Read Item at Index in Blueprint. The reader validates the supplied JSON document, then converts the selected object in its exact item array. An out-of-range index fails at /item. A selected row with _copy or baseItem fails at that dependency field. A failed read returns a default Item. Other rows are not converted during this operation. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemReader.h) · [Blueprint library](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemLibrary.h)
+
+Ordinary rows use the shared item identity, header, Content, price, weight and equipment conversion. Type may be absent. The reader maps the ten observed rarity labels and accepts a single positive distance or a normal/long pair for ordinary range. The damage map includes Cold, Force and Psychic in addition to the base-item mappings.
+
+Readable reqAttune and reqAttuneAlt accept Booleans and nonempty strings. True maps to Required and false to NotRequired. The exact string optional maps to Optional. Other nonempty strings become Required with converted inline conditions. Omission leaves the mode Unspecified. Alternate presence is tracked independently. The structured source indexes remain in provenance for a later conversion pass.

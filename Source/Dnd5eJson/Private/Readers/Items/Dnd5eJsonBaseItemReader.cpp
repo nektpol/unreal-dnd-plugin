@@ -87,17 +87,20 @@ namespace
 	}
 
 	bool ReadBaseItemSelectors(const FJsonObject& Object, const FString& Pointer,
-		FDnd5eItem& Item, bool& bRetainRawProperty, FReadState& State)
+		FDnd5eItem& Item, bool& bRetainRawProperty, bool bRequireType, FReadState& State)
 	{
-		FString TypeUid;
-		Item.Type.Category = Dnd5e::Category::ItemType;
-		if (!ReadRequiredString(Object, TEXT("type"), Pointer, TypeUid, State) ||
-			!ReadBaseItemUid(TypeUid, AppendPointer(Pointer, TEXT("type")),
-				Item.Type.Abbreviation, Item.Type.bHasSource, Item.Type.SourceId, State))
+		if (bRequireType || FindExactField(Object, TEXT("type")).IsValid())
 		{
-			return false;
+			FString TypeUid;
+			Item.Type.Category = Dnd5e::Category::ItemType;
+			if (!ReadRequiredString(Object, TEXT("type"), Pointer, TypeUid, State) ||
+				!ReadBaseItemUid(TypeUid, AppendPointer(Pointer, TEXT("type")),
+					Item.Type.Abbreviation, Item.Type.bHasSource, Item.Type.SourceId, State))
+			{
+				return false;
+			}
+			Item.bHasType = true;
 		}
-		Item.bHasType = true;
 
 		for (const TCHAR* Field : {TEXT("property"), TEXT("mastery")})
 		{
@@ -161,20 +164,32 @@ namespace
     {
         FString Rarity;
         if (!ReadRequiredString(Object, TEXT("rarity"), Pointer, Rarity, State)) { return false; }
-        if (Rarity.Equals(TEXT("none"), ESearchCase::CaseSensitive))
+		struct FRarityEntry
         {
-            Item.Rarity = Dnd5e::Item::Rarity::None;
-        }
-        else if (Rarity.Equals(TEXT("unknown"), ESearchCase::CaseSensitive))
-        {
-            Item.Rarity = Dnd5e::Item::Rarity::Unknown;
-        }
-        else
-        {
-            bRetainRawRarity = true;
-            AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata,
-                AppendPointer(Pointer, TEXT("rarity")), TEXT("Unmapped base item rarity retained."));
-        }
+            const TCHAR* Source;
+            FGameplayTag Tag;
+        };
+		using namespace Dnd5e::Item::Rarity;
+		const FRarityEntry Known[] = {
+			{TEXT("none"), None}, {TEXT("common"), Common}, {TEXT("uncommon"), Uncommon},
+			{TEXT("rare"), Rare}, {TEXT("very rare"), VeryRare}, {TEXT("legendary"), Legendary},
+			{TEXT("artifact"), Artifact}, {TEXT("unknown"), Unknown},
+			{TEXT("unknown (magic)"), UnknownMagic}, {TEXT("varies"), Varies}
+		};
+		for (const FRarityEntry& Entry : Known)
+		{
+			if (Rarity.Equals(Entry.Source, ESearchCase::CaseSensitive))
+			{
+				Item.Rarity = Entry.Tag;
+				break;
+			}
+		}
+		if (!Item.Rarity.IsValid())
+		{
+			bRetainRawRarity = true;
+			AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata,
+				AppendPointer(Pointer, TEXT("rarity")), TEXT("Unmapped item rarity retained."));
+		}
 
         if (FindExactField(Object, TEXT("currencyConversion")).IsValid())
         {
@@ -221,6 +236,9 @@ namespace
 	    if (Code.Equals(TEXT("S"), ESearchCase::CaseSensitive)) { return Slashing; }
 	    if (Code.Equals(TEXT("R"), ESearchCase::CaseSensitive)) { return Radiant; }
 	    if (Code.Equals(TEXT("N"), ESearchCase::CaseSensitive)) { return Necrotic; }
+	    if (Code.Equals(TEXT("C"), ESearchCase::CaseSensitive)) { return Cold; }
+	    if (Code.Equals(TEXT("O"), ESearchCase::CaseSensitive)) { return Force; }
+	    if (Code.Equals(TEXT("Y"), ESearchCase::CaseSensitive)) { return Psychic; }
 	    return {};
 	}
 
@@ -309,7 +327,7 @@ namespace
 	    return true;
 	}
 	bool ReadBaseItemWeapon(const FJsonObject& Object, const FString& Pointer,
-	    FDnd5eItem& Item, TSet<FString>& Consumed, FReadState& State)
+	    FDnd5eItem& Item, TSet<FString>& Consumed, bool bBaseItem, FReadState& State)
 	{
 	    auto& Weapon = Item.WeaponData;
 	    if (FindExactField(Object, TEXT("weaponCategory")).IsValid())
@@ -370,17 +388,19 @@ namespace
 	    {
 	        FString Range, Normal, Long;
 	        if (!ReadRequiredString(Object, TEXT("range"), Pointer, Range, State)) { return false; }
-	        int32 NormalFeet = 0, LongFeet = 0;
-	        if (!Range.Split(TEXT("/"), &Normal, &Long) ||
-	            !TryParseBoundedIntegerToken(Normal, 1, MAX_int32, NormalFeet) ||
-	            !TryParseBoundedIntegerToken(Long, NormalFeet, MAX_int32, LongFeet))
-	        {
-	            return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("range")),
-	                TEXT("Expected positive normal/long range with long at least normal."));
-	        }
-	        SetBaseItemFeet(Weapon.Range.Normal, NormalFeet, Normal);
-	        SetBaseItemFeet(Weapon.Range.Long, LongFeet, Long);
-	        Weapon.Range.bHasLong = true;
+            const bool bHasLong = Range.Split(TEXT("/"), &Normal, &Long);
+            if (!bHasLong) { Normal = Range; }
+            int32 NormalFeet = 0, LongFeet = 0;
+            if ((!bHasLong && bBaseItem) ||
+				!TryParseBoundedIntegerToken(Normal, 1, MAX_int32, NormalFeet) ||
+				(bHasLong && !TryParseBoundedIntegerToken(Long, NormalFeet, MAX_int32, LongFeet)))
+            {
+                return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("range")),
+					TEXT("Expected a positive range with any long distance at least normal."));
+            }
+            SetBaseItemFeet(Weapon.Range.Normal, NormalFeet, Normal);
+            if (bHasLong) { SetBaseItemFeet(Weapon.Range.Long, LongFeet, Long); }
+            Weapon.Range.bHasLong = bHasLong;
 	        Weapon.bHasRange = true;
 	        Item.bHasWeaponData = true;
 	        Consumed.Add(TEXT("range"));
@@ -463,14 +483,64 @@ namespace
         return Extra->Values.IsEmpty() ||
             SerializeValue(MakeShared<FJsonValueObject>(Extra), Origin.AdditionalMetadataJson, Pointer, State);
     }
+	bool ReadItemAttunement(const FJsonObject& Object, const FString& Pointer,
+	FDnd5eItem& Item, TSet<FString>& Consumed, FReadState& State)
+	{
+		const auto ReadOne = [&](const TCHAR* Field, FDnd5eAttunementRequirement& Out)
+		{
+			const auto Value = FindExactField(Object, Field);
+			if (!Value.IsValid()) { return true; }
 
-    bool ReadBaseItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, FReadState& State)
+			const FString FieldPointer = AppendPointer(Pointer, Field);
+			bool bRequired = false;
+			FString Text;
+			if (Value->Type == EJson::Boolean && Value->TryGetBool(bRequired))
+			{
+				Out.Mode = bRequired ? EDnd5eAttunementMode::Required : EDnd5eAttunementMode::NotRequired;
+			}
+			else if (Value->Type == EJson::String && Value->TryGetString(Text) && !Text.TrimStartAndEnd().IsEmpty())
+			{
+				if (Text.Equals(TEXT("optional"), ESearchCase::CaseSensitive))
+				{
+					Out.Mode = EDnd5eAttunementMode::Optional;
+				}
+				else
+				{
+					Out.Mode = EDnd5eAttunementMode::Required;
+					if (!ReadInlines(Text, FieldPointer, Out.Conditions, State)) { return false; }
+				}
+			}
+			else
+			{
+				return Fail(State, Codes::InvalidFieldValue, FieldPointer,
+					TEXT("Expected a Boolean or nonempty attunement string."));
+			}
+
+			Consumed.Add(Field);
+			return true;
+		};
+
+		if (!ReadOne(TEXT("reqAttune"), Item.Attunement) ||
+			!ReadOne(TEXT("reqAttuneAlt"), Item.AlternativeAttunement))
+		{
+			return false;
+		}
+		Item.bHasAlternativeAttunement = Consumed.Contains(TEXT("reqAttuneAlt"));
+		return true;
+	}
+
+    bool ReadItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, bool bBaseItem, FReadState& State)
     {
         if (FindExactField(Object, TEXT("_copy")).IsValid())
         {
             return Fail(State, Codes::UnsupportedRequiredValue, AppendPointer(Pointer, TEXT("_copy")),
                 TEXT("Base item copy assembly is outside this reader batch."));
         }
+		if (!bBaseItem && FindExactField(Object, TEXT("baseItem")).IsValid())
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue,
+				AppendPointer(Pointer, TEXT("baseItem")), TEXT("This item requires base-item assembly."));
+		}
         if (!ReadBaseItemHeader(Object, Pointer, Item, State)) { return false; }
 
         auto& Origin = Item.Header.Provenance[0];
@@ -487,13 +557,19 @@ namespace
         bool bRetainRawRarity = false;
         bool bRetainRawPrice = false;
 		TSet<FString> ConsumedEquipment;
-		return ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, State) &&
+		return ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, bBaseItem, State) &&
 			ReadBaseItemValues(Object, Pointer, Item, bRetainRawRarity, bRetainRawPrice, State) &&
-			ReadBaseItemWeapon(Object, Pointer, Item, ConsumedEquipment, State) &&
+			ReadBaseItemWeapon(Object, Pointer, Item, ConsumedEquipment, bBaseItem, State) &&
 			ReadBaseItemArmor(Object, Pointer, Item, ConsumedEquipment, State) &&
+			(bBaseItem || ReadItemAttunement(Object, Pointer, Item, ConsumedEquipment, State)) &&
 			ReadBaseItemMetadata(Object, Pointer, bRetainRawProperty, bRetainRawRarity,
-				bRetainRawPrice, ConsumedEquipment, Origin, State);
+			bRetainRawPrice, ConsumedEquipment, Origin, State);
     }
+}
+bool Dnd5eJsonReader::ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer,
+	FDnd5eItem& Item, FReadState& State)
+{
+	return ReadItemRow(Object, Pointer, Item, false, State);
 }
 
 FDnd5eJsonBaseItemReadResult FDnd5eJsonBaseItemReader::Read(const FDnd5eJsonDocument& Document)
@@ -529,7 +605,7 @@ FDnd5eJsonBaseItemReadResult FDnd5eJsonBaseItemReader::Read(const FDnd5eJsonDocu
 		TSharedPtr<FJsonObject> Object;
 		FDnd5eItem Item;
 		if (!RequireObject((*Rows)[Index], Pointer, Object, State) ||
-			!ReadBaseItemRow(*Object, Pointer, Item, State))
+			!ReadItemRow(*Object, Pointer, Item, true, State))
 		{
 			return Result;
 		}

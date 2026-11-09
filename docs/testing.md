@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **816 cases**; the combined explicitly supplied-data run passes **843 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 470 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **818 cases**; the combined explicitly supplied-data run passes **845 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 470 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -237,3 +237,10 @@ The Development Editor build and all **816 standard / 843 combined cases** passe
 The synthetic cases cover literal and dice damage expressions, both range distances, reload count, medium armor, shield AC, Strength presence and explicit false stealth. They check that converted fields are consumed, unsupported damage codes and AC overrides remain raw, and a reversed range in a later row discards the entire result.
 
 The existing opt-in base-item audit now checks the typed counts for the inspected 230-row snapshot. It expects 102 weapon categories, 101 primary and 17 alternate damage expressions, 52 ranges, 16 reload counts, 27 AC values, six Strength thresholds and 15 stealth fields.
+
+
+## Ordinary-item verification
+
+The Development Editor build and all **818 standard / 845 combined cases** passed on 2026-11-10 with zero failures, skipped cases and automation warnings. The local report is Saved/Automation/Dnd5eOrdinaryItemFinal/index.json. The ordinary-item conversion cases use synthetic rows.
+
+The synthetic cases exercise the Blueprint library entry point, selection by source index, omitted type, rarity and damage mappings, single-distance range, readable primary and alternative attunement, and raw index retention. Failure cases check out-of-range indices, both dependency fields and a malformed attunement value. A later valid row can be read independently.
