@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-08, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **812 cases**; the combined explicitly supplied-data run passes **838 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 470 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **814 cases**; the combined explicitly supplied-data run passes **841 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 470 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -221,3 +221,10 @@ The Development Editor build and all **812 standard / 838 combined cases** passe
 New tests cover conversion of the three definition domains, forward type copies, explicit entry overrides, metadata and unresolved reprint preservation, invalid field locations, duplicate rejection and rollback through the Blueprint library. The result schema has contract and copy/serialization coverage.
 
 The opt-in external definition test takes `-Dnd5eJsonDefinitionFile=<path-to-items-base.json>`. The inspected local snapshot contains 67 type, 27 property and 8 mastery rows. The test checks all 102 definitions and both inherited type descriptions. It logs errors by pointer and message, while fixtures and dataset input remain local.
+
+
+## Base item JSON verification
+
+The Development Editor build and all **814 standard / 841 combined cases** passed on 2026-11-10 with zero failures, skipped cases or automation warnings. The local report is Saved/Automation/Dnd5eBaseItem/index.json.
+
+The new cases cover item identity escaping and reset, conversion through the Blueprint library's C++ entry point, fractional prices and weight, source-qualified selectors and notes, retained equipment input, price presence and rejection of case-folded duplicates. With `-Dnd5eJsonDefinitionFile` supplied, the same local snapshot also exercises all 230 base-item rows.
