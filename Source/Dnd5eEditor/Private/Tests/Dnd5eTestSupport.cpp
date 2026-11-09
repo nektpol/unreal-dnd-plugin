@@ -2,6 +2,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Readers/Items/Dnd5eJsonItemDefinitionReader.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"

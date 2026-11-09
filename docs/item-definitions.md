@@ -1,6 +1,6 @@
 # Item definitions
 
-Status: definition records, canonical identity construction, native catalog and Blueprint lookup are implemented. Supplied JSON conversion, template expansion and copy/variant assembly remain follow-up work.
+Status: definition records, canonical identity construction, native catalog, Blueprint lookup and supplied JSON conversion are implemented. The reader supports direct type copies for inherited entries. Template expansion and broader item assembly remain follow-up work.
 
 All four exported Blueprint-visible structs are declared in [Dnd5eItemDefinitions.h](../Source/Dnd5e/Public/Items/Dnd5eItemDefinitions.h). They compose shared headers/provenance, Content, selectors and directed relationships. They describe reference data without executing a mastery/property rule. See [Automated tests](testing.md) for verified scope.
 
@@ -12,6 +12,7 @@ All four exported Blueprint-visible structs are declared in [Dnd5eItemDefinition
 - [Mastery reference](#mastery-reference)
 - [Identity and source boundaries](#identity-and-source-boundaries)
 - [Catalog and Blueprint API](#catalog-and-blueprint-api)
+- [Supplied definition JSON](#supplied-definition-json)
 - [Templates and remaining work](#templates-and-remaining-work)
 
 ## Type definition
@@ -41,7 +42,7 @@ FDnd5eItemPropertyDefinition retains definition Content and an independent unexp
 | TemplateSyntax | `FString`, empty | Grammar identifier, active when bHasTemplate is true |
 | TemplateText | `FString`, empty | Exact unexpanded string, active when bHasTemplate is true |
 
-A supplied empty template differs from absence. False presence does not clear inactive syntax/text; both have editor EditCondition metadata. Construction and serialization do not parse or expand placeholders. A future adapter can identify the source property grammar as `5etools-item-property`; this is distinct from dice-expression syntax. Synthetic authoring/tests use their own syntax identifier.
+A supplied empty template differs from absence. False presence does not clear inactive syntax/text; both have editor EditCondition metadata. Construction and serialization do not parse or expand placeholders. The reader identifies the source property grammar as `5etools-item-property`; this is distinct from dice-expression syntax. Synthetic authoring/tests use their own syntax identifier.
 
 ## Mastery definition
 
@@ -91,8 +92,16 @@ Explicit publication yields Matched with one ID or NoMatch with an empty array. 
 
 Blueprint callers use Try Make Definition Id and a retained Item Definition Catalog Object. The wrapper exposes the same replacement, matching, retrieval and count operations. [Blueprint library](../Source/Dnd5e/Public/Items/Dnd5eItemDefinitionLibrary.h) · [Blueprint catalog object](../Source/Dnd5e/Public/Catalog/Dnd5eItemDefinitionCatalogObject.h)
 
+## Supplied definition JSON
+
+The reader accepts one FDnd5eJsonDocument with an explicit dataset namespace and JSON text. It reads the exact itemType, itemProperty and itemMastery arrays. At least one must be present. An omitted domain contributes an empty array to the replacement. A document containing only base items fails. The reader uses the shared JSON and Content limits and accepts up to 100,000 definition rows. [Reader API](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemDefinitionReader.h)
+
+Type copies accept abbreviation and source pointing to a direct type in the same document. The child retains its identity and metadata. When the child omits entries, the target's entries are converted with the target's source and locator. Explicit child entries take precedence, including an empty array. The reader rejects missing targets, chained copies and unsupported copy fields. An exact numeric page zero is retained in AdditionalMetadataJson and leaves the typed page unset. Unknown row metadata is retained in provenance, property templates remain unexpanded, and reprint references remain unresolved with diagnostics.
+
+Read Item Definitions returns read-only arrays, status and diagnostics. A failed read returns empty arrays. Build Item Definition Catalog calls replacement after a successful read and retains reader diagnostics alongside catalog diagnostics. A failed build preserves the active catalog. [Blueprint library](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemDefinitionCatalogLibrary.h)
+
 ## Templates and remaining work
 
 Definition Content is not automatically appended to an item's Description. Property templates and placeholders inside definition Content need explicit application rules, supported substitutions and provenance. Missing item fields cannot be silently replaced with empty text to claim successful expansion. Structured itemEntry.entriesTemplate input is a separate later concern, not automatically represented by a string template field.
 
-The values preserve nested Content, notes, selectors, template storage and relationships through copying/reflected serialization. The catalog validates identity and owns copies. Content parsing, template evaluation and assembly belong to later stages. Type _copy dependencies and additional type-entry records must be handled explicitly before complete imported definitions are claimed. Bounded supplied-document conversion, remaining template/assembly contracts and finite source audits remain follow-up work.
+The values preserve nested Content, notes, selectors, template storage and relationships through copying/reflected serialization. The catalog validates identity and owns copies. The reader converts entries with the shared Content parser. Template evaluation and wider item assembly are separate stages. Additional type-entry records and broader copy operations remain future assembly inputs. The definition reader covers the three definition arrays and direct type entry inheritance.

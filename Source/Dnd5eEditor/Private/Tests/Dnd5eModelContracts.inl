@@ -607,6 +607,13 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("AvailabilityDefinedInSource"), TEXT("FString"), TEXT("") },
 			{ TEXT("bIncludeVariantAvailability"), TEXT("bool"), TEXT("true") },
 		} },
+		{ TEXT("FDnd5eJsonItemDefinitionReadResult"), &FDnd5eJsonItemDefinitionReadResult::StaticStruct, {
+			{ TEXT("Status"), TEXT("EDnd5eJsonReadStatus"), TEXT("EDnd5eJsonReadStatus::NotAttempted"), true },
+			{ TEXT("Types"), TEXT("TArray<FDnd5eItemTypeDefinition>"), TEXT(""), true },
+			{ TEXT("Properties"), TEXT("TArray<FDnd5eItemPropertyDefinition>"), TEXT(""), true },
+			{ TEXT("Masteries"), TEXT("TArray<FDnd5eItemMasteryDefinition>"), TEXT(""), true },
+			{ TEXT("Diagnostics"), TEXT("TArray<FDnd5eDiagnostic>"), TEXT(""), true },
+		}, TEXT("/Script/Dnd5eJson") },
 		{ TEXT("FDnd5eJsonDocument"), &FDnd5eJsonDocument::StaticStruct, {
 			{ TEXT("JsonText"), TEXT("FString"), TEXT("") },
 			{ TEXT("Context"), TEXT("FDnd5eJsonReadContext"), TEXT("") },
