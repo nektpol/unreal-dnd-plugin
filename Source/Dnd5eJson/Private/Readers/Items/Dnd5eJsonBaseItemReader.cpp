@@ -483,6 +483,217 @@ namespace
         return Extra->Values.IsEmpty() ||
             SerializeValue(MakeShared<FJsonValueObject>(Extra), Origin.AdditionalMetadataJson, Pointer, State);
     }
+
+	bool TryReadAttunementSelector(const TSharedPtr<FJsonValue>& Value, FGameplayTag Category,
+	    FDnd5eRecordSelector& Out)
+	{
+	    FString Uid;
+	    if (!Value.IsValid() || Value->Type != EJson::String || !Value->TryGetString(Uid))
+	    {
+	        return false;
+	    }
+	    FDnd5eRecordSelector Candidate;
+	    Candidate.Category = Category;
+	    Candidate.bHasSource = Uid.Split(TEXT("|"), &Candidate.Name, &Candidate.SourceId,
+	        ESearchCase::CaseSensitive);
+	    if (!Candidate.bHasSource) { Candidate.Name = Uid; }
+	    if (!IsValidIdentityText(Candidate.Name) ||
+	        (Candidate.bHasSource &&
+	         (Candidate.SourceId.Contains(TEXT("|")) || !IsValidIdentityText(Candidate.SourceId))))
+	    {
+	        return false;
+	    }
+	    Out = MoveTemp(Candidate);
+	    return true;
+	}
+
+	bool TryReadAttunementField(const FString& Key, const TSharedPtr<FJsonValue>& Value,
+	    FDnd5eAttunementIndexGroup& Group)
+	{
+	    if (!Value.IsValid()) { return false; }
+	    const auto Is = [&Key](const TCHAR* Expected)
+	    {
+	        return Key.Equals(Expected, ESearchCase::CaseSensitive);
+	    };
+
+	    FGameplayTag Category;
+	    if (Is(TEXT("class"))) { Category = Dnd5e::Category::Class; }
+	    else if (Is(TEXT("race"))) { Category = Dnd5e::Category::Species; }
+	    else if (Is(TEXT("background"))) { Category = Dnd5e::Category::Background; }
+	    else if (Is(TEXT("skillProficiency"))) { Category = Dnd5e::Category::Skill; }
+	    if (Category.IsValid())
+	    {
+	        FDnd5eRecordSelector Selector;
+	        if (!TryReadAttunementSelector(Value, Category, Selector)) { return false; }
+	        Group.RecordRequirements.Add(MoveTemp(Selector));
+	        return true;
+	    }
+
+	    if (Is(TEXT("spellcasting")) || Is(TEXT("psionics")))
+	    {
+	        bool bEnabled = false;
+	        if (Value->Type != EJson::Boolean || !Value->TryGetBool(bEnabled)) { return false; }
+	        if (Is(TEXT("spellcasting")))
+	        {
+	            Group.bHasSpellcasting = true;
+	            Group.bSpellcasting = bEnabled;
+	        }
+	        else
+	        {
+	            Group.bHasPsionics = true;
+	            Group.bPsionics = bEnabled;
+	        }
+	        return true;
+	    }
+
+	    if (Is(TEXT("int")))
+	    {
+	        FString Literal;
+	        int32 Score = 0;
+	        if (Value->Type != EJson::Number || !Value->TryGetString(Literal) ||
+	            !TryParseBoundedIntegerToken(Literal, 1, MAX_int32, Score))
+	        {
+	            return false;
+	        }
+	        FDnd5eAbilityScoreMinimum Minimum;
+	        Minimum.Ability = Dnd5e::Ability::Intelligence;
+	        Minimum.Minimum = Score;
+	        Group.MinimumAbilityScores.Add(MoveTemp(Minimum));
+	        return true;
+	    }
+
+	    if (Is(TEXT("alignment")))
+	    {
+	        const TArray<TSharedPtr<FJsonValue>>* Options = nullptr;
+	        if (Value->Type != EJson::Array || !Value->TryGetArray(Options) || !Options || Options->Num() != 1)
+	        {
+	            return false;
+	        }
+	        FString Token;
+	        const auto& First = (*Options)[0];
+	        if (!First.IsValid() || First->Type != EJson::String || !First->TryGetString(Token))
+	        {
+	            return false;
+	        }
+	        FGameplayTag Trait;
+	        if (Token.Equals(TEXT("G"), ESearchCase::CaseSensitive)) { Trait = Dnd5e::Alignment::Good; }
+	        else if (Token.Equals(TEXT("E"), ESearchCase::CaseSensitive)) { Trait = Dnd5e::Alignment::Evil; }
+	        if (!Trait.IsValid()) { return false; }
+
+	        FDnd5eAlignmentRequirement Option;
+	        Option.RequiredTraits.AddTag(Trait);
+	        Group.AlignmentOptions.Add(MoveTemp(Option));
+	        Group.bHasAlignmentFilter = true;
+	        return true;
+	    }
+
+	    FString Token;
+	    if (Value->Type != EJson::String || !Value->TryGetString(Token) || !IsValidIdentityText(Token))
+	    {
+	        return false;
+	    }
+	    if (Is(TEXT("languageProficiency")))
+	    {
+	        Group.LanguageProficiencies.Add(MoveTemp(Token));
+	        return true;
+	    }
+	    if (Is(TEXT("creatureType")))
+	    {
+	        if (Token.Equals(TEXT("humanoid"), ESearchCase::CaseSensitive))
+	        {
+	            Group.CreatureType = Dnd5e::Creature::Type::Humanoid;
+	            return true;
+	        }
+	        if (Token.Equals(TEXT("fey"), ESearchCase::CaseSensitive))
+	        {
+	            Group.CreatureType = Dnd5e::Creature::Type::Fey;
+	            return true;
+	        }
+	    }
+	    if (Is(TEXT("size")) && Token.Equals(TEXT("S"), ESearchCase::CaseSensitive))
+	    {
+	        Group.Size = EDnd5eSize::Small;
+	        return true;
+	    }
+	    return false;
+	}
+
+	bool RetainAttunementFragment(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+	    TArray<FDnd5eUnsupportedContent>& Out, FReadState& State)
+	{
+	    FDnd5eUnsupportedContent Fragment;
+	    Fragment.SourceFormat = TEXT("5etools");
+	    Fragment.FragmentKind = EDnd5eSourceFragmentKind::Json;
+	    if (Value->Type == EJson::Object || Value->Type == EJson::Array)
+	    {
+	        if (!SerializeValue(Value, Fragment.SourceFragment, Pointer, State)) { return false; }
+	    }
+	    else
+	    {
+	        // Unreal's JSON writer only closes successfully after an object or array.
+	        FString WrappedJson;
+	        const TArray<TSharedPtr<FJsonValue>> Wrapped{Value};
+	        if (!SerializeValue(MakeShared<FJsonValueArray>(Wrapped), WrappedJson, Pointer, State)) { return false; }
+	        Fragment.SourceFragment = WrappedJson.Mid(1, WrappedJson.Len() - 2).TrimStartAndEnd();
+	    }
+	    Out.Add(MoveTemp(Fragment));
+	    AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata,
+	        Pointer, TEXT("Unsupported attunement index input retained."));
+	    return true;
+	}
+
+	bool ReadAttunementIndex(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+	    FDnd5eAttunementIndex& Out, FReadState& State)
+	{
+	    const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	    if (Value->Type != EJson::Array || !Value->TryGetArray(Rows) || !Rows)
+	    {
+	        return RetainAttunementFragment(Value, Pointer, Out.UnsupportedContent, State);
+	    }
+
+	    Out.bIsFullyRepresented = true;
+	    for (int32 Index = 0; Index < Rows->Num(); ++Index)
+	    {
+	        const FString GroupPointer = AppendPointer(Pointer, FString::FromInt(Index));
+	        const auto& Row = (*Rows)[Index];
+	        if (!ConsumeContentBudget(GroupPointer, State)) { return false; }
+	        const TSharedPtr<FJsonObject>* Object = nullptr;
+	        if (!Row.IsValid() || Row->Type != EJson::Object || !Row->TryGetObject(Object) ||
+	            !Object || !Object->IsValid() || (*Object)->Values.IsEmpty())
+	        {
+	            Out.bIsFullyRepresented = false;
+	            if (!RetainAttunementFragment(Row, GroupPointer, Out.UnsupportedContent, State)) { return false; }
+	            continue;
+	        }
+
+	        FDnd5eAttunementIndexGroup Group;
+	        TArray<FString> Keys;
+	        for (const auto& Pair : (*Object)->Values) { Keys.Emplace(Pair.Key.Len(), *Pair.Key); }
+	        Keys.Sort([](const FString& A, const FString& B)
+	        {
+	            return A.Compare(B, ESearchCase::CaseSensitive) < 0;
+	        });
+	        for (const FString& Key : Keys)
+	        {
+	            const FString FieldPointer = AppendPointer(GroupPointer, Key);
+	            if (!ConsumeContentBudget(FieldPointer, State)) { return false; }
+	            const auto Field = FindExactField(**Object, *Key);
+	            if (TryReadAttunementField(Key, Field, Group)) { continue; }
+
+	            auto Evidence = MakeShared<FJsonObject>();
+	            Evidence->SetField(Key, Field);
+	            Out.bIsFullyRepresented = false;
+	            if (!RetainAttunementFragment(MakeShared<FJsonValueObject>(Evidence),
+	                FieldPointer, Group.UnsupportedContent, State))
+	            {
+	                return false;
+	            }
+	        }
+	        Out.Groups.Add(MoveTemp(Group));
+	    }
+	    return true;
+	}
+
 	bool ReadItemAttunement(const FJsonObject& Object, const FString& Pointer,
 	FDnd5eItem& Item, TSet<FString>& Consumed, FReadState& State)
 	{
@@ -525,7 +736,28 @@ namespace
 		{
 			return false;
 		}
-		Item.bHasAlternativeAttunement = Consumed.Contains(TEXT("reqAttuneAlt"));
+		const auto ReadIndexField = [&](const TCHAR* Field, FDnd5eAttunementRequirement& Requirement)
+		{
+			const auto Value = FindExactField(Object, Field);
+			if (!Value.IsValid()) { return true; }
+			FDnd5eAttunementIndex Candidate;
+			if (!ReadAttunementIndex(Value, AppendPointer(Pointer, Field), Candidate, State))
+			{
+				return false;
+			}
+			Requirement.Index = MoveTemp(Candidate);
+			Requirement.bHasIndex = true;
+			Consumed.Add(Field);
+			return true;
+		};
+
+		if (!ReadIndexField(TEXT("reqAttuneTags"), Item.Attunement) ||
+			!ReadIndexField(TEXT("reqAttuneAltTags"), Item.AlternativeAttunement))
+		{
+			return false;
+		}
+		Item.bHasAlternativeAttunement = Consumed.Contains(TEXT("reqAttuneAlt")) ||
+			Item.AlternativeAttunement.bHasIndex;
 		return true;
 	}
 
