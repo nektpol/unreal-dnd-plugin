@@ -28,6 +28,32 @@ namespace
 			UDnd5eContentLibrary::TryGetReference(Paragraph.Inlines[0], Reference);
 	}
 
+	bool MakeExpansionFixture(FDnd5eJsonItemEntryExpansionRequest& Request)
+	{
+		const auto Definition = EntryTemplateDocument(TEXT(R"json({"itemEntry":[{"name":"Invented Ward","source":"SYN",
+			"entriesTemplate":[{"type":"entries","name":"{{item.detail1}} Ward","entries":[
+			"Raw {{item.resist}}.","Display {{getFullImmRes item.resist}}.","{{item.detail2}}",3.00]}]}]})json"),
+			TEXT("fixtures/items-base.json"));
+		const auto Item = EntryTemplateDocument(TEXT(R"({"item":[{"name":"Invented Token","source":"SYN","rarity":"rare",
+			"entries":["{#itemEntry Invented Ward|SYN}","{#itemEntry Invented Ward}"]}]})"), TEXT("fixtures/items.json"));
+		const auto Template = FDnd5eJsonItemEntryTemplateReader::ReadAtIndex(Definition, 0);
+		const auto Read = FDnd5eJsonItemReader::ReadAtIndex(Item, 0);
+		FDnd5eParagraphContent Paragraph;
+		if (Template.Status != EDnd5eJsonReadStatus::Success || Read.Status != EDnd5eJsonReadStatus::Success ||
+			Read.Item.Description.Num() != 2 || !UDnd5eContentLibrary::TryGetParagraph(Read.Item.Description[0], Paragraph) ||
+			Paragraph.Inlines.Num() != 1) { return false; }
+		Request.DatasetNamespace = Item.Context.DatasetNamespace;
+		Request.Reference = MoveTemp(Paragraph.Inlines[0]);
+		Request.Templates.Add(Template.EntryTemplate);
+		Request.bHasDetail1 = true;
+		Request.Detail1 = TEXT("Invented");
+		Request.bHasDetail2 = true;
+		Request.Detail2 = TEXT("{@b Optional text}");
+		Request.bHasResistances = true;
+		Request.Resistances = {TEXT("fire"), TEXT("cold")};
+		return true;
+	}
+
 	void CollectAuthoredItemEntryTokens(const TSharedPtr<FJsonValue>& Value, TArray<TSharedPtr<FJsonValue>>& Tokens)
 	{
 		if (Value->Type == EJson::String)
@@ -149,6 +175,113 @@ bool FDnd5eItemEntryReferenceReadTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemEntryExpansionTest, "Dnd5e.Items.EntryTemplate.Expansion", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemEntryExpansionTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonItemEntryExpansionRequest Request;
+	if (!TestTrue(TEXT("Prepare a source-qualified reference and nested template"), MakeExpansionFixture(Request))) { return false; }
+	const FString Original = Request.Templates[0].EntriesTemplateJson;
+	Request.OmittedSourceId = TEXT("OTHER");
+	const auto Read = UDnd5eJsonItemLibrary::ExpandItemEntryReference(Request);
+	FDnd5eSectionContent Section;
+	if (!TestTrue(TEXT("An explicit publication wins and one section expands"),
+		Read.Status == EDnd5eJsonReadStatus::Success && Read.Diagnostics.IsEmpty() && Read.Blocks.Num() == 1 &&
+		UDnd5eContentLibrary::TryGetSection(Read.Blocks[0], Section) && Section.Heading.Num() == 1 && Section.Blocks.Num() == 4))
+	{
+		return false;
+	}
+	const auto& Metadata = Read.Blocks[0].Metadata;
+	FDnd5eTextContent Heading;
+	TestTrue(TEXT("Result points to the chosen template and has a substituted heading"),
+		Read.TemplateId == Request.Templates[0].Header.RecordId && Read.TemplateOrigin.JsonPointer == TEXT("/itemEntry/0") &&
+		Metadata.SourceId == TEXT("SYN") && Metadata.RelativeFilePath == TEXT("fixtures/items-base.json") &&
+		Metadata.JsonPointer == TEXT("/itemEntry/0/entriesTemplate/0") &&
+		UDnd5eContentLibrary::TryGetInlineText(Section.Heading[0], Heading) && Heading.Text == TEXT("Invented Ward"));
+	const auto HasText = [](const FDnd5eContentBlock& Block, const TCHAR* Expected)
+	{
+		FDnd5eParagraphContent Paragraph;
+		FDnd5eTextContent Text;
+		return UDnd5eContentLibrary::TryGetParagraph(Block, Paragraph) && Paragraph.Inlines.Num() == 1 &&
+			UDnd5eContentLibrary::TryGetInlineText(Paragraph.Inlines[0], Text) && Text.Text.Equals(Expected, ESearchCase::CaseSensitive);
+	};
+	TestTrue(TEXT("Raw array and formatted helper have distinct spacing"),
+		HasText(Section.Blocks[0], TEXT("Raw fire,cold.")) && HasText(Section.Blocks[1], TEXT("Display fire, cold.")));
+	FDnd5eParagraphContent Paragraph;
+	FDnd5eFormattedContent Formatted;
+	FDnd5eNumberContent Number;
+	TestTrue(TEXT("Substituted inline markup enters the normal Content reader"),
+		UDnd5eContentLibrary::TryGetParagraph(Section.Blocks[2], Paragraph) && Paragraph.Inlines.Num() == 1 &&
+		UDnd5eContentLibrary::TryGetFormatted(Paragraph.Inlines[0], Formatted));
+	TestTrue(TEXT("Unchanged numeric literals survive the shared traversal"),
+		UDnd5eContentLibrary::TryGetParagraph(Section.Blocks[3], Paragraph) && Paragraph.Inlines.Num() == 1 &&
+		UDnd5eContentLibrary::TryGetNumber(Paragraph.Inlines[0], Number) && Number.Value.SourceLiteral == TEXT("3.00"));
+
+	Request.bTitleCaseDamageNames = true;
+	Request.Detail2.Reset();
+	const auto Styled = FDnd5eJsonItemEntryExpander::Expand(Request);
+	TestTrue(TEXT("Title casing affects the helper and explicit empty detail still succeeds"),
+		Styled.Status == EDnd5eJsonReadStatus::Success && Styled.Blocks.Num() == 1 &&
+		UDnd5eContentLibrary::TryGetSection(Styled.Blocks[0], Section) && Section.Blocks.Num() == 4 &&
+		HasText(Section.Blocks[0], TEXT("Raw fire,cold.")) && HasText(Section.Blocks[1], TEXT("Display Fire, Cold.")) &&
+		HasText(Section.Blocks[2], TEXT("")));
+	Request.Resistances = {TEXT("acid"), TEXT("bludgeoning"), TEXT("cold"), TEXT("fire"), TEXT("force"), TEXT("lightning"),
+		TEXT("necrotic"), TEXT("piercing"), TEXT("poison"), TEXT("psychic"), TEXT("radiant"), TEXT("slashing"), TEXT("thunder")};
+	Request.Detail2 = TEXT("{{item.unknown}}");
+	const auto Full = FDnd5eJsonItemEntryExpander::Expand(Request);
+	TestTrue(TEXT("Full damage list collapses and inserted text is evaluated once"),
+		Full.Status == EDnd5eJsonReadStatus::Success && Full.Blocks.Num() == 1 &&
+		UDnd5eContentLibrary::TryGetSection(Full.Blocks[0], Section) && Section.Blocks.Num() == 4 &&
+		HasText(Section.Blocks[1], TEXT("Display All Damage.")) && HasText(Section.Blocks[2], TEXT("{{item.unknown}}")));
+	TestEqual(TEXT("Expansion preserves the original template"), Request.Templates[0].EntriesTemplateJson, Original);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemEntryExpansionFailureTest, "Dnd5e.Items.EntryTemplate.ExpansionFailures", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemEntryExpansionFailureTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonItemEntryExpansionRequest Request;
+	if (!TestTrue(TEXT("Prepare expansion inputs"), MakeExpansionFixture(Request))) { return false; }
+	const auto Check = [&](const FDnd5eJsonItemEntryExpansionRequest& Candidate, const TCHAR* File, const TCHAR* Pointer, const TCHAR* Code)
+	{
+		const auto Read = FDnd5eJsonItemEntryExpander::Expand(Candidate);
+		TestTrue(FString::Printf(TEXT("Failure reports %s %s and withholds output"), File, Pointer),
+			Read.Status == EDnd5eJsonReadStatus::Failure && Read.Blocks.IsEmpty() && Read.TemplateId == FDnd5eRecordId{} &&
+			Read.TemplateOrigin.JsonPointer.IsEmpty() && Read.Diagnostics.Num() == 1 &&
+			Read.Diagnostics[0].RelativeFilePath == File && Read.Diagnostics[0].JsonPointer == Pointer && Read.Diagnostics[0].Code == FName(Code));
+	};
+	auto Candidate = Request;
+	Candidate.bHasDetail2 = false;
+	Check(Candidate, TEXT("fixtures/items-base.json"), TEXT("/itemEntry/0/entriesTemplate/0/entries/2"), TEXT("Dnd5e.Json.MissingRequiredField"));
+	Candidate = Request;
+	Candidate.Templates[0].EntriesTemplateJson = TEXT("[");
+	Check(Candidate, TEXT("fixtures/items-base.json"), TEXT("/itemEntry/0/entriesTemplate"), TEXT("Dnd5e.Json.InvalidSyntax"));
+	Candidate.Templates[0].EntriesTemplateJson = TEXT("[\"{{item.unknown}}\"]");
+	Check(Candidate, TEXT("fixtures/items-base.json"), TEXT("/itemEntry/0/entriesTemplate/0"), TEXT("Dnd5e.Json.UnsupportedRequiredValue"));
+	Candidate.Templates[0].EntriesTemplateJson = TEXT("[\"{{item.detail1}}\"]");
+	Candidate.Detail1 = FString::ChrN(65537, TEXT('x'));
+	Check(Candidate, TEXT("fixtures/items-base.json"), TEXT("/itemEntry/0/entriesTemplate/0"), TEXT("Dnd5e.Json.ResourceLimitExceeded"));
+	Candidate = Request;
+	const auto Duplicate = Candidate.Templates[0];
+	Candidate.Templates.Add(Duplicate);
+	Check(Candidate, TEXT("fixtures/items.json"), TEXT("/item/0/entries/0"), TEXT("Dnd5e.Json.InvalidFieldValue"));
+	Candidate.Templates.Reset();
+	Check(Candidate, TEXT("fixtures/items.json"), TEXT("/item/0/entries/0"), TEXT("Dnd5e.Json.UnresolvedReference"));
+
+	const auto Item = EntryTemplateDocument(TEXT(R"({"item":[{"name":"Invented Token","source":"SYN","rarity":"rare",
+		"entries":["{#itemEntry Invented Ward}"]}]})"), TEXT("fixtures/items.json"));
+	const auto Read = FDnd5eJsonItemReader::ReadAtIndex(Item, 0);
+	FDnd5eParagraphContent Paragraph;
+	if (!TestTrue(TEXT("Read the omitted-source form"),
+		Read.Item.Description.Num() == 1 && UDnd5eContentLibrary::TryGetParagraph(Read.Item.Description[0], Paragraph) &&
+		Paragraph.Inlines.Num() == 1)) { return false; }
+	Request.Reference = Paragraph.Inlines[0];
+	Check(Request, TEXT("fixtures/items.json"), TEXT("/item/0/entries/0"), TEXT("Dnd5e.Json.UnresolvedReference"));
+	Request.OmittedSourceId = TEXT("SYN");
+	TestTrue(TEXT("An explicit policy resolves an omitted publication"),
+		FDnd5eJsonItemEntryExpander::Expand(Request).Status == EDnd5eJsonReadStatus::Success);
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_COMPLEX_AUTOMATION_TEST(FDnd5eItemEntryTemplateSnapshotTest, "Dnd5e.Items.EntryTemplate.External", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 void FDnd5eItemEntryTemplateSnapshotTest::GetTests(TArray<FString>& Names, TArray<FString>& Commands) const
 {
@@ -173,6 +306,7 @@ bool FDnd5eItemEntryTemplateSnapshotTest::RunTest(const FString& Parameters)
 		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Definitions), Root) && Root.IsValid() &&
 		Root->TryGetArrayField(TEXT("itemEntry"), Rows) && Rows && Rows->Num() == 13)) { return false; }
 	TSet<FDnd5eRecordId> TemplateIds;
+	TArray<FDnd5eItemEntryTemplate> Templates;
 	for (int32 Index = 0; Index < Rows->Num(); ++Index)
 	{
 		const auto Result = FDnd5eJsonItemEntryTemplateReader::ReadAtIndex(Document, Index);
@@ -184,18 +318,41 @@ bool FDnd5eItemEntryTemplateSnapshotTest::RunTest(const FString& Parameters)
 			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Result.EntryTemplate.EntriesTemplateJson), Entries) &&
 			Entries.Num() == (*Rows)[Index]->AsObject()->GetArrayField(TEXT("entriesTemplate")).Num())) { continue; }
 		TemplateIds.Add(Result.EntryTemplate.Header.RecordId);
+		Templates.Add(Result.EntryTemplate);
 	}
 	TestEqual(TEXT("All template IDs are unique"), TemplateIds.Num(), 13);
 
 	TArray<TSharedPtr<FJsonValue>> Tokens;
+	TArray<FDnd5eJsonItemEntryExpansionRequest> Arguments;
 	for (const TCHAR* Argument : {TEXT("Dnd5eJsonItemCopyFile="), TEXT("Dnd5eJsonVariantFile=")})
 	{
 		FString Path, Text;
 		TSharedPtr<FJsonValue> Value;
 		if (!TestTrue(TEXT("Read supplied item reference tokens"), FParse::Value(FCommandLine::Get(), Argument, Path) &&
 			FFileHelper::LoadFileToString(Text, *Path) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Value) &&
-			Value.IsValid())) { return false; }
-		CollectAuthoredItemEntryTokens(Value, Tokens);
+			Value.IsValid() && Value->Type == EJson::Object)) { return false; }
+		const auto RootObject = Value->AsObject();
+		for (const TCHAR* Field : {TEXT("item"), TEXT("itemGroup"), TEXT("magicvariant")})
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Records = nullptr;
+			if (!RootObject->TryGetArrayField(Field, Records)) { continue; }
+			for (const auto& Record : *Records)
+			{
+				const int32 FirstToken = Tokens.Num();
+				CollectAuthoredItemEntryTokens(Record, Tokens);
+				if (Tokens.Num() == FirstToken) { continue; }
+				if (!TestTrue(TEXT("Each authored token belongs to an item or variant object"), Record->Type == EJson::Object)) { return false; }
+
+				const auto Row = Record->AsObject();
+				const TSharedPtr<FJsonObject>* Inherits = nullptr;
+				const auto Source = Row->TryGetObjectField(TEXT("inherits"), Inherits) ? *Inherits : Row;
+				FDnd5eJsonItemEntryExpansionRequest Args;
+				Args.bHasDetail1 = Source->TryGetStringField(TEXT("detail1"), Args.Detail1);
+				Args.bHasDetail2 = Source->TryGetStringField(TEXT("detail2"), Args.Detail2);
+				Args.bHasResistances = Source->TryGetStringArrayField(TEXT("resist"), Args.Resistances);
+				for (int32 Index = FirstToken; Index < Tokens.Num(); ++Index) { Arguments.Add(Args); }
+			}
+		}
 	}
 	TestEqual(TEXT("All authored template references in the two supplied files"), Tokens.Num(), 122);
 	auto ProbeItem = MakeShared<FJsonObject>();
@@ -228,6 +385,23 @@ bool FDnd5eItemEntryTemplateSnapshotTest::RunTest(const FString& Parameters)
 		{
 			++Omitted;
 			TestFalse(TEXT("Omitted publication stays unresolved"), Reference.bHasTargetRecordId);
+		}
+		FDnd5eParagraphContent Paragraph;
+		if (!UDnd5eContentLibrary::TryGetParagraph(Read.Item.Description[Index], Paragraph) || Paragraph.Inlines.Num() != 1) { continue; }
+		auto& Request = Arguments[Index];
+		Request.DatasetNamespace = Document.Context.DatasetNamespace;
+		Request.Reference = MoveTemp(Paragraph.Inlines[0]);
+		Request.Templates = Templates;
+		Request.OmittedSourceId = TEXT("DMG");
+		const auto Expanded = FDnd5eJsonItemEntryExpander::Expand(Request);
+		if (!TestTrue(FString::Printf(TEXT("Authored entry %d expands with its source arguments"), Index),
+			Expanded.Status == EDnd5eJsonReadStatus::Success && !Expanded.Blocks.IsEmpty() &&
+			TemplateIds.Contains(Expanded.TemplateId) && Expanded.TemplateOrigin.RelativeFilePath == Document.Context.RelativeFilePath))
+		{
+			for (const auto& Diagnostic : Expanded.Diagnostics)
+			{
+				AddError(Diagnostic.RelativeFilePath + TEXT(" ") + Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message);
+			}
 		}
 	}
 	TestEqual(TEXT("Explicit references"), Explicit, 92);

@@ -2,6 +2,7 @@
 
 #include "Readers/Items/Dnd5eJsonItemVariantEntries.h"
 #include "Containers/StringView.h"
+#include "Readers/Items/Dnd5eJsonItemEntryStrings.h"
 
 namespace
 {
@@ -134,49 +135,13 @@ namespace
 	bool RenderVariantEntryValue(const TSharedPtr<FJsonValue>& Value, FVariantEntryInputs& Inputs,
 		const FString& Pointer, TSharedPtr<FJsonValue>& Out, FReadState& State)
 	{
-		if (!ConsumeContentBudget(Pointer, State)) { return false; }
-		if (Value->Type == EJson::String)
-		{
-			const FString Text = Value->AsString();
-			if (Text.Contains(TEXT("{="), ESearchCase::CaseSensitive))
+		return TransformItemEntryStrings(Value, Pointer, Out, State,
+			[&Inputs](const FString& Text, const FString& Location, FString& Rendered, FReadState& ReadState)
 			{
-				FString Rendered;
-				if (!RenderVariantString(Text, Inputs, Pointer, Rendered, State)) { return false; }
-				Out = MakeShared<FJsonValueString>(MoveTemp(Rendered));
+				if (Text.Contains(TEXT("{="), ESearchCase::CaseSensitive)) { return RenderVariantString(Text, Inputs, Location, Rendered, ReadState); }
+				Rendered = Text;
 				return true;
-			}
-		}
-		else if (Value->Type == EJson::Array)
-		{
-			const auto& Source = Value->AsArray();
-			TArray<TSharedPtr<FJsonValue>> Candidate;
-			Candidate.Reserve(Source.Num());
-			for (int32 Index = 0; Index < Source.Num(); ++Index)
-			{
-				TSharedPtr<FJsonValue> Child;
-				if (!RenderVariantEntryValue(Source[Index], Inputs, AppendPointer(Pointer, FString::FromInt(Index)),
-					Child, State)) { return false; }
-				Candidate.Add(MoveTemp(Child));
-			}
-			Out = MakeShared<FJsonValueArray>(MoveTemp(Candidate));
-			return true;
-		}
-		else if (Value->Type == EJson::Object)
-		{
-			const auto& Source = *Value->AsObject();
-			auto Candidate = MakeShared<FJsonObject>();
-			for (const auto& Pair : Source.Values)
-			{
-				const FString Key(Pair.Key.Len(), *Pair.Key);
-				TSharedPtr<FJsonValue> Child;
-				if (!RenderVariantEntryValue(Pair.Value, Inputs, AppendPointer(Pointer, Key), Child, State)) { return false; }
-				Candidate->SetField(Key, Child);
-			}
-			Out = MakeShared<FJsonValueObject>(Candidate);
-			return true;
-		}
-		Out = Value;
-		return true;
+			});
 	}
 }
 

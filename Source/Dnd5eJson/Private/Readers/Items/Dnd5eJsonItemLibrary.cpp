@@ -44,3 +44,8 @@ FDnd5eJsonItemEntryTemplateReadResult UDnd5eJsonItemLibrary::ReadItemEntryTempla
 {
 	return FDnd5eJsonItemEntryTemplateReader::ReadAtIndex(Document, Index);
 }
+
+FDnd5eJsonItemEntryExpansionResult UDnd5eJsonItemLibrary::ExpandItemEntryReference(const FDnd5eJsonItemEntryExpansionRequest& Request)
+{
+	return FDnd5eJsonItemEntryExpander::Expand(Request);
+}
