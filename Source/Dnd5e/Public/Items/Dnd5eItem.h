@@ -10,6 +10,7 @@
 #include "Values/Dnd5ePrice.h"
 #include "Values/Dnd5eAttunementRequirement.h"
 #include "Items/Dnd5eItemEquipment.h"
+#include "Records/Dnd5eRecordId.h"
 #include "Dnd5eItem.generated.h"
 
 USTRUCT(BlueprintType)
@@ -18,6 +19,10 @@ struct DND5E_API FDnd5eItem
 	GENERATED_BODY()
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
 	FDnd5eRecordHeader Header;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
+	bool bHasBaseItemId = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item", meta = (EditCondition = "bHasBaseItemId"))
+	FDnd5eRecordId BaseItemId;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
 	bool bHasType = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item", meta = (EditCondition = "bHasType"))

@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **820 cases**; the combined explicitly supplied-data run passes **847 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 470 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **823 cases**; the combined explicitly supplied-data run passes **850 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -250,3 +250,9 @@ The synthetic cases exercise the Blueprint library entry point, selection by sou
 The Development Editor build and all **847 combined cases** passed on 2026-11-10, including **820 standard cases** and 27 opt-in audits. The run reported zero failures, not-run cases, or automation warnings. The local report is Saved/Automation/Dnd5eStructuredAttunementFinal/index.json.
 
 The two new synthetic cases cover independent primary and alternative indexes, group boundaries, source-qualified and source-less selectors, explicit Boolean presence, Intelligence, alignment, size, creature type and language. Fallback assertions cover unsupported members, malformed groups and envelopes, scalar fragment serialization, escaped diagnostic paths and empty versus absent indexes. The existing ordinary-item conversion test now verifies that readable conditions and a typed background index coexist. No external ordinary-item conversion audit runs as part of this suite.
+
+### Direct base-item links
+
+The Development Editor build and all **850 combined cases** passed on 2026-11-10, including **823 standard cases** and 27 opt-in audits. The run reported zero failed, not-run, or warning cases. The local report is Saved/Automation/Dnd5eBaseItemReference/index.json.
+
+Three synthetic cases cover canonical normalization against base rows, explicit publication, malformed or self links, and reflected Blueprint lookup. The lookup tests cover unique, missing, cross-namespace and duplicate matches, default output on failure, and output value isolation. The existing item schema and copy/serialization tests cover the two reflected fields. The base-item link cases use synthetic documents.

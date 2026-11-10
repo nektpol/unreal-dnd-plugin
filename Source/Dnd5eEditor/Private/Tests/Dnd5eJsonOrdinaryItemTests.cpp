@@ -1,6 +1,9 @@
 // Developed by Neko Creative Technologies
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Dnd5eTestSupport.h"
+#include "Items/Dnd5eItemLibrary.h"
+#include "Readers/Items/Dnd5eJsonBaseItemLibrary.h"
+#include "UObject/StructOnScope.h"
 #include "Readers/Items/Dnd5eJsonItemLibrary.h"
 
 namespace
@@ -56,8 +59,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eOrdinaryItemFailureTest, "Dnd5e.Items.Ord
 bool FDnd5eOrdinaryItemFailureTest::RunTest(const FString& Parameters)
 {
 	const auto Document = StandaloneItemDocument(TEXT(R"json({"item":[
-		{"name":"Dependent","source":"SYN","rarity":"none","baseItem":"Base|SYN"},
-		{"name":"Copy","source":"SYN","rarity":"none","_copy":{}},
+		{"name":"Bad base link","source":"SYN","rarity":"none","baseItem":"Base"},
+		{"name":"Copy","source":"SYN","rarity":"none","_copy":{},"baseItem":"Base|SYN"},
 		{"name":"Bad condition","source":"SYN","rarity":"none","reqAttune":7},
 		{"name":"Valid","source":"SYN","rarity":"none"}
 	]})json"));
@@ -179,6 +182,121 @@ bool FDnd5eOrdinaryItemAttunementFallbackTest::RunTest(const FString& Parameters
 		Empty.Item.Attunement.Index.Groups.IsEmpty() && Empty.Diagnostics.IsEmpty() &&
 		Absent.Status == EDnd5eJsonReadStatus::Success && !Absent.Item.Attunement.bHasIndex &&
 		!Absent.Item.bHasAlternativeAttunement && Absent.Diagnostics.IsEmpty());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eOrdinaryItemBaseLinkTest, "Dnd5e.Items.OrdinaryJson.BaseItemLink", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eOrdinaryItemBaseLinkTest::RunTest(const FString& Parameters)
+{
+	const auto Document = StandaloneItemDocument(TEXT(R"json({"item":[
+		{"name":"Invented Moonblade","source":"SYN","rarity":"rare","baseItem":"inVENTed blade: mark %|bas",
+		 "entries":["An invented description."]},
+		{"name":"Invented Plain","source":"SYN","rarity":"none"}
+	]})json"));
+	auto BaseDocument = StandaloneItemDocument(TEXT(R"json({"baseitem":[
+		{"name":"Invented Blade: Mark %","source":"ALT","type":"M","rarity":"none","weight":2},
+		{"name":"Invented Blade: Mark %","source":"BAS","type":"M","rarity":"none","weight":3}
+	]})json"));
+	BaseDocument.Context.RelativeFilePath = TEXT("fixtures/base-items.json");
+	const auto Read = UDnd5eJsonItemLibrary::ReadItemAtIndex(Document, 0);
+	const auto Bases = UDnd5eJsonBaseItemLibrary::ReadBaseItems(BaseDocument);
+	if (!TestTrue(TEXT("Ordinary and base documents convert independently"),
+		Read.Status == EDnd5eJsonReadStatus::Success && Read.Diagnostics.IsEmpty() &&
+		Bases.Status == EDnd5eJsonReadStatus::Success && Bases.Items.Num() == 2 &&
+		Read.Item.Header.Provenance.Num() == 1)) { return false; }
+	const auto& Item = Read.Item;
+	TestTrue(TEXT("The link uses the same canonical key as the base reader"),
+		Item.bHasBaseItemId && Item.BaseItemId == Bases.Items[1].Header.RecordId &&
+		Item.BaseItemId != Bases.Items[0].Header.RecordId && Item.BaseItemId != Item.Header.RecordId &&
+		Item.BaseItemId.SourceKey == TEXT("dnd5e:item:v1:invented blade%3A mark %25|bas"));
+	TestTrue(TEXT("The child owns only its own data"), !Item.bHasWeight && Item.Description.Num() == 1 &&
+		Item.Header.DisplayName == TEXT("Invented Moonblade") && Item.Rarity == Dnd5e::Item::Rarity::Rare &&
+		Item.Header.Provenance[0].RelativeFilePath == TEXT("fixtures/items.json") &&
+		!Item.Header.Provenance[0].AdditionalMetadataJson.Contains(TEXT("baseItem")));
+	FDnd5eItem Out;
+	if (TestTrue(TEXT("Lookup picks the exact publication"), UDnd5eItemLibrary::TryGetReferencedBaseItem(Item, Bases.Items, Out) &&
+		Out.Header.RecordId == Item.BaseItemId && Out.bHasWeight && Out.Weight.Amount.Integer == 3 &&
+		Out.Header.Provenance.Num() == 1 && Out.Header.Provenance[0].RelativeFilePath == TEXT("fixtures/base-items.json")))
+	{
+		Out.Weight.Amount.Integer = 9;
+		TestEqual(TEXT("Output owns its value"), Bases.Items[1].Weight.Amount.Integer, 3);
+	}
+	const auto Plain = FDnd5eJsonItemReader::ReadAtIndex(Document, 1);
+	TestTrue(TEXT("Omitted link leaves the ID inactive and default"), Plain.Status == EDnd5eJsonReadStatus::Success &&
+		!Plain.Item.bHasBaseItemId && Plain.Item.BaseItemId == FDnd5eRecordId{});
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eOrdinaryItemBadBaseLinkTest, "Dnd5e.Items.OrdinaryJson.InvalidBaseItemLinks", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eOrdinaryItemBadBaseLinkTest::RunTest(const FString& Parameters)
+{
+	for (const TCHAR* Value : {TEXT("null"), TEXT("5"), TEXT(R"("Blade")"), TEXT(R"("|BAS")"), TEXT(R"("Blade|")"),
+		TEXT(R"("Blade|BAS|Other")"), TEXT(R"("Blade| BAS")"), TEXT(R"("SELF|syn")")})
+	{
+		const FString Json = FString::Printf(TEXT(R"json({"item":[{"name":"Self","source":"SYN","rarity":"none","baseItem":%s}]})json"), Value);
+		const auto Result = FDnd5eJsonItemReader::ReadAtIndex(StandaloneItemDocument(*Json), 0);
+		TestTrue(FString::Printf(TEXT("Invalid base link is located and leaves default item: %s"), Value),
+			Result.Status == EDnd5eJsonReadStatus::Failure && !Result.Item.bHasBaseItemId &&
+			Result.Item.Header.RecordId == FDnd5eRecordId{} && Result.Diagnostics.Num() == 1 &&
+			Result.Diagnostics[0].JsonPointer == TEXT("/item/0/baseItem"));
+	}
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBaseItemLookupReflectionTest, "Dnd5e.Items.BaseItemLookup.ReflectedInvocation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eBaseItemLookupReflectionTest::RunTest(const FString& Parameters)
+{
+	auto* Library = GetMutableDefault<UDnd5eItemLibrary>();
+	auto* Function = Library->FindFunction(GET_FUNCTION_NAME_CHECKED(UDnd5eItemLibrary, TryGetReferencedBaseItem));
+	if (!TestNotNull(TEXT("Lookup UFunction"), Function)) { return false; }
+	TestTrue(TEXT("Lookup is Blueprint callable and owned by Core"),
+		Function->HasAllFunctionFlags(FUNC_Static | FUNC_BlueprintCallable) &&
+		Function->GetOutermost()->GetName() == TEXT("/Script/Dnd5e"));
+	const auto* Input = FindFProperty<FStructProperty>(Function, TEXT("Item"));
+	const auto* Candidates = FindFProperty<FArrayProperty>(Function, TEXT("BaseItems"));
+	const auto* Output = FindFProperty<FStructProperty>(Function, TEXT("OutBaseItem"));
+	const auto* Return = FindFProperty<FBoolProperty>(Function, TEXT("ReturnValue"));
+	const auto* Inner = Candidates ? CastField<FStructProperty>(Candidates->Inner) : nullptr;
+	if (!TestTrue(TEXT("Reflected parameter types and directions"), Input && Inner && Output && Return &&
+		Input->Struct == FDnd5eItem::StaticStruct() && Inner->Struct == FDnd5eItem::StaticStruct() &&
+		Output->Struct == FDnd5eItem::StaticStruct() && Input->HasAllPropertyFlags(CPF_ConstParm | CPF_Parm) &&
+		Candidates->HasAllPropertyFlags(CPF_ConstParm | CPF_Parm) && Output->HasAllPropertyFlags(CPF_OutParm | CPF_Parm) &&
+		!Output->HasAnyPropertyFlags(CPF_ConstParm | CPF_ReferenceParm) && Return->HasAnyPropertyFlags(CPF_ReturnParm))) { return false; }
+
+	FStructOnScope Frame(Function);
+	auto* Item = Input->ContainerPtrToValuePtr<FDnd5eItem>(Frame.GetStructMemory());
+	auto* BaseItems = Candidates->ContainerPtrToValuePtr<TArray<FDnd5eItem>>(Frame.GetStructMemory());
+	auto* Out = Output->ContainerPtrToValuePtr<FDnd5eItem>(Frame.GetStructMemory());
+	const auto Invoke = [&]()
+	{
+		Library->ProcessEvent(Function, Frame.GetStructMemory());
+		return Return->GetPropertyValue_InContainer(Frame.GetStructMemory());
+	};
+
+	Item->bHasBaseItemId = true;
+	Item->BaseItemId.DatasetNamespace = TEXT("ordinary-test");
+	Item->BaseItemId.Category = Dnd5e::Category::Item;
+	Item->BaseItemId.SourceKey = TEXT("dnd5e:item:v1:invented base|syn");
+	FDnd5eItem Base;
+	Base.Header.RecordId = Item->BaseItemId;
+	Base.Header.DisplayName = TEXT("Invented Base");
+	FDnd5eItem OtherDataset = Base;
+	OtherDataset.Header.RecordId.DatasetNamespace = TEXT("other");
+	*BaseItems = {OtherDataset, Base};
+	TestTrue(TEXT("Blueprint invocation returns one exact match"), Invoke() && Out->Header.RecordId == Base.Header.RecordId &&
+		Out->Header.DisplayName == Base.Header.DisplayName);
+	*BaseItems = {OtherDataset};
+	TestTrue(TEXT("A cross-namespace record is missing and clears the previous output"), !Invoke() &&
+		Out->Header.RecordId == FDnd5eRecordId{} && Out->Header.DisplayName.IsEmpty());
+	*BaseItems = {Base, Base};
+	*Out = Base;
+	TestTrue(TEXT("Duplicate matches are ambiguous and clear the output"), !Invoke() && Out->Header.RecordId == FDnd5eRecordId{});
+	*BaseItems = {Base};
+	Item->bHasBaseItemId = false;
+	TestFalse(TEXT("Inactive link ignores populated storage"), Invoke());
+	Item->bHasBaseItemId = true;
+	Item->Header.RecordId = Item->BaseItemId;
+	TestFalse(TEXT("Authored self links cannot resolve"), Invoke());
 	return !HasAnyErrors();
 }
 #endif

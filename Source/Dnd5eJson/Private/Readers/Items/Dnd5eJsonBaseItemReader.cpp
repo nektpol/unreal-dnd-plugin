@@ -761,6 +761,34 @@ namespace
 		return true;
 	}
 
+	bool ReadBaseItemLink(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item,
+		TSet<FString>& Consumed, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("baseItem"));
+		if (!Value.IsValid()) { return true; }
+
+		const FString FieldPointer = AppendPointer(Pointer, TEXT("baseItem"));
+		FString Uid, Name, Source;
+		FDnd5eRecordId TargetId;
+		if (Value->Type != EJson::String || !Value->TryGetString(Uid) ||
+			!Uid.Split(TEXT("|"), &Name, &Source, ESearchCase::CaseSensitive) ||
+			Source.Contains(TEXT("|")) || !IsValidIdentityText(Name) || !IsValidIdentityText(Source) ||
+			!Dnd5e::Items::TryMakeId(State.Context.DatasetNamespace, Name, Source, TargetId))
+		{
+			return Fail(State, Codes::InvalidFieldValue, FieldPointer,
+				TEXT("Expected an explicit base item name|source reference."));
+		}
+		if (TargetId == Item.Header.RecordId)
+		{
+			return Fail(State, Codes::InvalidFieldValue, FieldPointer, TEXT("An item cannot reference itself as its base item."));
+		}
+
+		Item.BaseItemId = MoveTemp(TargetId);
+		Item.bHasBaseItemId = true;
+		Consumed.Add(TEXT("baseItem"));
+		return true;
+	}
+
     bool ReadItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, bool bBaseItem, FReadState& State)
     {
         if (FindExactField(Object, TEXT("_copy")).IsValid())
@@ -768,11 +796,6 @@ namespace
             return Fail(State, Codes::UnsupportedRequiredValue, AppendPointer(Pointer, TEXT("_copy")),
                 TEXT("Base item copy assembly is outside this reader batch."));
         }
-		if (!bBaseItem && FindExactField(Object, TEXT("baseItem")).IsValid())
-		{
-			return Fail(State, Codes::UnsupportedRequiredValue,
-				AppendPointer(Pointer, TEXT("baseItem")), TEXT("This item requires base-item assembly."));
-		}
         if (!ReadBaseItemHeader(Object, Pointer, Item, State)) { return false; }
 
         auto& Origin = Item.Header.Provenance[0];
@@ -788,14 +811,15 @@ namespace
         bool bRetainRawProperty = false;
         bool bRetainRawRarity = false;
         bool bRetainRawPrice = false;
-		TSet<FString> ConsumedEquipment;
-		return ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, bBaseItem, State) &&
+		TSet<FString> ConsumedFields;
+		return (bBaseItem || ReadBaseItemLink(Object, Pointer, Item, ConsumedFields, State)) &&
+			ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, bBaseItem, State) &&
 			ReadBaseItemValues(Object, Pointer, Item, bRetainRawRarity, bRetainRawPrice, State) &&
-			ReadBaseItemWeapon(Object, Pointer, Item, ConsumedEquipment, bBaseItem, State) &&
-			ReadBaseItemArmor(Object, Pointer, Item, ConsumedEquipment, State) &&
-			(bBaseItem || ReadItemAttunement(Object, Pointer, Item, ConsumedEquipment, State)) &&
+			ReadBaseItemWeapon(Object, Pointer, Item, ConsumedFields, bBaseItem, State) &&
+			ReadBaseItemArmor(Object, Pointer, Item, ConsumedFields, State) &&
+			(bBaseItem || ReadItemAttunement(Object, Pointer, Item, ConsumedFields, State)) &&
 			ReadBaseItemMetadata(Object, Pointer, bRetainRawProperty, bRetainRawRarity,
-			bRetainRawPrice, ConsumedEquipment, Origin, State);
+				bRetainRawPrice, ConsumedFields, Origin, State);
     }
 }
 bool Dnd5eJsonReader::ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer,

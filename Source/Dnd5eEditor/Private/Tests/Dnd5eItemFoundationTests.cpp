@@ -26,12 +26,17 @@ bool FDnd5eItemContentOwnershipTest::RunTest(const FString& Parameters)
 {
 	FDnd5eItem Item; Item.Header.DisplayName = TEXT("Invented Compass"); Item.Header.RecordId.Category = Dnd5e::Category::Item;
 	Item.Rarity = Dnd5e::Item::Rarity::Common; Item.bHasType = true;
+	Item.bHasBaseItemId = true;
+	Item.BaseItemId.DatasetNamespace = TEXT("item-foundation");
+	Item.BaseItemId.Category = Dnd5e::Category::Item;
+	Item.BaseItemId.SourceKey = TEXT("dnd5e:item:v1:invented base|syn");
 	Item.Type.Category = Dnd5e::Category::ItemType; Item.Type.Abbreviation = TEXT("SYN-TYPE");
 	FDnd5eItemDefinitionSelector Property; Property.Category = Dnd5e::Category::ItemProperty; Property.Abbreviation = TEXT("SYN-PROP"); Property.bHasSource = true; Property.SourceId = TEXT("SYN"); Item.Properties.Add(Property);
 	Item.Description.Add(Paragraph(TEXT("Original invented description")));
 	Item.bHasSupplementaryContent = true; Item.SupplementaryContent.Entries.Add(Paragraph(TEXT("Original supplementary prose")));
 	FDnd5eImageContent Image; Image.Resource.Kind = EDnd5eMediaReferenceKind::DatasetRelative; Image.Resource.RelativePath = TEXT("art/invented.png"); Image.Credit.Add(Text(TEXT("Original credit"))); Item.SupplementaryContent.Images.Add(Block(Dnd5e::Content::Block::Image, Image));
 	const auto Before = Item; auto Copy = Item;
+	Copy.BaseItemId.SourceKey = TEXT("changed");
 	Copy.Type.Abbreviation = TEXT("Changed type"); Copy.Properties[0].SourceId = TEXT("CHANGED");
 	Copy.Description[0].Payload.GetMutable<FDnd5eParagraphContent>().Inlines[0].Payload.GetMutable<FDnd5eTextContent>().Text = TEXT("Changed description");
 	Copy.SupplementaryContent.Images[0].Payload.GetMutable<FDnd5eImageContent>().Credit[0].Payload.GetMutable<FDnd5eTextContent>().Text = TEXT("Changed credit");
@@ -40,8 +45,10 @@ bool FDnd5eItemContentOwnershipTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Omitted type publication stays omitted"), !Item.Type.bHasSource && Item.Type.SourceId.IsEmpty());
 	FDnd5eItem Restored; RoundTrip(*this, FDnd5eItem::StaticStruct(), &Item, &Restored);
 	TestTrue(TEXT("Serialized Content and selector roles survive together"), Equal(FDnd5eItem::StaticStruct(), &Item, &Restored));
+	const auto* BaseId = FindFProperty<FStructProperty>(FDnd5eItem::StaticStruct(), TEXT("BaseItemId"));
 	const auto* Type = FindFProperty<FStructProperty>(FDnd5eItem::StaticStruct(), TEXT("Type"));
 	const auto* Supplement = FindFProperty<FStructProperty>(FDnd5eItem::StaticStruct(), TEXT("SupplementaryContent"));
+	TestTrue(TEXT("Editor exposes the base-item presence condition"), BaseId && BaseId->GetMetaData(TEXT("EditCondition")) == TEXT("bHasBaseItemId"));
 	TestTrue(TEXT("Editor exposes the active type condition"), Type && Type->GetMetaData(TEXT("EditCondition")) == TEXT("bHasType"));
 	TestTrue(TEXT("Editor exposes the supplementary presence condition"), Supplement && Supplement->GetMetaData(TEXT("EditCondition")) == TEXT("bHasSupplementaryContent"));
 	return !HasAnyErrors();

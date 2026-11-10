@@ -112,6 +112,8 @@ const TArray<FModelContract>& ModelContracts()
 		} },
 		{ TEXT("FDnd5eItem"), &FDnd5eItem::StaticStruct, {
 			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
+			{ TEXT("bHasBaseItemId"), TEXT("bool"), TEXT("false") },
+			{ TEXT("BaseItemId"), TEXT("FDnd5eRecordId"), TEXT("") },
 			{ TEXT("bHasType"), TEXT("bool"), TEXT("false") },
 			{ TEXT("Type"), TEXT("FDnd5eItemDefinitionSelector"), TEXT("") },
 			{ TEXT("Properties"), TEXT("TArray<FDnd5eItemDefinitionSelector>"), TEXT("") },

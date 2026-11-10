@@ -1,12 +1,13 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected standalone row, readable attunement and structured attunement indexes. Base-item links, copy and variant assembly, and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. Copy and variant assembly and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
 ## Contents
 
 - [Fields](#fields)
+- [Base-item references](#base-item-references)
 - [Definition selection](#definition-selection)
 - [Rarity](#rarity)
 - [Content and presence](#content-and-presence)
@@ -21,6 +22,8 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 | Field | C++ type and default | Meaning |
 | --- | --- | --- |
 | Header | `FDnd5eRecordHeader`, default | Shared identity/name/aliases/classification/provenance |
+| bHasBaseItemId | `bool`, false | Whether BaseItemId represents a supplied link |
+| BaseItemId | `FDnd5eRecordId`, default | Canonical target of a direct base-item reference |
 | bHasType | `bool`, false | Whether Type represents a supplied type selection |
 | Type | `FDnd5eItemDefinitionSelector`, default | Item-type abbreviation/publication; active when bHasType is true |
 | Properties | `TArray<FDnd5eItemDefinitionSelector>`, empty | Represented property selectors in order |
@@ -44,6 +47,12 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 | Masteries | `TArray<FDnd5eItemMasteryReference>`, empty | Ordered named mastery references with independent notes |
 
 Default construction supplies no Category::Item or canonical key. Authors/adapters provide identity deliberately. Empty Properties means no normalized properties have been represented; this declaration does not define whether a missing raw template field inherits or an explicit empty array clears earlier properties. The future assembly stage must retain source presence/override evidence.
+
+## Base-item references
+
+The ordinary-item reader normalizes an exact `baseItem` member containing a nonempty name and explicit source separated by a single pipe. It uses the document dataset namespace and the same canonical item ID rules as the base-item reader. A valid reference sets `bHasBaseItemId` and consumes the source member from additional metadata. The referenced record can be loaded later. Invalid values and self references fail at `/item/<index>/baseItem`. Base-row conversion leaves this typed link inactive.
+
+Call `UDnd5eItemLibrary::TryGetReferencedBaseItem` or **Try Get Referenced Base Item** in Blueprint with the ordinary item and a caller-supplied array of base records. The helper returns a copy only for a unique match of the full record ID, including the dataset namespace. An inactive or invalid link, no match, or duplicate matches returns false and clears the output. The returned base record retains its own identity and provenance. The ordinary record keeps its own fields, including any absent equipment values. [Core lookup](../Source/Dnd5e/Public/Items/Dnd5eItemLibrary.h)
 
 ## Definition selection
 
@@ -104,7 +113,7 @@ Editor conditions enable active payloads without clearing inactive data or valid
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Equipment assembly across dependent records remains a later stage. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links are available for ordinary rows. Copy and variant assembly remain later stages. Source data and generated variants remain externally supplied; none is bundled with this model.
 
 
 ## Supplied base-item JSON
@@ -135,7 +144,7 @@ Converted exact fields are consumed before raw metadata is collected. Unconverte
 
 ## Supplied ordinary-item JSON
 
-Pass a document and a zero-based source index to FDnd5eJsonItemReader::ReadAtIndex or Read Item at Index in Blueprint. The reader validates the supplied JSON document, then converts the selected object in its exact item array. An out-of-range index fails at /item. A selected row with _copy or baseItem fails at that dependency field. A failed read returns a default Item. Other rows are not converted during this operation. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemReader.h) · [Blueprint library](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemLibrary.h)
+Pass a document and a zero-based source index to FDnd5eJsonItemReader::ReadAtIndex or Read Item at Index in Blueprint. The reader validates the supplied JSON document, then converts the selected object in its exact item array. An out-of-range index fails at /item. A selected row with _copy fails at that dependency field, including when a direct base-item reference is also present. A failed read returns a default Item. Other rows are not converted during this operation. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemReader.h) · [Blueprint library](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemLibrary.h)
 
 Ordinary rows use the shared item identity, header, Content, price, weight and equipment conversion. Type may be absent. The reader maps the ten observed rarity labels and accepts a single positive distance or a normal/long pair for ordinary range. The damage map includes Cold, Force and Psychic in addition to the base-item mappings.
 
