@@ -1,6 +1,8 @@
 // Developed by Neko Creative Technologies
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
+#include "Content/Dnd5eContentLibrary.h"
+#include "Items/Dnd5eItemIdentity.h"
 #include "Readers/Items/Dnd5eJsonItemLibrary.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -350,6 +352,113 @@ bool FDnd5eVariantTemplateCopyFailureTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eTypedItemVariantTest, "Dnd5e.Items.VariantGeneration.TypedPairAndOrigins", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eTypedItemVariantTest::RunTest(const FString& Parameters)
+{
+	const auto Variants = VariantMatchDocument(TEXT(R"json({"magicvariant":[
+		{"name":"Invented Root","requires":[{"type":"M|BAS"}],
+		 "inherits":{"source":"BAS","rarity":"rare","page":15,"srd":true,"entries":["Root entry."]}},
+		{"name":"Invented Copy","source":"SEL","_copy":{"name":"Invented Root","source":"BAS",
+		 "_mod":{"inherits.entries":{"mode":"appendArr","items":"Copy entry."}}}}
+	]})json"), TEXT("fixtures/variants.json"));
+	const auto Bases = VariantMatchDocument(TEXT(R"({"baseitem":[
+		{"name":"Invented Blade","source":"BAS","type":"M|BAS","rarity":"none","weight":3.00,"entries":["Base entry."]}
+	]})"), TEXT("fixtures/base-items.json"));
+	const auto Preview = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Variants, 1, Bases, 0, EPolicy::SourceDefault);
+	const auto Typed = UDnd5eJsonItemLibrary::ReadMagicItemVariantAtIndex(Variants, 1, Bases, 0, EPolicy::SourceDefault);
+	if (!TestTrue(TEXT("Typed generation and preview succeed for a copy with the same name and publication as its base"),
+		Preview.Status == EDnd5eJsonReadStatus::Success && Typed.Status == EDnd5eJsonReadStatus::Success)) { return false; }
+
+	const auto& Item = Typed.Item;
+	FDnd5eRecordId BaseId;
+	TestTrue(TEXT("The typed identity matches the preview, and the item links to the distinct original base"),
+		Dnd5e::Items::TryMakeId(Bases.Context.DatasetNamespace, TEXT("Invented Blade"), TEXT("BAS"), BaseId) &&
+		Item.Header.RecordId == Preview.GeneratedId && Item.Header.RecordId != BaseId && Item.bHasBaseItemId &&
+		Item.BaseItemId == BaseId && Item.Header.DisplayName == TEXT("Invented Blade"));
+	const TArray<int32> Chain{1, 0};
+	TestTrue(TEXT("The typed result preserves both original source locations and ancestry"),
+		Typed.TemplateSourceRowIndices == Chain && Typed.TemplateSourceRowIndices == Preview.TemplateSourceRowIndices &&
+		Typed.TemplateOrigin.SourceId == TEXT("SEL") && Typed.TemplateOrigin.RelativeFilePath == Variants.Context.RelativeFilePath &&
+		Typed.TemplateOrigin.JsonPointer == TEXT("/magicvariant/1") && Typed.BaseOrigin.SourceId == TEXT("BAS") &&
+		Typed.BaseOrigin.RelativeFilePath == Bases.Context.RelativeFilePath && Typed.BaseOrigin.JsonPointer == TEXT("/baseitem/0"));
+	const auto& Provenance = Item.Header.Provenance;
+	TestTrue(TEXT("Generated metadata is followed by the two original record locators"),
+		Provenance.Num() == 3 && Provenance[0].SourceId == TEXT("BAS") && Provenance[0].Page.Number == 15 &&
+		Provenance[0].Memberships.Num() == 1 && Provenance[0].RelativeFilePath.IsEmpty() && Provenance[0].JsonPointer.IsEmpty() &&
+		Provenance[0].AdditionalMetadataJson.Contains(TEXT("genericVariant")) &&
+		Provenance[1].SourceId == TEXT("SEL") && Provenance[1].RelativeFilePath == Variants.Context.RelativeFilePath &&
+		Provenance[1].JsonPointer == TEXT("/magicvariant/1") &&
+		Provenance[2].SourceId == TEXT("BAS") && Provenance[2].RelativeFilePath == Bases.Context.RelativeFilePath &&
+		Provenance[2].JsonPointer == TEXT("/baseitem/0"));
+	TestTrue(TEXT("An unchanged numeric source literal survives direct conversion"),
+		Item.bHasWeight && Item.Weight.Amount.SourceLiteral == TEXT("3.00"));
+	if (!TestEqual(TEXT("Entries retain their reading order"), Item.Description.Num(), 3)) { return false; }
+	const TCHAR* ExpectedText[] = {TEXT("Root entry."), TEXT("Copy entry."), TEXT("Base entry.")};
+	for (int32 Index = 0; Index < Item.Description.Num(); ++Index)
+	{
+		const auto& Block = Item.Description[Index];
+		FDnd5eParagraphContent Paragraph;
+		FDnd5eTextContent Text;
+		TestTrue(FString::Printf(TEXT("Description block %d retains its text"), Index),
+			UDnd5eContentLibrary::TryGetParagraph(Block, Paragraph) && Paragraph.Inlines.Num() == 1 &&
+			UDnd5eContentLibrary::TryGetInlineText(Paragraph.Inlines[0], Text) && Text.Text == ExpectedText[Index]);
+		const bool bBase = Index == 2;
+		TestTrue(FString::Printf(TEXT("Description block %d carries the correct source document and anchor"), Index),
+			Block.Metadata.SourceId == (bBase ? TEXT("BAS") : TEXT("SEL")) &&
+			Block.Metadata.RelativeFilePath == (bBase ? Bases.Context.RelativeFilePath : Variants.Context.RelativeFilePath) &&
+			Block.Metadata.JsonPointer == (bBase ? TEXT("/baseitem/0/entries/0") : TEXT("/magicvariant/1")));
+	}
+	const auto* ResultType = FDnd5eJsonItemVariantReadResult::StaticStruct();
+	const auto* Node = UDnd5eJsonItemLibrary::StaticClass()->FindFunctionByName(TEXT("ReadMagicItemVariantAtIndex"));
+	TestTrue(TEXT("Typed variant import is callable from Blueprint"), ResultType->GetBoolMetaData(TEXT("BlueprintType")) &&
+		Node && Node->HasAllFunctionFlags(FUNC_Static | FUNC_BlueprintCallable));
+	for (const TCHAR* Name : {TEXT("Status"), TEXT("Item"), TEXT("BaseOrigin"), TEXT("TemplateOrigin"),
+		TEXT("TemplateSourceRowIndices"), TEXT("Diagnostics")})
+	{
+		const auto* Field = ResultType->FindPropertyByName(Name);
+		TestTrue(Name, Field && Field->HasAllPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly));
+	}
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eTypedItemVariantFailureTest, "Dnd5e.Items.VariantGeneration.TypedAtomicFailure", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eTypedItemVariantFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Variants = VariantMatchDocument(TEXT(R"({"magicvariant":[
+		{"name":"Root","requires":[{}],"inherits":{"source":"VAR","rarity":"rare","entries":["Template entry."]}},
+		{"name":"Child","source":"SEL","_copy":{"name":"Root","source":"VAR"}}
+	]})"), TEXT("fixtures/variants.json"));
+	const auto Bases = VariantMatchDocument(TEXT(R"({"baseitem":[
+		{"name":"Base","source":"BAS","weight":3.00,"entries":[{"type":"entries","name":"Base heading","entries":[false]}]}
+	]})"), TEXT("fixtures/base-items.json"));
+	auto BadBaseWeight = Bases;
+	BadBaseWeight.JsonText = TEXT(R"({"baseitem":[{"name":"Base","source":"BAS","weight":"invalid"}]})");
+	auto BadAncestorWeight = Variants;
+	BadAncestorWeight.JsonText = Variants.JsonText.Replace(TEXT("\"rarity\":\"rare\""), TEXT("\"rarity\":\"rare\",\"weight\":\"invalid\""));
+	auto BadTemplateContent = Variants;
+	BadTemplateContent.JsonText = Variants.JsonText.Replace(TEXT("\"Template entry.\""), TEXT("false"));
+	const auto ValidBases = VariantMatchDocument(TEXT(R"({"baseitem":[{"name":"Base","source":"BAS","weight":3.00}]})"),
+		TEXT("fixtures/base-items.json"));
+	const auto Check = [&](const FDnd5eJsonDocument& Templates, const FDnd5eJsonDocument& BaseItems, int32 BaseIndex,
+		const FString& File, const TCHAR* Pointer)
+	{
+		const auto Result = FDnd5eJsonItemVariantGenerator::ReadAtIndex(Templates, 1, BaseItems, BaseIndex, EPolicy::SourceDefault);
+		TestTrue(FString::Printf(TEXT("Typed failure withholds all values and reports %s %s"), *File, Pointer),
+			Result.Status == EDnd5eJsonReadStatus::Failure && Result.Item.Header.RecordId == FDnd5eRecordId{} &&
+			Result.Item.Header.Provenance.IsEmpty() && Result.Item.Description.IsEmpty() && !Result.Item.bHasBaseItemId &&
+			Result.TemplateSourceRowIndices.IsEmpty() && Result.TemplateOrigin.JsonPointer.IsEmpty() &&
+			Result.BaseOrigin.JsonPointer.IsEmpty() && Result.Diagnostics.Num() == 1 &&
+			Result.Diagnostics[0].Severity == EDnd5eDiagnosticSeverity::Error &&
+			Result.Diagnostics[0].RelativeFilePath == File && Result.Diagnostics[0].JsonPointer == Pointer);
+	};
+	Check(Variants, BadBaseWeight, 0, Bases.Context.RelativeFilePath, TEXT("/baseitem/0/weight"));
+	Check(BadAncestorWeight, ValidBases, 0, Variants.Context.RelativeFilePath, TEXT("/magicvariant/0/inherits/weight"));
+	Check(Variants, Bases, 0, Bases.Context.RelativeFilePath, TEXT("/baseitem/0/entries/0/entries/0"));
+	Check(BadTemplateContent, ValidBases, 0, Variants.Context.RelativeFilePath, TEXT("/magicvariant/1"));
+	Check(Variants, ValidBases, 1, Bases.Context.RelativeFilePath, TEXT("/baseitem"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantEntrySubstitutionTest, "Dnd5e.Items.VariantGeneration.EntrySubstitution", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eVariantEntrySubstitutionTest::RunTest(const FString& Parameters)
 {
@@ -626,6 +735,19 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 				Preview.BaseOrigin.JsonPointer == FString::Printf(TEXT("/baseitem/%d"), *ExpectedBase)))
 			{
 				++CopiedPreviews;
+				const auto Typed = FDnd5eJsonItemVariantGenerator::ReadAtIndex(Variants, Index, Bases, *ExpectedBase, EPolicy::SourceDefault);
+				if (!TestTrue(FString::Printf(TEXT("Copied row %d converts directly with its preview identity and original origins"), Index),
+					Typed.Status == EDnd5eJsonReadStatus::Success && Typed.Item.Header.RecordId == Preview.GeneratedId &&
+					Typed.Item.bHasBaseItemId && Typed.TemplateSourceRowIndices == *ExpectedChain &&
+					Typed.TemplateOrigin.SourceId == Preview.TemplateOrigin.SourceId &&
+					Typed.TemplateOrigin.JsonPointer == Preview.TemplateOrigin.JsonPointer &&
+					Typed.BaseOrigin.JsonPointer == Preview.BaseOrigin.JsonPointer))
+				{
+					for (const auto& Diagnostic : Typed.Diagnostics)
+					{
+						AddError(Diagnostic.RelativeFilePath + TEXT(" ") + Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message);
+					}
+				}
 			}
 			else
 			{

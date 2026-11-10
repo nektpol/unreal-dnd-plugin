@@ -28,3 +28,9 @@ FDnd5eJsonItemVariantGenerationResult UDnd5eJsonItemLibrary::GenerateMagicItemVa
 {
 	return FDnd5eJsonItemVariantGenerator::GenerateAtIndex(VariantDocument, VariantIndex, BaseItemDocument, BaseIndex, Policy);
 }
+
+FDnd5eJsonItemVariantReadResult UDnd5eJsonItemLibrary::ReadMagicItemVariantAtIndex(const FDnd5eJsonDocument& VariantDocument,
+	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex, EDnd5eJsonItemVariantEditionPolicy Policy)
+{
+	return FDnd5eJsonItemVariantGenerator::ReadAtIndex(VariantDocument, VariantIndex, BaseItemDocument, BaseIndex, Policy);
+}

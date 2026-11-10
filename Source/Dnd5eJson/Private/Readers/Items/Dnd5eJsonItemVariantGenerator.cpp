@@ -11,6 +11,17 @@ namespace
 {
 	using namespace Dnd5eJsonReader;
 
+	struct FStagedItemVariant
+	{
+		TSharedPtr<FJsonObject> Row;
+		TSharedPtr<FJsonObject> Base;
+		TSharedPtr<FJsonObject> VariantRoot;
+		FDnd5eRecordId GeneratedId;
+		FDnd5eRecordProvenance BaseOrigin;
+		FDnd5eRecordProvenance TemplateOrigin;
+		TArray<int32> TemplateSourceRowIndices;
+	};
+
 	bool IsOneOf(const FString& Key, std::initializer_list<const TCHAR*> Keys)
 	{
 		for (const TCHAR* Candidate : Keys)
@@ -252,84 +263,200 @@ namespace
 		return AppendLinkedLoot(VariantRoot, TemplateSource, Name, bTemplateLoot ? InheritsPointer : BasePointer, Row,
 			bTemplateLoot ? VariantState : BaseState, VariantState);
 	}
+
+	bool StageSpecificVariant(const FDnd5eJsonDocument& VariantDocument, int32 VariantIndex,
+		const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex, EDnd5eJsonItemVariantEditionPolicy Policy,
+		FStagedItemVariant& Out, TArray<FDnd5eDiagnostic>& Diagnostics)
+	{
+		FItemVariantMatchInputs Inputs;
+		auto Match = MatchItemVariant(VariantDocument, VariantIndex, BaseItemDocument, Policy, &Inputs);
+		Diagnostics.Append(MoveTemp(Match.Diagnostics));
+		if (Match.Status != EDnd5eJsonReadStatus::Success) { return false; }
+
+		FReadState BaseState{BaseItemDocument.Context, BaseItemDocument.JsonText, Diagnostics};
+		FReadState VariantState{VariantDocument.Context, VariantDocument.JsonText, Diagnostics};
+		if (!Inputs.Bases->IsValidIndex(BaseIndex))
+		{
+			Fail(BaseState, Codes::InvalidFieldValue, TEXT("/baseitem"), TEXT("Select an existing base item index."));
+			return false;
+		}
+		const FString BasePointer = AppendPointer(TEXT("/baseitem"), FString::FromInt(BaseIndex));
+		if (!Match.MatchingBaseIndices.Contains(BaseIndex))
+		{
+			Fail(BaseState, Codes::InvalidFieldValue, BasePointer, TEXT("The selected base does not match this template and edition policy."));
+			return false;
+		}
+
+		const auto Base = (*Inputs.Bases)[BaseIndex]->AsObject();
+		const FString VariantPointer = AppendPointer(TEXT("/magicvariant"), FString::FromInt(VariantIndex));
+		const auto Inherits = FindExactField(*Inputs.Variant, TEXT("inherits"))->AsObject();
+		FString BaseName, BaseSource;
+		if (!ReadRequiredString(*Base, TEXT("name"), BasePointer, BaseName, BaseState) ||
+			!ReadRequiredString(*Base, TEXT("source"), BasePointer, BaseSource, BaseState) ||
+			!ValidateIdentityText(BaseName, AppendPointer(BasePointer, TEXT("name")), BaseState) ||
+			!ValidateIdentityText(BaseSource, AppendPointer(BasePointer, TEXT("source")), BaseState)) { return false; }
+		if (BaseName.Contains(TEXT("|")) || BaseSource.Contains(TEXT("|")))
+		{
+			Fail(BaseState, Codes::InvalidFieldValue, BasePointer, TEXT("The base name and source must form an explicit name|source link."));
+			return false;
+		}
+
+		const FString& TemplateIdentitySource = Inputs.TemplateIdentitySource.IsEmpty()
+			? Match.VariantSourceId : Inputs.TemplateIdentitySource;
+		FDnd5eRecordId BaseId, TemplateKey;
+		const FString& Dataset = BaseItemDocument.Context.DatasetNamespace;
+		if (!Dnd5e::Items::TryMakeId(Dataset, BaseName, BaseSource, BaseId) ||
+			!Dnd5e::Items::TryMakeId(Dataset, Match.VariantName, TemplateIdentitySource, TemplateKey))
+		{
+			Fail(VariantState, Codes::InvalidFieldValue, VariantPointer, TEXT("Could not build a canonical variant pair identity."));
+			return false;
+		}
+		FDnd5eRecordId GeneratedId = BaseId;
+		GeneratedId.SourceKey = FString::Printf(TEXT("dnd5e:item-variant:v1:%s|%s"),
+			*EscapeIdentityComponent(BaseId.SourceKey), *EscapeIdentityComponent(TemplateKey.SourceKey));
+
+		auto Row = MakeShared<FJsonObject>();
+		if (!BuildSpecificVariantRow(*Base, *Inputs.Variant, *Inherits, *Inputs.VariantRoot, BasePointer, VariantPointer,
+			BaseName, BaseSource, Match.VariantName, Match.VariantSourceId, TemplateIdentitySource,
+			*Row, BaseState, VariantState)) { return false; }
+
+		Out.Row = MoveTemp(Row);
+		Out.Base = Base;
+		Out.VariantRoot = MoveTemp(Inputs.VariantRoot);
+		Out.GeneratedId = MoveTemp(GeneratedId);
+		Out.BaseOrigin.SourceId = MoveTemp(BaseSource);
+		Out.BaseOrigin.RelativeFilePath = BaseItemDocument.Context.RelativeFilePath;
+		Out.BaseOrigin.JsonPointer = BasePointer;
+		Out.TemplateOrigin.SourceId = TemplateIdentitySource;
+		Out.TemplateOrigin.RelativeFilePath = VariantDocument.Context.RelativeFilePath;
+		Out.TemplateOrigin.JsonPointer = VariantPointer;
+		Out.TemplateSourceRowIndices = MoveTemp(Inputs.TemplateSourceRowIndices);
+		return true;
+	}
+
+	void AddSharedVariantFields(const FJsonObject& Input, const FJsonObject& Row, const FString& RowPointer,
+		const FDnd5eRecordProvenance& InputOrigin, FReadFieldOrigins& Out)
+	{
+		for (const auto& Field : Input.Values)
+		{
+			const auto* Value = Row.Values.Find(Field.Key);
+			if (!Value || *Value != Field.Value) { continue; }
+			const FString Key(Field.Key.Len(), *Field.Key);
+			const FString Logical = AppendPointer(RowPointer, Key);
+			Out.Fields.Add(Logical, FReadFieldOrigin{Logical, AppendPointer(InputOrigin.JsonPointer, Key),
+				InputOrigin.SourceId, true, InputOrigin.RelativeFilePath});
+		}
+	}
+
+	FReadFieldOrigins BuildVariantReadOrigins(const FStagedItemVariant& Staged, const FString& RowPointer)
+	{
+		FReadFieldOrigins Origins;
+		Origins.RowPrefix = RowPointer + TEXT("/");
+		Origins.Fields.Add(RowPointer, FReadFieldOrigin{RowPointer, Staged.TemplateOrigin.JsonPointer,
+			Staged.TemplateOrigin.SourceId, false, Staged.TemplateOrigin.RelativeFilePath});
+		AddSharedVariantFields(*Staged.Base, *Staged.Row, RowPointer, Staged.BaseOrigin, Origins);
+
+		const auto& Templates = FindExactField(*Staged.VariantRoot, TEXT("magicvariant"))->AsArray();
+		for (const int32 Index : Staged.TemplateSourceRowIndices)
+		{
+			const auto Template = Templates[Index]->AsObject();
+			const auto Value = FindExactField(*Template, TEXT("inherits"));
+			if (!Value.IsValid() || Value->Type != EJson::Object) { continue; }
+			const auto Inherits = Value->AsObject();
+			FString Source;
+			if (const auto RootSource = FindExactField(*Template, TEXT("source")); RootSource.IsValid())
+			{
+				RootSource->TryGetString(Source);
+			}
+			if (Source.IsEmpty())
+			{
+				if (const auto NestedSource = FindExactField(*Inherits, TEXT("source")); NestedSource.IsValid())
+				{
+					NestedSource->TryGetString(Source);
+				}
+			}
+			auto Origin = Staged.TemplateOrigin;
+			if (!Source.IsEmpty()) { Origin.SourceId = MoveTemp(Source); }
+			Origin.JsonPointer = AppendPointer(AppendPointer(TEXT("/magicvariant"), FString::FromInt(Index)), TEXT("inherits"));
+			AddSharedVariantFields(*Inherits, *Staged.Row, RowPointer, Origin, Origins);
+		}
+
+		const auto BaseEntries = FindExactField(*Staged.Base, TEXT("entries"));
+		const auto BuiltEntries = FindExactField(*Staged.Row, TEXT("entries"));
+		if (!BaseEntries.IsValid() || !BuiltEntries.IsValid() || BaseEntries == BuiltEntries ||
+			BaseEntries->Type != EJson::Array || BuiltEntries->Type != EJson::Array) { return Origins; }
+
+		const auto& Original = BaseEntries->AsArray();
+		const auto& Built = BuiltEntries->AsArray();
+		const int32 Offset = Built.Num() - Original.Num();
+		if (Offset < 0) { return Origins; }
+		const FString LogicalEntries = AppendPointer(RowPointer, TEXT("entries"));
+		const FString InputEntries = AppendPointer(Staged.BaseOrigin.JsonPointer, TEXT("entries"));
+		for (int32 Index = 0; Index < Original.Num(); ++Index)
+		{
+			if (Built[Index + Offset] != Original[Index]) { continue; }
+			const FString Logical = AppendPointer(LogicalEntries, FString::FromInt(Index + Offset));
+			const FString Input = AppendPointer(InputEntries, FString::FromInt(Index));
+			Origins.Fields.Add(Logical, FReadFieldOrigin{Logical, Input, Staged.BaseOrigin.SourceId,
+				true, Staged.BaseOrigin.RelativeFilePath});
+		}
+		return Origins;
+	}
 }
 
 FDnd5eJsonItemVariantGenerationResult FDnd5eJsonItemVariantGenerator::GenerateAtIndex(const FDnd5eJsonDocument& VariantDocument,
-	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex,
-	EDnd5eJsonItemVariantEditionPolicy Policy)
+	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex, EDnd5eJsonItemVariantEditionPolicy Policy)
 {
 	using namespace Dnd5eJsonReader;
 	FDnd5eJsonItemVariantGenerationResult Result;
 	Result.Status = EDnd5eJsonReadStatus::Failure;
-	FItemVariantMatchInputs Inputs;
-	auto Match = MatchItemVariant(VariantDocument, VariantIndex, BaseItemDocument, Policy, &Inputs);
-	Result.Diagnostics = MoveTemp(Match.Diagnostics);
-	if (Match.Status != EDnd5eJsonReadStatus::Success) { return Result; }
-
-	FReadState BaseState{BaseItemDocument.Context, BaseItemDocument.JsonText, Result.Diagnostics};
-	FReadState VariantState{VariantDocument.Context, VariantDocument.JsonText, Result.Diagnostics};
-	if (!Inputs.Bases->IsValidIndex(BaseIndex))
-	{
-		Fail(BaseState, Codes::InvalidFieldValue, TEXT("/baseitem"), TEXT("Select an existing base item index."));
-		return Result;
-	}
-	const FString BasePointer = AppendPointer(TEXT("/baseitem"), FString::FromInt(BaseIndex));
-	if (!Match.MatchingBaseIndices.Contains(BaseIndex))
-	{
-		Fail(BaseState, Codes::InvalidFieldValue, BasePointer, TEXT("The selected base does not match this template and edition policy."));
-		return Result;
-	}
-
-	const auto Base = (*Inputs.Bases)[BaseIndex]->AsObject();
-	const FString VariantPointer = AppendPointer(TEXT("/magicvariant"), FString::FromInt(VariantIndex));
-	const auto Inherits = FindExactField(*Inputs.Variant, TEXT("inherits"))->AsObject();
-	FString BaseName, BaseSource;
-	if (!ReadRequiredString(*Base, TEXT("name"), BasePointer, BaseName, BaseState) ||
-		!ReadRequiredString(*Base, TEXT("source"), BasePointer, BaseSource, BaseState) ||
-		!ValidateIdentityText(BaseName, AppendPointer(BasePointer, TEXT("name")), BaseState) ||
-		!ValidateIdentityText(BaseSource, AppendPointer(BasePointer, TEXT("source")), BaseState)) { return Result; }
-	if (BaseName.Contains(TEXT("|")) || BaseSource.Contains(TEXT("|")))
-	{
-		Fail(BaseState, Codes::InvalidFieldValue, BasePointer, TEXT("The base name and source must form an explicit name|source link."));
-		return Result;
-	}
-
-	const FString& TemplateIdentitySource = Inputs.TemplateIdentitySource.IsEmpty()
-		? Match.VariantSourceId : Inputs.TemplateIdentitySource;
-	FDnd5eRecordId BaseId, TemplateKey;
-	const FString& Dataset = BaseItemDocument.Context.DatasetNamespace;
-	if (!Dnd5e::Items::TryMakeId(Dataset, BaseName, BaseSource, BaseId) ||
-		!Dnd5e::Items::TryMakeId(Dataset, Match.VariantName, TemplateIdentitySource, TemplateKey))
-	{
-		Fail(VariantState, Codes::InvalidFieldValue, VariantPointer, TEXT("Could not build a canonical variant pair identity."));
-		return Result;
-	}
-	FDnd5eRecordId GeneratedId = BaseId;
-	GeneratedId.SourceKey = FString::Printf(TEXT("dnd5e:item-variant:v1:%s|%s"),
-		*EscapeIdentityComponent(BaseId.SourceKey), *EscapeIdentityComponent(TemplateKey.SourceKey));
-
-	auto Row = MakeShared<FJsonObject>();
-	if (!BuildSpecificVariantRow(*Base, *Inputs.Variant, *Inherits, *Inputs.VariantRoot, BasePointer, VariantPointer,
-		BaseName, BaseSource, Match.VariantName, Match.VariantSourceId, TemplateIdentitySource,
-		*Row, BaseState, VariantState)) { return Result; }
+	FStagedItemVariant Staged;
+	if (!StageSpecificVariant(VariantDocument, VariantIndex, BaseItemDocument, BaseIndex, Policy, Staged, Result.Diagnostics)) { return Result; }
 
 	auto Preview = MakeShared<FJsonObject>();
-	const TArray<TSharedPtr<FJsonValue>> Rows{MakeShared<FJsonValueObject>(Row)};
+	const TArray<TSharedPtr<FJsonValue>> Rows{MakeShared<FJsonValueObject>(Staged.Row)};
 	Preview->SetArrayField(TEXT("item"), Rows);
 	FString Json;
-	if (!SerializeValue(MakeShared<FJsonValueObject>(Preview), Json, VariantPointer, VariantState)) { return Result; }
+	FReadState VariantState{VariantDocument.Context, VariantDocument.JsonText, Result.Diagnostics};
+	if (!SerializeValue(MakeShared<FJsonValueObject>(Preview), Json, Staged.TemplateOrigin.JsonPointer, VariantState)) { return Result; }
 	FReadState PreviewState{VariantDocument.Context, Json, Result.Diagnostics};
 	if (!ValidateDocumentText(PreviewState) || !PreflightJson(PreviewState)) { return Result; }
 
 	Result.GeneratedJson = MoveTemp(Json);
-	Result.GeneratedId = MoveTemp(GeneratedId);
-	Result.BaseOrigin.SourceId = MoveTemp(BaseSource);
-	Result.BaseOrigin.RelativeFilePath = BaseItemDocument.Context.RelativeFilePath;
-	Result.BaseOrigin.JsonPointer = BasePointer;
-	Result.TemplateOrigin.SourceId = TemplateIdentitySource;
-	Result.TemplateOrigin.RelativeFilePath = VariantDocument.Context.RelativeFilePath;
-	Result.TemplateOrigin.JsonPointer = VariantPointer;
-	Result.TemplateSourceRowIndices = MoveTemp(Inputs.TemplateSourceRowIndices);
+	Result.GeneratedId = MoveTemp(Staged.GeneratedId);
+	Result.BaseOrigin = MoveTemp(Staged.BaseOrigin);
+	Result.TemplateOrigin = MoveTemp(Staged.TemplateOrigin);
+	Result.TemplateSourceRowIndices = MoveTemp(Staged.TemplateSourceRowIndices);
+	Result.Status = EDnd5eJsonReadStatus::Success;
+	return Result;
+}
+
+FDnd5eJsonItemVariantReadResult FDnd5eJsonItemVariantGenerator::ReadAtIndex(const FDnd5eJsonDocument& VariantDocument,
+	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex, EDnd5eJsonItemVariantEditionPolicy Policy)
+{
+	using namespace Dnd5eJsonReader;
+	FDnd5eJsonItemVariantReadResult Result;
+	Result.Status = EDnd5eJsonReadStatus::Failure;
+	FStagedItemVariant Staged;
+	if (!StageSpecificVariant(VariantDocument, VariantIndex, BaseItemDocument, BaseIndex, Policy, Staged, Result.Diagnostics)) { return Result; }
+
+	const FString RowPointer = TEXT("/item/0");
+	const FReadFieldOrigins FieldOrigins = BuildVariantReadOrigins(Staged, RowPointer);
+	FReadState State{VariantDocument.Context, VariantDocument.JsonText, Result.Diagnostics};
+	State.FieldOrigins = &FieldOrigins;
+	FDnd5eItem Candidate;
+	if (!ReadStandaloneItemRow(*Staged.Row, RowPointer, Candidate, State, &Staged.GeneratedId)) { return Result; }
+
+	auto& Provenance = Candidate.Header.Provenance;
+	Provenance[0].RelativeFilePath.Reset();
+	Provenance[0].JsonPointer.Reset();
+	Provenance.Add(Staged.TemplateOrigin);
+	Provenance.Add(Staged.BaseOrigin);
+
+	Result.Item = MoveTemp(Candidate);
+	Result.BaseOrigin = MoveTemp(Staged.BaseOrigin);
+	Result.TemplateOrigin = MoveTemp(Staged.TemplateOrigin);
+	Result.TemplateSourceRowIndices = MoveTemp(Staged.TemplateSourceRowIndices);
 	Result.Status = EDnd5eJsonReadStatus::Success;
 	return Result;
 }

@@ -41,15 +41,21 @@ namespace Dnd5eJsonReader
 
 	static const FReadFieldOrigin* FindReadFieldOrigin(const FString& Pointer, const FReadState& State)
 	{
-		if (!State.FieldOrigins || !Pointer.StartsWith(State.FieldOrigins->RowPrefix, ESearchCase::CaseSensitive))
+		if (!State.FieldOrigins || State.FieldOrigins->RowPrefix.IsEmpty()) { return nullptr; }
+		const FString& Prefix = State.FieldOrigins->RowPrefix;
+		const FString RowPointer = Prefix.LeftChop(1);
+		if (!Pointer.StartsWith(Prefix, ESearchCase::CaseSensitive) &&
+			!Pointer.Equals(RowPointer, ESearchCase::CaseSensitive)) { return nullptr; }
+
+		FString Candidate = Pointer;
+		for (;;)
 		{
-			return nullptr;
+			if (const auto* Origin = State.FieldOrigins->Fields.Find(Candidate);
+				Origin && Origin->LogicalPointer.Equals(Candidate, ESearchCase::CaseSensitive)) { return Origin; }
+			int32 Slash = INDEX_NONE;
+			if (!Candidate.FindLastChar(TEXT('/'), Slash) || Slash < RowPointer.Len()) { return nullptr; }
+			Candidate = Candidate.Left(Slash);
 		}
-		const int32 Slash = Pointer.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromStart,
-			State.FieldOrigins->RowPrefix.Len());
-		const FString Top = Slash == INDEX_NONE ? Pointer : Pointer.Left(Slash);
-		const auto* Origin = State.FieldOrigins->Fields.Find(Top);
-		return Origin && Origin->LogicalPointer.Equals(Top, ESearchCase::CaseSensitive) ? Origin : nullptr;
 	}
 
 	static FString ToInputPointer(const FString& Pointer, const FReadFieldOrigin* Origin)
@@ -65,8 +71,9 @@ namespace Dnd5eJsonReader
 		Diagnostic.Severity = Severity;
 		Diagnostic.Code = Code;
 		Diagnostic.Message = Message;
-		Diagnostic.RelativeFilePath = State.Context.RelativeFilePath;
-		Diagnostic.JsonPointer = ToInputPointer(Pointer, FindReadFieldOrigin(Pointer, State));
+		const auto* Origin = FindReadFieldOrigin(Pointer, State);
+		Diagnostic.RelativeFilePath = Origin && !Origin->RelativeFilePath.IsEmpty() ? Origin->RelativeFilePath : State.Context.RelativeFilePath;
+		Diagnostic.JsonPointer = ToInputPointer(Pointer, Origin);
 		State.Diagnostics.Add(MoveTemp(Diagnostic));
 	}
 
@@ -516,7 +523,7 @@ namespace Dnd5eJsonReader
 		const auto* Origin = FindReadFieldOrigin(Pointer, State);
 		FDnd5eContentMetadata Metadata;
 		Metadata.SourceId = Origin && State.bUseFieldSourceId ? Origin->SourceId : State.SourceId;
-		Metadata.RelativeFilePath = State.Context.RelativeFilePath;
+		Metadata.RelativeFilePath = Origin && !Origin->RelativeFilePath.IsEmpty() ? Origin->RelativeFilePath : State.Context.RelativeFilePath;
 		Metadata.JsonPointer = ToInputPointer(Pointer, Origin);
 		return Metadata;
 	}

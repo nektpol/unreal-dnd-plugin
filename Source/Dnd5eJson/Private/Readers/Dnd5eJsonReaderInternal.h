@@ -24,6 +24,7 @@ namespace Dnd5eJsonReader
 		FString InputPointer;
 		FString SourceId;
 		bool bExactSubtree = false;
+		FString RelativeFilePath;
 	};
 
 	struct FReadFieldOrigins
@@ -105,5 +106,5 @@ namespace Dnd5eJsonReader
 	bool ValidateEditionAssignments(const TArray<FDnd5eSourceEditionAssignment>& Assignments, const FString& PolicyId, FReadState& State);
 	bool ApplyEditionAssignment(const TArray<FDnd5eSourceEditionAssignment>& Assignments, const FString& PolicyId, FDnd5eSpell& Spell, FReadState& State);
 	bool SerializeValue(const TSharedPtr<FJsonValue>& Value, FString& OutJson, const FString& Pointer, FReadState& State);
-	bool ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, FReadState& State);
+	bool ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, FReadState& State, const FDnd5eRecordId* GeneratedId = nullptr);
 }
