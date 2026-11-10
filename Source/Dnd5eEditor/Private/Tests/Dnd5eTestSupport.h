@@ -21,6 +21,7 @@
 #include "Readers/Spells/Dnd5eJsonSpellCatalogLoader.h"
 #include "Readers/Spells/Dnd5eJsonSpellReferenceReporter.h"
 #include "Catalog/Dnd5eSpellCatalog.h"
+#include "Catalog/Dnd5eItemCatalog.h"
 #include "UObject/UnrealType.h"
 
 namespace Dnd5eTests

@@ -122,6 +122,14 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("RechargeTrigger"), TEXT("EDnd5eItemRechargeTrigger"), TEXT("EDnd5eItemRechargeTrigger::Unspecified") },
 			{ TEXT("RechargeAmount"), TEXT("FDnd5eItemChargeAmount"), TEXT("") },
 		} },
+		{ TEXT("FDnd5eItemCatalogQuery"), &FDnd5eItemCatalogQuery::StaticStruct, {
+			{ TEXT("DatasetNamespace"), TEXT("FString"), TEXT("") },
+			{ TEXT("SourceId"), TEXT("FString"), TEXT("") },
+			{ TEXT("NameContains"), TEXT("FString"), TEXT("") },
+			{ TEXT("Category"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Rarity"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("bIncludeAliases"), TEXT("bool"), TEXT("true") },
+		} },
 		{ TEXT("FDnd5eItemBonus"), &FDnd5eItemBonus::StaticStruct, {
 			{ TEXT("Kind"), TEXT("EDnd5eItemBonusKind"), TEXT("EDnd5eItemBonusKind::Unspecified") },
 			{ TEXT("Amount"), TEXT("int32"), TEXT("0") },
