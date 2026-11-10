@@ -549,7 +549,9 @@ namespace Dnd5eJsonReader
 		else { return UnsupportedBlock(Value, Pointer, OutBlock, State); }
 		Metadata.SourceType = FindExactField(*Object, TEXT("type")).IsValid() ? Type : FString{};
 		if (!ReadNodeMetadata(*Object, Pointer, Metadata, State)) { return false; }
-		FReadState ChildState{State.Context, State.JsonText, State.Diagnostics, Metadata.SourceId, State.Budget};
+		FReadState ChildState = State;
+		ChildState.SourceId = Metadata.SourceId;
+		ChildState.bUseFieldSourceId = State.bUseFieldSourceId && !FindExactField(*Object, TEXT("source")).IsValid();
 		if (Type.Equals(TEXT("entries"), ESearchCase::CaseSensitive) || Type.Equals(TEXT("section"), ESearchCase::CaseSensitive))
 		{
 			if (!HasOnlyKeys(*Object, {TEXT("type"), TEXT("entries"), TEXT("name"), TEXT("source"), TEXT("page"), TEXT("id")})) { return UnsupportedBlock(Value, Pointer, OutBlock, State); }
@@ -610,7 +612,9 @@ namespace Dnd5eJsonReader
 					}
 					Item.Metadata.SourceType = ItemType;
 					if (!ReadNodeMetadata(*ItemObject, ItemPointer, Item.Metadata, ChildState)) { return false; }
-					FReadState ItemState{State.Context, State.JsonText, State.Diagnostics, Item.Metadata.SourceId, State.Budget};
+					FReadState ItemState = ChildState;
+					ItemState.SourceId = Item.Metadata.SourceId;
+					ItemState.bUseFieldSourceId = ChildState.bUseFieldSourceId && !FindExactField(*ItemObject, TEXT("source")).IsValid();
 					if (!ReadInlineField(*ItemObject, TEXT("name"), ItemPointer, Item.Label, ItemState, Depth + 1)) { return false; }
 					const auto Entries = FindExactField(*ItemObject, TEXT("entries"));
 					const auto Entry = FindExactField(*ItemObject, TEXT("entry"));

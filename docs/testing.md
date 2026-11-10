@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **828 cases**; the combined explicitly supplied-data run passes **856 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **830 cases**; the combined explicitly supplied-data run passes **858 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -270,3 +270,9 @@ Pass `-Dnd5eJsonItemCopyFile="<absolute-path-to-items.json>"` to enable the insp
 The Development Editor build and all **856 combined cases** passed on 2026-11-10, including **828 standard cases** and 28 opt-in audits. The report under Saved/Automation/Dnd5eItemCopyModifiersFinal records zero failures, not-run cases or automation warnings.
 
 Two synthetic tests verify all four supported operations, directive and dependency order, the -1 append sentinel, insertion clamping, exact property comparison, array creation, origin updates, and atomic failure. The existing `-Dnd5eJsonItemCopyFile` audit now exercises all 67 declared copies, including the 54 with modifiers. The audit checks raw assembly against the supplied snapshot. Typed conversion of a modified preview is covered by the synthetic test.
+
+### Direct typed item copy reading
+
+The Development Editor build and all **858 combined cases** passed on 2026-11-10, including **830 standard cases** and 28 opt-in audits. The report under Saved/Automation/Dnd5eTypedItemCopyReader records zero failures, not-run cases or automation warnings.
+
+Two synthetic cases exercise Blueprint access, direct conversion, nested Content source overrides, original and escaped JSON pointers, inherited page and membership attribution, modifier anchors, and atomic failures at inherited values or modifier locations. The existing `-Dnd5eJsonItemCopyFile` audit verifies both raw assembly and direct typed conversion for all 67 declared copies in the supplied snapshot. It checks the original selected row and lineage consistency. The spell suite also exercises the shared Content and diagnostic helpers with ordinary provenance.

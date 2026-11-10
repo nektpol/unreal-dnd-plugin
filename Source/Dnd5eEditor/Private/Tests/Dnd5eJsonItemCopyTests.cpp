@@ -223,6 +223,107 @@ bool FDnd5eItemCopyModifierFailureTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eTypedItemCopyProvenanceTest, "Dnd5e.Items.CopyAssembly.TypedProvenance", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eTypedItemCopyProvenanceTest::RunTest(const FString& Parameters)
+{
+	const auto Document = CopyDocument(TEXT(R"json({"item":[
+		{"name":"Invented Base","source":"BAS","type":"M","rarity":"none","page":7,"srd":true,"property":["P"],"x/y~z":5,
+		 "entries":[{"type":"entries","source":"NOD","entries":["Nested"]},
+		 {"type":"list","items":[{"type":"item","source":"LST","entry":"List text"}]},"Inherited"]},
+		{"name":"Invented Copy","source":"MID","_copy":{"name":"Invented Base","source":"BAS","_preserve":{"page":true,"srd":true}}},
+		{"name":"Invented Modified","source":"SYN","srd":false,
+		 "_copy":{"name":"Invented Copy","source":"MID","_preserve":{"page":true},"_mod":{
+		  "entries":[{"mode":"appendArr","items":"First"},{"mode":"appendArr","items":"Last"}],
+		  "property":{"mode":"appendIfNotExistsArr","items":"P"}}}}
+	]})json"));
+	const auto Inherited = UDnd5eJsonItemLibrary::ReadItemCopyAtIndex(Document, 1);
+	if (!TestTrue(TEXT("Typed read succeeds with the child identity and original dependency path"),
+		Inherited.Status == EDnd5eJsonReadStatus::Success && Inherited.Item.Header.DisplayName == TEXT("Invented Copy") &&
+		Inherited.Item.Header.RecordId.SourceKey == TEXT("dnd5e:item:v1:invented copy|mid") &&
+		Inherited.SourceRowIndices == TArray<int32>{1, 0} && Inherited.Item.Header.Provenance.Num() == 2 &&
+		Inherited.Item.Description.Num() == 3)) { return false; }
+
+	const auto& Primary = Inherited.Item.Header.Provenance[0];
+	const auto& Ancestor = Inherited.Item.Header.Provenance[1];
+	TestTrue(TEXT("Page and SRD membership stay with the contributing source"),
+		Primary.SourceId == TEXT("MID") && Primary.JsonPointer == TEXT("/item/1") &&
+		Primary.RelativeFilePath == Document.Context.RelativeFilePath &&
+		Primary.Page.Kind == EDnd5ePageReferenceKind::Unspecified && Primary.Memberships.IsEmpty() &&
+		Ancestor.SourceId == TEXT("BAS") && Ancestor.JsonPointer == TEXT("/item/0") &&
+		Ancestor.RelativeFilePath == Document.Context.RelativeFilePath &&
+		Ancestor.Page.Kind == EDnd5ePageReferenceKind::Number && Ancestor.Page.Number == 7 &&
+		Ancestor.Memberships.Num() == 1 && Ancestor.Memberships[0].MembershipId == TEXT("srd") &&
+		Ancestor.Memberships[0].Inclusion == EDnd5eSourceInclusion::Included);
+	const auto& Description = Inherited.Item.Description;
+	const auto* Section = Description[0].Payload.GetPtr<FDnd5eSectionContent>();
+	const auto* List = Description[1].Payload.GetPtr<FDnd5eListContent>();
+	TestTrue(TEXT("Original descendant pointers and authored source overrides survive"),
+		Description[0].Metadata.SourceId == TEXT("NOD") && Section && Section->Blocks.Num() == 1 &&
+		Section->Blocks[0].Metadata.SourceId == TEXT("NOD") &&
+		Section->Blocks[0].Metadata.JsonPointer == TEXT("/item/0/entries/0/entries/0") &&
+		List && List->Items.Num() == 1 && List->Items[0].Blocks.Num() == 1 &&
+		List->Items[0].Blocks[0].Metadata.SourceId == TEXT("LST") &&
+		List->Items[0].Blocks[0].Metadata.JsonPointer == TEXT("/item/0/entries/1/items/0/entry") &&
+		Description[2].Metadata.SourceId == TEXT("BAS") && Description[2].Metadata.JsonPointer == TEXT("/item/0/entries/2"));
+	TestTrue(TEXT("Opaque inherited metadata and its warning can be traced to an escaped source key"),
+		Primary.AdditionalMetadataJson.Contains(TEXT("x/y~z")) &&
+		Inherited.FieldSourcePointers.FindRef(TEXT("x/y~z")) == TEXT("/item/0/x~1y~0z") &&
+		Inherited.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/item/0/x~1y~0z");
+		}));
+
+	const auto Modified = FDnd5eJsonItemCopyAssembler::ReadCopyAtIndex(Document, 2);
+	if (!TestTrue(TEXT("Modified chain still yields a complete typed item"),
+		Modified.Status == EDnd5eJsonReadStatus::Success && Modified.SourceRowIndices == TArray<int32>{2, 1, 0} &&
+		Modified.Item.Description.Num() == 5 && Modified.Item.Header.Provenance.Num() == 3)) { return false; }
+	const FString Anchor = TEXT("/item/2/_copy/_mod/entries/1");
+	TestTrue(TEXT("Modified arrays anchor to the last effective directive, while a no-op preserves origin"),
+		Modified.FieldSourcePointers.FindRef(TEXT("entries")) == Anchor &&
+		Modified.FieldSourcePointers.FindRef(TEXT("property")) == TEXT("/item/0/property") &&
+		Modified.Item.Description[0].Metadata.JsonPointer == Anchor &&
+		Modified.Item.Description[4].Metadata.JsonPointer == Anchor && Modified.Item.Description[4].Metadata.SourceId == TEXT("SYN"));
+	const auto& ModifiedPrimary = Modified.Item.Header.Provenance[0];
+	TestTrue(TEXT("Child-authored membership stays with the child"),
+		ModifiedPrimary.Memberships.Num() == 1 &&
+		ModifiedPrimary.Memberships[0].Inclusion == EDnd5eSourceInclusion::Excluded &&
+		Modified.Item.Header.Provenance[2].Memberships.IsEmpty() && Modified.Item.Header.Provenance[2].Page.Number == 7);
+	const auto* Type = FDnd5eJsonItemCopyReadResult::StaticStruct();
+	const auto* SourcePointers = Type->FindPropertyByName(TEXT("FieldSourcePointers"));
+	const auto* Node = UDnd5eJsonItemLibrary::StaticClass()->FindFunctionByName(TEXT("ReadItemCopyAtIndex"));
+	TestTrue(TEXT("The typed copy result and its source pointer map are exposed to Blueprint"),
+		Type->GetBoolMetaData(TEXT("BlueprintType")) && SourcePointers &&
+		SourcePointers->HasAllPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly) &&
+		Node && Node->HasAllFunctionFlags(FUNC_Static | FUNC_BlueprintCallable));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eTypedItemCopyFailureTest, "Dnd5e.Items.CopyAssembly.TypedAtomicFailure", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eTypedItemCopyFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Document = CopyDocument(TEXT(R"json({"item":[
+		{"name":"Invalid Content","source":"BAS","rarity":"none","entries":[false]},
+		{"name":"Inherited Invalid Content","source":"SYN","_copy":{"name":"Invalid Content","source":"BAS"}},
+		{"name":"Valid","source":"BAS","rarity":"none","entries":["Text"]},
+		{"name":"Invalid Modifier Content","source":"SYN","_copy":{"name":"Valid","source":"BAS",
+		 "_mod":{"entries":{"mode":"appendArr","items":false}}}},
+		{"name":"Missing Parent","source":"SYN","_copy":{"name":"Absent","source":"BAS"}}
+	]})json"));
+	struct FCase { int32 Index; const TCHAR* Pointer; };
+	for (const FCase& Case : {FCase{1, TEXT("/item/0/entries/0")}, {3, TEXT("/item/3/_copy/_mod/entries")}, {4, TEXT("/item/4/_copy")}})
+	{
+		const auto Result = FDnd5eJsonItemCopyAssembler::ReadCopyAtIndex(Document, Case.Index);
+		TestTrue(FString::Printf(TEXT("Failure at %s preserves original location and withholds item and lineage"), Case.Pointer),
+			Result.Status == EDnd5eJsonReadStatus::Failure && Result.Item.Header.RecordId == FDnd5eRecordId{} &&
+			Result.Item.Header.Provenance.IsEmpty() && Result.SourceRowIndices.IsEmpty() && Result.FieldSourcePointers.IsEmpty() &&
+			Result.Diagnostics.Num() == 1 && Result.Diagnostics[0].JsonPointer == Case.Pointer &&
+			Result.Diagnostics[0].RelativeFilePath == Document.Context.RelativeFilePath);
+	}
+	TestTrue(TEXT("Preview still assembles fields the typed converter rejects"),
+		FDnd5eJsonItemCopyAssembler::AssembleAtIndex(Document, 1).Status == EDnd5eJsonReadStatus::Success);
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_COMPLEX_AUTOMATION_TEST(FDnd5eItemCopySnapshotTest, "Dnd5e.Items.CopyAssembly.External", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 void FDnd5eItemCopySnapshotTest::GetTests(TArray<FString>& Names, TArray<FString>& Commands) const
 {
@@ -244,7 +345,7 @@ bool FDnd5eItemCopySnapshotTest::RunTest(const FString& Parameters)
 		Root.IsValid() && Root->TryGetArrayField(TEXT("item"), Rows) && Rows)) { return false; }
 
 	const auto Document = CopyDocument(Json);
-	int32 Copies = 0, Assembled = 0;
+	int32 Copies = 0, Assembled = 0, Converted = 0;
 	for (int32 Index = 0; Index < Rows->Num(); ++Index)
 	{
 		const auto& Row = (*Rows)[Index]->AsObject();
@@ -264,8 +365,26 @@ bool FDnd5eItemCopySnapshotTest::RunTest(const FString& Parameters)
 			Result.SourceRowIndices[0] == Index && Result.FieldSourceRows.FindRef(TEXT("name"), INDEX_NONE) == Index &&
 			Result.FieldSourceRows.FindRef(TEXT("source"), INDEX_NONE) == Index);
 		++Assembled;
+		const auto Typed = FDnd5eJsonItemCopyAssembler::ReadCopyAtIndex(Document, Index);
+		if (Typed.Status != EDnd5eJsonReadStatus::Success)
+		{
+			for (const auto& Diagnostic : Typed.Diagnostics)
+			{
+				if (Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error)
+				{
+					AddError(FString::Printf(TEXT("Typed row %d: %s %s"), Index, *Diagnostic.JsonPointer, *Diagnostic.Message));
+				}
+			}
+			continue;
+		}
+		TestTrue(TEXT("Typed result preserves the same chain and the selected original row"),
+			Typed.SourceRowIndices == Result.SourceRowIndices && Typed.FieldSourcePointers.Num() == Result.FieldSourceRows.Num() &&
+			Typed.Item.Header.Provenance.Num() == Typed.SourceRowIndices.Num() &&
+			Typed.Item.Header.Provenance[0].JsonPointer == FString::Printf(TEXT("/item/%d"), Index));
+		++Converted;
 	}
 	TestTrue(TEXT("All 67 copy chains assemble in the inspected snapshot"), Copies == 67 && Assembled == 67);
+	TestEqual(TEXT("All copy chains convert to typed items"), Converted, 67);
 	return !HasAnyErrors();
 }
 #endif

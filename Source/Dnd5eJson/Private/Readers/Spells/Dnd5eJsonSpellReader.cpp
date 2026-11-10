@@ -39,6 +39,26 @@ namespace Dnd5eJsonReader
 		const FName PreservedUnsupportedMetadata(TEXT("Dnd5e.Json.PreservedUnsupportedMetadata"));
 	}
 
+	static const FReadFieldOrigin* FindReadFieldOrigin(const FString& Pointer, const FReadState& State)
+	{
+		if (!State.FieldOrigins || !Pointer.StartsWith(State.FieldOrigins->RowPrefix, ESearchCase::CaseSensitive))
+		{
+			return nullptr;
+		}
+		const int32 Slash = Pointer.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromStart,
+			State.FieldOrigins->RowPrefix.Len());
+		const FString Top = Slash == INDEX_NONE ? Pointer : Pointer.Left(Slash);
+		const auto* Origin = State.FieldOrigins->Fields.Find(Top);
+		return Origin && Origin->LogicalPointer.Equals(Top, ESearchCase::CaseSensitive) ? Origin : nullptr;
+	}
+
+	static FString ToInputPointer(const FString& Pointer, const FReadFieldOrigin* Origin)
+	{
+		if (!Origin) { return Pointer; }
+		if (!Origin->bExactSubtree) { return Origin->InputPointer; }
+		return Origin->InputPointer + Pointer.Mid(Origin->LogicalPointer.Len());
+	}
+
 	void AddDiagnostic(FReadState& State, EDnd5eDiagnosticSeverity Severity, FName Code, const FString& Pointer, const FString& Message)
 	{
 		FDnd5eDiagnostic Diagnostic;
@@ -46,7 +66,7 @@ namespace Dnd5eJsonReader
 		Diagnostic.Code = Code;
 		Diagnostic.Message = Message;
 		Diagnostic.RelativeFilePath = State.Context.RelativeFilePath;
-		Diagnostic.JsonPointer = Pointer;
+		Diagnostic.JsonPointer = ToInputPointer(Pointer, FindReadFieldOrigin(Pointer, State));
 		State.Diagnostics.Add(MoveTemp(Diagnostic));
 	}
 
@@ -493,10 +513,11 @@ namespace Dnd5eJsonReader
 
 	FDnd5eContentMetadata MakeContentMetadata(const FString& Pointer, const FReadState& State)
 	{
+		const auto* Origin = FindReadFieldOrigin(Pointer, State);
 		FDnd5eContentMetadata Metadata;
-		Metadata.SourceId = State.SourceId;
+		Metadata.SourceId = Origin && State.bUseFieldSourceId ? Origin->SourceId : State.SourceId;
 		Metadata.RelativeFilePath = State.Context.RelativeFilePath;
-		Metadata.JsonPointer = Pointer;
+		Metadata.JsonPointer = ToInputPointer(Pointer, Origin);
 		return Metadata;
 	}
 

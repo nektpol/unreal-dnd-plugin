@@ -18,6 +18,20 @@ namespace Dnd5eJsonReader
 		int32 ContentValues = 0;
 	};
 
+	struct FReadFieldOrigin
+	{
+		FString LogicalPointer;
+		FString InputPointer;
+		FString SourceId;
+		bool bExactSubtree = false;
+	};
+
+	struct FReadFieldOrigins
+	{
+		FString RowPrefix;
+		TMap<FString, FReadFieldOrigin> Fields;
+	};
+
 	struct FReadState
 	{
 		const FDnd5eJsonReadContext& Context;
@@ -25,6 +39,8 @@ namespace Dnd5eJsonReader
 		TArray<FDnd5eDiagnostic>& Diagnostics;
 		FString SourceId;
 		TSharedRef<FReadBudget> Budget = MakeShared<FReadBudget>();
+		const FReadFieldOrigins* FieldOrigins = nullptr;
+		bool bUseFieldSourceId = true;
 	};
 
 	namespace Codes

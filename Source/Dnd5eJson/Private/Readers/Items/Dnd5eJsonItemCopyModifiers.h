@@ -5,6 +5,12 @@
 
 namespace Dnd5eJsonReader
 {
+	struct FItemCopyFieldOrigins
+	{
+		TMap<FString, int32> Rows;
+		TMap<FString, FString> Pointers;
+	};
+
 	bool ApplyItemCopyModifiers(const FJsonObject& Modifiers, const FString& Pointer, int32 SourceIndex,
-		FJsonObject& Merged, TMap<FString, int32>& FieldSources, FReadState& State);
+		FJsonObject& Merged, FItemCopyFieldOrigins& Origins, FReadState& State);
 }

@@ -17,4 +17,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
 	static FDnd5eJsonItemCopyAssemblyResult AssembleItemCopyAtIndex(const FDnd5eJsonDocument& Document, int32 Index);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
+	static FDnd5eJsonItemCopyReadResult ReadItemCopyAtIndex(const FDnd5eJsonDocument& Document, int32 Index);
 };

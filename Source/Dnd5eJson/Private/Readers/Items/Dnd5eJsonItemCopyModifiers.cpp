@@ -91,7 +91,7 @@ namespace
 	}
 
 	bool ApplyArrayOperation(const FJsonObject& Operation, const TCHAR* Field, const FString& Pointer,
-		int32 SourceIndex, FJsonObject& Merged, TMap<FString, int32>& FieldSources, FReadState& State)
+		int32 SourceIndex, FJsonObject& Merged, FItemCopyFieldOrigins& Origins, FReadState& State)
 	{
 		FString Mode;
 		if (!ReadRequiredString(Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
@@ -117,7 +117,7 @@ namespace
 		else if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("items")}, Pointer, State)) { return false; }
 
 		const auto Existing = FindExactField(Merged, Field);
-		if (!Existing.IsValid() && FieldSources.Contains(Field))
+		if (!Existing.IsValid() && Origins.Rows.Contains(Field))
 		{
 			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("The target collides with a differently cased field."));
 		}
@@ -179,12 +179,13 @@ namespace
 		if (bReplace) { Values.RemoveAt(Position); }
 		Values.Insert(Items, Position);
 		Merged.SetField(Field, MakeShared<FJsonValueArray>(MoveTemp(Values)));
-		FieldSources.Add(Field, SourceIndex);
+		Origins.Rows.Add(Field, SourceIndex);
+		Origins.Pointers.Add(Field, Pointer);
 		return true;
 	}
 
 	bool ApplyFieldOperations(const FJsonObject& Modifiers, const TCHAR* Field, const FString& Pointer,
-		int32 SourceIndex, FJsonObject& Merged, TMap<FString, int32>& FieldSources, FReadState& State)
+		int32 SourceIndex, FJsonObject& Merged, FItemCopyFieldOrigins& Origins, FReadState& State)
 	{
 		const auto Value = FindExactField(Modifiers, Field);
 		if (!Value.IsValid()) { return true; }
@@ -193,7 +194,7 @@ namespace
 		{
 			TSharedPtr<FJsonObject> Operation;
 			return RequireObject(Entry, EntryPointer, Operation, State) &&
-				ApplyArrayOperation(*Operation, Field, EntryPointer, SourceIndex, Merged, FieldSources, State);
+				ApplyArrayOperation(*Operation, Field, EntryPointer, SourceIndex, Merged, Origins, State);
 		};
 
 		if (Value->Type != EJson::Array) { return Apply(Value, FieldPointer); }
@@ -211,9 +212,9 @@ namespace
 }
 
 bool Dnd5eJsonReader::ApplyItemCopyModifiers(const FJsonObject& Modifiers, const FString& Pointer, int32 SourceIndex,
-	FJsonObject& Merged, TMap<FString, int32>& FieldSources, FReadState& State)
+	FJsonObject& Merged, FItemCopyFieldOrigins& Origins, FReadState& State)
 {
 	return CheckAllowedKeys(Modifiers, {TEXT("entries"), TEXT("property")}, Pointer, State) &&
-		ApplyFieldOperations(Modifiers, TEXT("entries"), Pointer, SourceIndex, Merged, FieldSources, State) &&
-		ApplyFieldOperations(Modifiers, TEXT("property"), Pointer, SourceIndex, Merged, FieldSources, State);
+		ApplyFieldOperations(Modifiers, TEXT("entries"), Pointer, SourceIndex, Merged, Origins, State) &&
+		ApplyFieldOperations(Modifiers, TEXT("property"), Pointer, SourceIndex, Merged, Origins, State);
 }

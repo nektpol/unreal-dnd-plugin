@@ -11,3 +11,8 @@ FDnd5eJsonItemCopyAssemblyResult UDnd5eJsonItemLibrary::AssembleItemCopyAtIndex(
 {
 	return FDnd5eJsonItemCopyAssembler::AssembleAtIndex(Document, Index);
 }
+
+FDnd5eJsonItemCopyReadResult UDnd5eJsonItemLibrary::ReadItemCopyAtIndex(const FDnd5eJsonDocument& Document, int32 Index)
+{
+	return FDnd5eJsonItemCopyAssembler::ReadCopyAtIndex(Document, Index);
+}
