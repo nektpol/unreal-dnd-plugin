@@ -4,6 +4,7 @@
 #include "Readers/Items/Dnd5eJsonItemVariantMatcherInternal.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 #include "Readers/Items/Dnd5eJsonItemVariantEntries.h"
+#include "Readers/Items/Dnd5eJsonItemVariantTransforms.h"
 #include "Items/Dnd5eItemIdentity.h"
 
 namespace
@@ -47,26 +48,59 @@ namespace
 		return Uid.IsValid() && Uid->Type == EJson::String && Uid->TryGetString(Out) && !Out.IsEmpty();
 	}
 
-	bool AddVariantProperties(const FJsonObject& Base, const FJsonObject& Inherits, const FString& BasePointer,
+	bool ApplyVariantPropertyOperations(const FJsonObject& Base, const FJsonObject& Inherits, const FString& BasePointer,
 		const FString& InheritsPointer, FJsonObject& Row, FReadState& BaseState, FReadState& VariantState)
 	{
-		if (!FindExactField(Inherits, TEXT("propertyAdd")).IsValid()) { return true; }
+		const auto Add = FindExactField(Inherits, TEXT("propertyAdd"));
+		const auto Remove = FindExactField(Inherits, TEXT("propertyRemove"));
+		if (!Add.IsValid() && !Remove.IsValid()) { return true; }
+
 		const FString AddPointer = AppendPointer(InheritsPointer, TEXT("propertyAdd"));
-		if (FindExactField(Inherits, TEXT("property")).IsValid())
+		const FString RemovePointer = AppendPointer(InheritsPointer, TEXT("propertyRemove"));
+		const FString& OperationPointer = Remove.IsValid() ? RemovePointer : AddPointer;
+		if (FindExactField(Inherits, TEXT("property")).IsValid() ||
+			(Row.HasField(TEXT("property")) && !FindExactField(Row, TEXT("property")).IsValid()))
 		{
-			return Fail(VariantState, Codes::UnsupportedRequiredValue, AddPointer,
-				TEXT("Combining a property override with propertyAdd is outside this preview."));
-		}
-		TArray<TSharedPtr<FJsonValue>> Original;
-		const TArray<TSharedPtr<FJsonValue>>* Additions = nullptr;
-		if (!ReadVariantArrayValues(Base, TEXT("property"), BasePointer, Original, BaseState) ||
-			!ReadRequiredArray(Inherits, TEXT("propertyAdd"), InheritsPointer, Additions, VariantState)) { return false; }
-		if (Original.Num() > 4096 || Additions->Num() > 4096)
-		{
-			return Fail(VariantState, Codes::ResourceLimitExceeded, AddPointer, TEXT("Too many variant property values."));
+			return Fail(VariantState, Codes::UnsupportedRequiredValue, OperationPointer,
+				TEXT("Property operations cannot be combined with a conflicting property override."));
 		}
 
-		TArray<FString> OriginalUids;
+		const TArray<TSharedPtr<FJsonValue>>* Additions = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Removals = nullptr;
+		TArray<TSharedPtr<FJsonValue>> Original;
+		if (!ReadVariantArrayValues(Base, TEXT("property"), BasePointer, Original, BaseState) ||
+			(Add.IsValid() && !RequireArray(Add, AddPointer, Additions, VariantState)) ||
+			(Remove.IsValid() && !RequireArray(Remove, RemovePointer, Removals, VariantState))) { return false; }
+		if (Original.Num() > 4096 || (Additions && Additions->Num() > 4096) || (Removals && Removals->Num() > 4096))
+		{
+			return Fail(VariantState, Codes::ResourceLimitExceeded, OperationPointer, TEXT("Too many variant property values."));
+		}
+
+		const auto ContainsUid = [](const TArray<FString>& Values, const FString& Uid)
+		{
+			return Values.ContainsByPredicate([&Uid](const FString& Existing)
+			{
+				return Existing.Equals(Uid, ESearchCase::CaseSensitive);
+			});
+		};
+		TArray<FString> RemoveUids;
+		if (Removals)
+		{
+			for (int32 Index = 0; Index < Removals->Num(); ++Index)
+			{
+				const auto& Value = (*Removals)[Index];
+				FString Uid;
+				if (Value->Type != EJson::String || !Value->TryGetString(Uid) || Uid.IsEmpty())
+				{
+					return Fail(VariantState, Codes::InvalidFieldValue, AppendPointer(RemovePointer, FString::FromInt(Index)),
+						TEXT("Expected a property UID string to remove."));
+				}
+				RemoveUids.Add(MoveTemp(Uid));
+			}
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Properties;
+		TArray<FString> KeptUids;
 		const FString PropertyPointer = AppendPointer(BasePointer, TEXT("property"));
 		for (int32 Index = 0; Index < Original.Num(); ++Index)
 		{
@@ -76,25 +110,30 @@ namespace
 				return Fail(BaseState, Codes::InvalidFieldValue, AppendPointer(PropertyPointer, FString::FromInt(Index)),
 					TEXT("Expected a property UID."));
 			}
-			OriginalUids.Add(MoveTemp(Uid));
+			if (ContainsUid(RemoveUids, Uid)) { continue; }
+			Properties.Add(Original[Index]);
+			KeptUids.Add(MoveTemp(Uid));
 		}
-		for (int32 Index = 0; Index < Additions->Num(); ++Index)
+
+		if (Additions)
 		{
-			FString Uid;
-			if (!TryReadPropertyUid(*(*Additions)[Index], Uid))
+			for (int32 Index = 0; Index < Additions->Num(); ++Index)
 			{
-				return Fail(VariantState, Codes::InvalidFieldValue, AppendPointer(AddPointer, FString::FromInt(Index)),
-					TEXT("Expected an added property UID."));
+				FString Uid;
+				if (!TryReadPropertyUid(*(*Additions)[Index], Uid))
+				{
+					return Fail(VariantState, Codes::InvalidFieldValue, AppendPointer(AddPointer, FString::FromInt(Index)),
+						TEXT("Expected an added property UID."));
+				}
+				if (!ContainsUid(KeptUids, Uid)) { Properties.Add((*Additions)[Index]); }
 			}
-			if (!OriginalUids.ContainsByPredicate([&Uid](const FString& Existing)
-			{
-				return Existing.Equals(Uid, ESearchCase::CaseSensitive);
-			}))
-			{
-				Original.Add((*Additions)[Index]);
-			}
+			Row.SetArrayField(TEXT("property"), Properties);
 		}
-		Row.SetArrayField(TEXT("property"), Original);
+		else if (const auto Existing = FindExactField(Base, TEXT("property")); Existing.IsValid() && Existing->Type == EJson::Array)
+		{
+			if (Properties.IsEmpty()) { Row.RemoveField(TEXT("property")); }
+			else { Row.SetArrayField(TEXT("property"), Properties); }
+		}
 		return true;
 	}
 
@@ -152,11 +191,12 @@ namespace
 		Keys.Sort([](const FString& A, const FString& B) { return A.Compare(B, ESearchCase::CaseSensitive) < 0; });
 		for (const FString& Key : Keys)
 		{
-			if (IsOneOf(Key, {TEXT("nameRemove"), TEXT("namePrefix"), TEXT("nameSuffix"), TEXT("entries"), TEXT("propertyAdd")})) { continue; }
+			if (IsOneOf(Key, {TEXT("nameRemove"), TEXT("namePrefix"), TEXT("nameSuffix"), TEXT("entries"),
+				TEXT("propertyAdd"), TEXT("propertyRemove"), TEXT("valueExpression"), TEXT("weightExpression"),
+				TEXT("barding"), TEXT("conditionImmune"), TEXT("vulnerable"), TEXT("resist"), TEXT("immune")})) { continue; }
 			const FString Pointer = AppendPointer(InheritsPointer, Key);
-			if (IsOneOf(Key, {TEXT("name"), TEXT("baseItem"), TEXT("genericVariant"), TEXT("_copy"), TEXT("requires"),
-				TEXT("excludes"), TEXT("inherits"), TEXT("weightExpression"), TEXT("valueExpression"), TEXT("barding"),
-				TEXT("propertyRemove"), TEXT("conditionImmune"), TEXT("vulnerable"), TEXT("resist"), TEXT("immune")}))
+			if (IsOneOf(Key, {TEXT("name"), TEXT("baseItem"), TEXT("genericVariant"), TEXT("_copy"),
+				TEXT("requires"), TEXT("excludes"), TEXT("inherits")}))
 			{
 				return Fail(VariantState, Codes::UnsupportedRequiredValue, Pointer, TEXT("Unsupported item variant inheritance directive."));
 			}
@@ -178,7 +218,8 @@ namespace
 			Combined.Append(BaseEntries);
 			Row.SetArrayField(TEXT("entries"), Combined);
 		}
-		if (!AddVariantProperties(Base, Inherits, BasePointer, InheritsPointer, Row, BaseState, VariantState)) { return false; }
+		if (!ApplyVariantPropertyOperations(Base, Inherits, BasePointer, InheritsPointer, Row, BaseState, VariantState) ||
+			!ApplyItemVariantTransforms(Base, Inherits, BasePointer, InheritsPointer, Row, BaseState, VariantState)) { return false; }
 
 		for (const TCHAR* Key : {TEXT("hasFluff"), TEXT("hasFluffImages")})
 		{

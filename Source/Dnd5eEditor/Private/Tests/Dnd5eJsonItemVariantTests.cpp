@@ -187,7 +187,7 @@ bool FDnd5eItemVariantGenerationFailureTest::RunTest(const FString& Parameters)
 	const auto Variants = VariantMatchDocument(TEXT(R"json({"magicvariant":[
 		{"name":"Literal","requires":[{"sword":true}],"inherits":{"source":"VAR","namePrefix":"Magic "}},
 		{"name":"Token","requires":[{}],"inherits":{"source":"VAR","entries":[{"type":"entries","entries":["{=unknown}"]}]}},
-		{"name":"Expression","requires":[{}],"inherits":{"source":"VAR","valueExpression":"[[baseItem.value]] * 2"}},
+		{"name":"Expression","requires":[{}],"inherits":{"source":"VAR","valueExpression":"[[baseItem.value]] + 1d4"}},
 		{"name":"Template Loot","requires":[{}],"inherits":{"source":"VAR","namePrefix":"Magic ","lootTables":"Invalid"}},
 		{"name":"Copy","_copy":{"name":"Literal","source":"VAR"}}
 	],"linkedLootTables":{"VAR":{"Magic Blade":["SYN-A"]}}})json"), VariantPath);
@@ -312,6 +312,126 @@ bool FDnd5eVariantEntrySubstitutionFailureTest::RunTest(const FString& Parameter
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantStandaloneTransformsTest, "Dnd5e.Items.VariantGeneration.StandaloneTransforms", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eVariantStandaloneTransformsTest::RunTest(const FString& Parameters)
+{
+	const auto Templates = VariantMatchDocument(TEXT(R"json({"magicvariant":[
+		{"name":"Invented Transform","requires":[{"type":"HA|SYN"}],"inherits":{
+		 "source":"VAR","rarity":"rare","namePrefix":"Altered ","valueExpression":"[[baseItem.value]] + 1000",
+		 "weightExpression":"[[baseItem.weight]] * 2","barding":true,
+		 "propertyRemove":["P|SYN"],"propertyAdd":["Q|SYN","P|SYN","R|SYN"],
+		 "vulnerable":null,"resist":["fire","lightning","fire"],"immune":["poison"],"conditionImmune":["poisoned","stunned"]}},
+		{"name":"Invented Removal","requires":[{}],"inherits":{"source":"VAR","rarity":"rare","propertyRemove":["P|SYN","Q|SYN"]}},
+		{"name":"Invented Multiplication","requires":[{}],"inherits":{
+		 "source":"VAR","rarity":"rare","valueExpression":"[[baseItem.value]] * 4","weightExpression":"[[baseItem.weight]] + 1"}}
+	]})json"), TEXT("fixtures/variants.json"));
+	const auto Bases = VariantMatchDocument(TEXT(R"json({"baseitem":[
+		{"name":"Invented Base","source":"SYN","type":"HA|SYN","rarity":"none","value":100,"weight":2.25,
+		 "property":[{"uid":"P|SYN","note":"Original note"},"Q|SYN"],
+		 "vulnerable":["cold","fire"],"resist":["acid","poison"],"immune":["lightning","poison"],
+		 "conditionImmune":["prone","poisoned"]},
+		{"name":"Invented Unpriced Base","source":"SYN","type":"HA|SYN","rarity":"none","weight":1},
+		{"name":"Invented Null Base","source":"SYN","type":"HA|SYN","rarity":"none","value":null,"weight":null},
+		{"name":"Invented Zero Base","source":"SYN","type":"HA|SYN","rarity":"none","value":0,"weight":0}
+	]})json"), TEXT("fixtures/base-items.json"));
+
+	const auto ReadPreview = [&](const FDnd5eJsonItemVariantGenerationResult& Result, TSharedPtr<FJsonObject>& Row)
+	{
+		TSharedPtr<FJsonObject> Root;
+		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+		if (!TestTrue(TEXT("Generated preview has one item row"), Result.Status == EDnd5eJsonReadStatus::Success &&
+			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Result.GeneratedJson), Root) && Root.IsValid() &&
+			Root->TryGetArrayField(TEXT("item"), Rows) && Rows && Rows->Num() == 1 && (*Rows)[0]->Type == EJson::Object))
+		{
+			for (const auto& Diagnostic : Result.Diagnostics) { AddError(Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message); }
+			return false;
+		}
+		Row = (*Rows)[0]->AsObject();
+		return true;
+	};
+	const auto HasStrings = [](const FJsonObject& Row, const TCHAR* Key, std::initializer_list<const TCHAR*> Expected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Row.TryGetArrayField(Key, Values) || !Values || Values->Num() != static_cast<int32>(Expected.size())) { return false; }
+		int32 Index = 0;
+		for (const TCHAR* Text : Expected)
+		{
+			const auto& Value = (*Values)[Index++];
+			if (Value->Type != EJson::String || !Value->AsString().Equals(Text, ESearchCase::CaseSensitive)) { return false; }
+		}
+		return true;
+	};
+	const auto Generated = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, 0, EPolicy::SourceDefault);
+	TSharedPtr<FJsonObject> Row;
+	if (!ReadPreview(Generated, Row)) { return false; }
+	TestTrue(TEXT("Expressions read original base amounts and emit numbers without control fields"),
+		Generated.Diagnostics.IsEmpty() && Row->GetNumberField(TEXT("value")) == 1100 && Row->GetNumberField(TEXT("weight")) == 4.5 &&
+		!Row->HasField(TEXT("valueExpression")) && !Row->HasField(TEXT("weightExpression")) &&
+		!Row->HasField(TEXT("barding")) && Row->GetStringField(TEXT("bardingType")) == TEXT("HA|SYN"));
+	TestTrue(TEXT("Remove a noted UID, keep the surviving property, then apply additions"),
+		HasStrings(*Row, TEXT("property"), {TEXT("Q|SYN"), TEXT("P|SYN"), TEXT("R|SYN")}));
+	TestTrue(TEXT("Damage merges clear explicit null, remove overlapping base traits and deduplicate in order"),
+		!Row->HasField(TEXT("vulnerable")) && HasStrings(*Row, TEXT("resist"), {TEXT("acid"), TEXT("fire"), TEXT("lightning")}) &&
+		HasStrings(*Row, TEXT("immune"), {TEXT("poison")}));
+	TestTrue(TEXT("Condition immunities are appended and deduplicated"),
+		HasStrings(*Row, TEXT("conditionImmune"), {TEXT("prone"), TEXT("poisoned"), TEXT("stunned")}));
+
+	const auto Unpriced = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, 1, EPolicy::SourceDefault);
+	if (!ReadPreview(Unpriced, Row)) { return false; }
+	TestTrue(TEXT("Missing price keeps the expression and an original-source warning"),
+		!Row->HasField(TEXT("value")) && Row->GetNumberField(TEXT("weight")) == 2 &&
+		Row->GetStringField(TEXT("valueExpression")) == TEXT("[[baseItem.value]] + 1000") &&
+		Unpriced.Diagnostics.Num() == 1 && Unpriced.Diagnostics[0].Severity == EDnd5eDiagnosticSeverity::Warning &&
+		Unpriced.Diagnostics[0].Code == FName(TEXT("Dnd5e.Json.PreservedUnsupportedMetadata")) &&
+		Unpriced.Diagnostics[0].RelativeFilePath == Templates.Context.RelativeFilePath &&
+		Unpriced.Diagnostics[0].JsonPointer == TEXT("/magicvariant/0/inherits/valueExpression"));
+	const auto NullAmounts = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, 2, EPolicy::SourceDefault);
+	if (!ReadPreview(NullAmounts, Row)) { return false; }
+	TestTrue(TEXT("Explicit null inputs leave both generated amounts absent"),
+		!Row->HasField(TEXT("value")) && !Row->HasField(TEXT("weight")) &&
+		Row->HasField(TEXT("valueExpression")) && Row->HasField(TEXT("weightExpression")) && NullAmounts.Diagnostics.Num() == 2);
+	const auto Zero = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 2, Bases, 3, EPolicy::SourceDefault);
+	if (!ReadPreview(Zero, Row)) { return false; }
+	TestTrue(TEXT("Zero is an actual numeric input"), Zero.Diagnostics.IsEmpty() && Row->HasTypedField<EJson::Number>(TEXT("value")) &&
+		Row->GetNumberField(TEXT("value")) == 0 && Row->GetNumberField(TEXT("weight")) == 1);
+	const auto Removed = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 1, Bases, 0, EPolicy::SourceDefault);
+	if (!ReadPreview(Removed, Row)) { return false; }
+	TestFalse(TEXT("Removing the last base property omits the field"), Row->HasField(TEXT("property")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantStandaloneTransformFailureTest, "Dnd5e.Items.VariantGeneration.StandaloneTransformFailures", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eVariantStandaloneTransformFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Templates = VariantMatchDocument(TEXT(R"json({"magicvariant":[
+		{"name":"Conflict","requires":[{}],"inherits":{"source":"VAR","value":3,"valueExpression":"[[baseItem.value]] * 2"}},
+		{"name":"Type","requires":[{}],"inherits":{"source":"VAR","valueExpression":"[[baseItem.value]] * 2"}},
+		{"name":"Overflow","requires":[{}],"inherits":{"source":"VAR","valueExpression":"[[baseItem.value]] * 4"}},
+		{"name":"Trait","requires":[{}],"inherits":{"source":"VAR","resist":[{"resist":["fire"]}]}},
+		{"name":"Property","requires":[{}],"inherits":{"source":"VAR","propertyRemove":[false]}},
+		{"name":"Barding","requires":[{}],"inherits":{"source":"VAR","barding":false}}
+	]})json"), TEXT("fixtures/variants.json"));
+	const auto Bases = VariantMatchDocument(TEXT(R"json({"baseitem":[
+		{"name":"Invented Base","source":"SYN","type":"HA"},
+		{"name":"Invented Bad Value","source":"SYN","type":"HA","value":"Not a number"},
+		{"name":"Invented Large Value","source":"SYN","type":"HA","value":9007199254740991}
+	]})json"), TEXT("fixtures/base-items.json"));
+	struct FCase { int32 Variant; int32 Base; const TCHAR* Pointer; bool bBaseFile = false; };
+	for (const FCase& Case : {
+		FCase{0, 0, TEXT("/magicvariant/0/inherits/valueExpression")}, {1, 1, TEXT("/baseitem/1/value"), true},
+		{2, 2, TEXT("/magicvariant/2/inherits/valueExpression")}, {3, 0, TEXT("/magicvariant/3/inherits/resist/0")},
+		{4, 0, TEXT("/magicvariant/4/inherits/propertyRemove/0")}, {5, 0, TEXT("/magicvariant/5/inherits/barding")}})
+	{
+		const auto Result = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, Case.Variant, Bases, Case.Base, EPolicy::SourceDefault);
+		TestTrue(FString::Printf(TEXT("Failure is located at %s and withholds the preview"), Case.Pointer),
+			Result.Status == EDnd5eJsonReadStatus::Failure && Result.GeneratedJson.IsEmpty() && Result.GeneratedId == FDnd5eRecordId{} &&
+			Result.BaseOrigin.JsonPointer.IsEmpty() && Result.TemplateOrigin.JsonPointer.IsEmpty() && Result.Diagnostics.Num() == 1 &&
+			Result.Diagnostics[0].JsonPointer == Case.Pointer &&
+			Result.Diagnostics[0].RelativeFilePath == (Case.bBaseFile ? Bases.Context.RelativeFilePath : Templates.Context.RelativeFilePath));
+	}
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_COMPLEX_AUTOMATION_TEST(FDnd5eItemVariantSnapshotTest, "Dnd5e.Items.VariantMatch.External", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 void FDnd5eItemVariantSnapshotTest::GetTests(TArray<FString>& Names, TArray<FString>& Commands) const
 {
@@ -340,7 +460,7 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 	const EPolicy Policies[] = {EPolicy::SourceDefault, EPolicy::PreferClassic};
 	int32 Pairs[] = {0, 0};
 	int32 TemplatesWithMatches[] = {0, 0};
-	int32 Copies = 0, Generated = 0, Deferred = 0;
+	int32 Copies = 0, Generated = 0, MissingAmounts = 0;
 	for (int32 Index = 0; Index < Rows->Num(); ++Index)
 	{
 		const auto& Row = (*Rows)[Index];
@@ -373,12 +493,14 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 					Preview.BaseOrigin.JsonPointer == FString::Printf(TEXT("/baseitem/%d"), BaseIndex) &&
 					Preview.TemplateOrigin.JsonPointer == FString::Printf(TEXT("/magicvariant/%d"), Index));
 				++Generated;
-			}
-			else if (Preview.Diagnostics.Num() == 1 &&
-				Preview.Diagnostics[0].Code == FName(TEXT("Dnd5e.Json.UnsupportedRequiredValue")) &&
-				Preview.Diagnostics[0].JsonPointer.StartsWith(FString::Printf(TEXT("/magicvariant/%d/inherits/"), Index)))
-			{
-				++Deferred;
+				for (const auto& Diagnostic : Preview.Diagnostics)
+				{
+					TestTrue(TEXT("Sample diagnostic is a located missing-base-price warning"),
+						Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning &&
+						Diagnostic.Code == FName(TEXT("Dnd5e.Json.PreservedUnsupportedMetadata")) &&
+						Diagnostic.JsonPointer == FString::Printf(TEXT("/magicvariant/%d/inherits/valueExpression"), Index));
+					++MissingAmounts;
+				}
 			}
 			else
 			{
@@ -395,8 +517,8 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("SourceDefault templates with matches"), TemplatesWithMatches[0], 221);
 	TestEqual(TEXT("PreferClassic pair count"), Pairs[1], 2873);
 	TestEqual(TEXT("PreferClassic templates with matches"), TemplatesWithMatches[1], 151);
-	TestEqual(TEXT("First eligible pair generated for each supported template"), Generated, 189);
-	TestEqual(TEXT("First eligible pair deferred for each unsupported template"), Deferred, 32);
+	TestEqual(TEXT("First eligible pair generated for each supported template"), Generated, 221);
+	TestEqual(TEXT("First eligible samples with missing base prices"), MissingAmounts, 2);
 	return !HasAnyErrors();
 }
 #endif
