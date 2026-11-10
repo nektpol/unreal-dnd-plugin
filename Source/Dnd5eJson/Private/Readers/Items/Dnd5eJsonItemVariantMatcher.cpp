@@ -2,6 +2,7 @@
 
 #include "Readers/Items/Dnd5eJsonItemVariantMatcher.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
+#include "Dnd5eJsonItemVariantMatcherInternal.h"
 
 namespace
 {
@@ -174,8 +175,9 @@ namespace
 	}
 }
 
-FDnd5eJsonItemVariantMatchResult FDnd5eJsonItemVariantMatcher::MatchAtIndex(const FDnd5eJsonDocument& VariantDocument,
-	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, EDnd5eJsonItemVariantEditionPolicy Policy)
+FDnd5eJsonItemVariantMatchResult Dnd5eJsonReader::MatchItemVariant(const FDnd5eJsonDocument& VariantDocument,
+	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, EDnd5eJsonItemVariantEditionPolicy Policy,
+	FItemVariantMatchInputs* OutInputs)
 {
 	using namespace Dnd5eJsonReader;
 	FDnd5eJsonItemVariantMatchResult Result;
@@ -269,5 +271,15 @@ FDnd5eJsonItemVariantMatchResult FDnd5eJsonItemVariantMatcher::MatchAtIndex(cons
 	Result.VariantSourceId = MoveTemp(Source);
 	Result.MatchingBaseIndices = MoveTemp(Matches);
 	Result.Status = EDnd5eJsonReadStatus::Success;
+	if (OutInputs)
+	{
+		*OutInputs = {MoveTemp(VariantRoot), MoveTemp(Variant), MoveTemp(BaseRoot), Bases};
+	}
 	return Result;
+}
+
+FDnd5eJsonItemVariantMatchResult FDnd5eJsonItemVariantMatcher::MatchAtIndex(const FDnd5eJsonDocument& VariantDocument,
+	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, EDnd5eJsonItemVariantEditionPolicy Policy)
+{
+	return Dnd5eJsonReader::MatchItemVariant(VariantDocument, VariantIndex, BaseItemDocument, Policy, nullptr);
 }

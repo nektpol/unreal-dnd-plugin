@@ -22,3 +22,9 @@ FDnd5eJsonItemVariantMatchResult UDnd5eJsonItemLibrary::MatchMagicItemVariantAtI
 {
 	return FDnd5eJsonItemVariantMatcher::MatchAtIndex(VariantDocument, VariantIndex, BaseItemDocument, Policy);
 }
+
+FDnd5eJsonItemVariantGenerationResult UDnd5eJsonItemLibrary::GenerateMagicItemVariantAtIndex(const FDnd5eJsonDocument& VariantDocument,
+	int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex, EDnd5eJsonItemVariantEditionPolicy Policy)
+{
+	return FDnd5eJsonItemVariantGenerator::GenerateAtIndex(VariantDocument, VariantIndex, BaseItemDocument, BaseIndex, Policy);
+}

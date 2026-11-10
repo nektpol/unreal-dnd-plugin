@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching is available for standalone templates. Specific variant generation and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching is available for standalone templates. Eligible pairs can generate previews with literal inheritance and original source locations. Additional variant transforms, typed variant import and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -11,6 +11,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 - [Ordinary-item copy assembly](#ordinary-item-copy-assembly)
   - [Typed copy reading](#typed-copy-reading)
 - [Magic variant matching](#magic-variant-matching)
+  - [Specific variant generation](#specific-variant-generation)
 - [Definition selection](#definition-selection)
 - [Rarity](#rarity)
 - [Content and presence](#content-and-presence)
@@ -116,7 +117,7 @@ Editor conditions enable active payloads without clearing inactive data or valid
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links and copy previews with array modifiers are available for ordinary rows. Direct typed copy import is available. The magic variant matcher reports eligible base rows. Specific variant assembly remains a later stage. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links and copy previews with array modifiers are available for ordinary rows. Direct typed copy import is available. The magic variant matcher reports eligible base rows. Specific variant previews are available for supported inheritance rules. Source data and generated variants remain externally supplied; none is bundled with this model.
 
 
 ## Supplied base-item JSON
@@ -213,3 +214,13 @@ A base row qualifies when it satisfies every field in at least one `requires` gr
 | one | Unspecified, one | one |
 
 Unspecified means an absent or null source edition. The policies preserve exact edition matches and differ in how they pair unspecified templates with declared base editions. Matching evaluates raw fields such as sword, scfType and property, alongside fields already represented in the item model. The matcher returns eligible pairs for later generation. [Native matcher](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemVariantMatcher.h)
+
+### Specific variant generation
+
+Call `FDnd5eJsonItemVariantGenerator::GenerateAtIndex` or **Generate Magic Item Variant at Index** with both original documents, the template and base indices, and the edition policy. The matcher validates the same dataset and eligibility before generating the selected pair. A successful result carries the single-row ordinary-item preview in GeneratedJson and the two original row locations in BaseOrigin and TemplateOrigin. Failure returns diagnostics with empty output and default IDs and origins.
+
+The preview starts from the base fields and clears fixed value, base publication membership and page fields, reprint and reference-source metadata, and fluff flags before applying template inheritance. Literal name removal runs before prefix and suffix. Template entries precede base entries. `propertyAdd` compares exact UIDs against the original property array, preserving property notes and source order. The `linkedLootTables` lookup uses the generated publication and name and appends the linked values. The preview includes source-qualified `baseItem` and `genericVariant` links.
+
+GeneratedId uses the item category and a pair key derived from the canonical base and template keys. Each component is escaped separately. Two base records from different publications can therefore produce the same display name without sharing a generated ID. An eligible pair has a stable ID across matching policies. The ordinary item reader can inspect supported preview fields, while the pair ID comes from GeneratedId. Typed variant import will carry that ID and both original origins directly.
+
+The preview rejects template copies, entry substitutions and specialized directives such as expressions, property removal, barding and immunity merges with located diagnostics. [Native generator](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemVariantGenerator.h)
