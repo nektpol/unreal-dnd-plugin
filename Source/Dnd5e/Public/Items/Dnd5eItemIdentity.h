@@ -11,5 +11,8 @@ namespace Dnd5e::Items
 		const FString& SourceId, FDnd5eRecordId& OutId);
 
 	DND5E_API bool TryMakeGroupId(const FString& DatasetNamespace, const FString& Name,
-	const FString& SourceId, FDnd5eRecordId& OutId);
+		const FString& SourceId, FDnd5eRecordId& OutId);
+
+	DND5E_API bool TryMakeEntryTemplateId(const FString& DatasetNamespace, const FString& Name,
+		const FString& SourceId, FDnd5eRecordId& OutId);
 }

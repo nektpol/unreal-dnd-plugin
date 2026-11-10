@@ -513,6 +513,24 @@ namespace Dnd5eJsonReader
 		return true;
 	}
 
+	static bool ReadItemEntryReferenceBlock(const FString& Uid, const FString& SourceReference, const FString& Pointer,
+		const FDnd5eContentMetadata& Metadata, FDnd5eContentBlock& OutBlock, FReadState& State, int32 Depth)
+	{
+		TArray<FString> Parts;
+		Uid.ParseIntoArray(Parts, TEXT("|"), false);
+		FDnd5eParagraphContent Paragraph;
+		if (Parts.IsEmpty() || Parts.Num() > 2 || (Parts.Num() == 2 && Parts[1].TrimStartAndEnd().IsEmpty()))
+		{
+			UnsupportedInline(SourceReference, Pointer, Paragraph.Inlines, State);
+		}
+		else if (!ReadRecordReference(TEXT("itemEntry"), Parts, SourceReference, Pointer, Paragraph.Inlines, State, Depth + 1))
+		{
+			return false;
+		}
+		OutBlock = MakeBlock(Dnd5e::Content::Block::Paragraph, Paragraph, Metadata);
+		return true;
+	}
+
 	bool ReadContent(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, FDnd5eContentBlock& OutBlock, FReadState& State, int32 Depth)
 	{
 		if (!CheckContentDepth(Depth, Pointer, State)) { return false; }
@@ -523,6 +541,13 @@ namespace Dnd5eJsonReader
 		{
 			FString Text;
 			Value->TryGetString(Text);
+			constexpr TCHAR ItemEntryPrefix[] = TEXT("{#itemEntry ");
+			constexpr int32 ItemEntryPrefixLength = UE_ARRAY_COUNT(ItemEntryPrefix) - 1;
+			if (Text.StartsWith(ItemEntryPrefix, ESearchCase::CaseSensitive) && Text.EndsWith(TEXT("}"), ESearchCase::CaseSensitive))
+			{
+				const FString Uid = Text.Mid(ItemEntryPrefixLength, Text.Len() - ItemEntryPrefixLength - 1);
+				return ReadItemEntryReferenceBlock(Uid, Text, Pointer, Metadata, OutBlock, State, Depth);
+			}
 			FDnd5eParagraphContent Paragraph;
 			if (!ReadInlines(Text, Pointer, Paragraph.Inlines, State, Depth + 1)) { return false; }
 			OutBlock = MakeBlock(Dnd5e::Content::Block::Paragraph, Paragraph, Metadata);
@@ -548,6 +573,18 @@ namespace Dnd5eJsonReader
 		else if (FindExactField(*Object, TEXT("entries")).IsValid()) { Type = TEXT("entries"); }
 		else { return UnsupportedBlock(Value, Pointer, OutBlock, State); }
 		Metadata.SourceType = FindExactField(*Object, TEXT("type")).IsValid() ? Type : FString{};
+		if (Type.Equals(TEXT("refItemEntry"), ESearchCase::CaseSensitive))
+		{
+			const auto ValueUid = FindExactField(*Object, TEXT("itemEntry"));
+			FString Uid;
+			if (Object->Values.Num() != 2 || !ValueUid.IsValid() || ValueUid->Type != EJson::String || !ValueUid->TryGetString(Uid))
+			{
+				return UnsupportedBlock(Value, Pointer, OutBlock, State);
+			}
+			FString SourceReference;
+			if (!SerializeValue(Value, SourceReference, Pointer, State)) { return false; }
+			return ReadItemEntryReferenceBlock(Uid, SourceReference, Pointer, Metadata, OutBlock, State, Depth);
+		}
 		if (!ReadNodeMetadata(*Object, Pointer, Metadata, State)) { return false; }
 		FReadState ChildState = State;
 		ChildState.SourceId = Metadata.SourceId;

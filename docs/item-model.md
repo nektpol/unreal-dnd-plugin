@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry templates and their Content references are represented. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -9,6 +9,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 - [Fields](#fields)
 - [Base-item references](#base-item-references)
 - [Item groups](#item-groups)
+- [Reusable item entry templates](#reusable-item-entry-templates)
 - [Ordinary-item copy assembly](#ordinary-item-copy-assembly)
   - [Typed copy reading](#typed-copy-reading)
 - [Magic variant matching](#magic-variant-matching)
@@ -164,6 +165,12 @@ Each nonempty object in the array becomes a group. Supported members include cla
 Call `FDnd5eJsonItemGroupReader::ReadAtIndex` or **Read Item Group at Index** with a supplied document and the zero-based index in its `itemGroup` array. `FDnd5eItemGroup::Details` uses the ordinary item field reader, with an original group provenance pointer and a distinct `Dnd5e.Category.ItemGroup` identity. The key uses `dnd5e:item-group:v1:` followed by the normalized name and source. A group can share its name and publication with an ordinary item and link to it as a base.
 
 `Members` is a `TArray<FDnd5eItemGroupMember>` in authored order. Each member keeps its raw UID, name, and optional explicit source. Both `name` and `name|source` are accepted. Repeated declarations retain their positions. The visibility flag `bItemsHidden` defaults to false and preserves the member declarations when true. Group members remain selectors until catalog resolution. Failures leave the group at its default and report the offending input location. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemGroupReader.h)
+
+## Reusable item entry templates
+
+Call `FDnd5eJsonItemEntryTemplateReader::ReadAtIndex` or **Read Item Entry Template at Index** with supplied text and the zero-based index in its `itemEntry` array. The result contains an `FDnd5eItemEntryTemplate` with a source-qualified `Dnd5e.Category.ItemEntry` ID, original provenance and `EntriesTemplateJson`. The body preserves its array structure and placeholder strings for later evaluation. Additional outer metadata is retained in the header provenance. Failure leaves the template at its default.
+
+Content recognizes whole-entry `{#itemEntry Name|Source}` strings and exact `refItemEntry` objects as paragraphs containing a typed reference inline. The selector identifies the reusable entry category. Explicit sources produce canonical target IDs. Omitted sources remain unresolved selectors with a located warning. The reference retains its original source form. Expansion and insertion into the description are later operations. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemEntryTemplateReader.h)
 
 ## Ordinary-item copy assembly
 

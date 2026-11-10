@@ -7,6 +7,7 @@
 #include "Readers/Items/Dnd5eJsonItemVariantMatcher.h"
 #include "Readers/Items/Dnd5eJsonItemVariantGenerator.h"
 #include "Readers/Items/Dnd5eJsonItemGroupReader.h"
+#include "Readers/Items/Dnd5eJsonItemEntryTemplateReader.h"
 #include "Dnd5eJsonItemLibrary.generated.h"
 
 UCLASS()
@@ -40,4 +41,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
 	static FDnd5eJsonItemGroupReadResult ReadItemGroupAtIndex(const FDnd5eJsonDocument& Document, int32 Index);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
+	static FDnd5eJsonItemEntryTemplateReadResult ReadItemEntryTemplateAtIndex(const FDnd5eJsonDocument& Document, int32 Index);
 };

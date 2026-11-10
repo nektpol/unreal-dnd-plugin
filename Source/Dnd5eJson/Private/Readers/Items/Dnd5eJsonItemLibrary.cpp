@@ -39,3 +39,8 @@ FDnd5eJsonItemGroupReadResult UDnd5eJsonItemLibrary::ReadItemGroupAtIndex(const 
 {
 	return FDnd5eJsonItemGroupReader::ReadAtIndex(Document, Index);
 }
+
+FDnd5eJsonItemEntryTemplateReadResult UDnd5eJsonItemLibrary::ReadItemEntryTemplateAtIndex(const FDnd5eJsonDocument& Document, int32 Index)
+{
+	return FDnd5eJsonItemEntryTemplateReader::ReadAtIndex(Document, Index);
+}

@@ -39,3 +39,9 @@ bool Dnd5e::Items::TryMakeGroupId(const FString& DatasetNamespace, const FString
 {
 	return TryMakeItemRecordId(DatasetNamespace, Name, SourceId, Dnd5e::Category::ItemGroup, TEXT("dnd5e:item-group:v1:"), OutId);
 }
+
+bool Dnd5e::Items::TryMakeEntryTemplateId(const FString& DatasetNamespace, const FString& Name,
+	const FString& SourceId, FDnd5eRecordId& OutId)
+{
+	return TryMakeItemRecordId(DatasetNamespace, Name, SourceId, Dnd5e::Category::ItemEntry, TEXT("dnd5e:item-entry:v1:"), OutId);
+}

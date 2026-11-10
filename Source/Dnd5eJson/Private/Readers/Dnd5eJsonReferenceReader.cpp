@@ -3,6 +3,7 @@
 
 #include "Readers/Dnd5eJsonReaderInternal.h"
 #include "Dnd5eTags.h"
+#include "Items/Dnd5eItemIdentity.h"
 
 namespace Dnd5eJsonReader
 {
@@ -24,6 +25,7 @@ namespace Dnd5eJsonReader
 			if (Tag.Equals(TEXT("feat"), ESearchCase::CaseSensitive)) { return Dnd5e::Category::Feat; }
 			if (Tag.Equals(TEXT("background"), ESearchCase::CaseSensitive)) { return Dnd5e::Category::Background; }
 			if (Tag.Equals(TEXT("classFeature"), ESearchCase::CaseSensitive)) { return Dnd5e::Category::ClassFeature; }
+			if (Tag.Equals(TEXT("itemEntry"), ESearchCase::CaseSensitive)) { return Dnd5e::Category::ItemEntry; }
 			return {};
 		}
 	}
@@ -72,7 +74,16 @@ namespace Dnd5eJsonReader
 			Reference.bHasTargetRecordId = true;
 			Reference.TargetRecordId = MakeSpellRecordId(Reference.TargetSelector.Name, Reference.TargetSelector.SourceId, State.Context.DatasetNamespace);
 		}
-		else { AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, Pointer, TEXT("Typed selector retained without an effective target ID; source/default or domain lookup remains unresolved.")); }
+		else if (Reference.TargetSelector.Category == Dnd5e::Category::ItemEntry && Reference.TargetSelector.bHasSource &&
+			Dnd5e::Items::TryMakeEntryTemplateId(State.Context.DatasetNamespace, Reference.TargetSelector.Name,
+			Reference.TargetSelector.SourceId, Reference.TargetRecordId))
+		{
+			Reference.bHasTargetRecordId = true;
+		}
+		else
+		{
+			AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, Pointer, TEXT("Typed selector retained without an effective target ID; source/default or domain lookup remains unresolved."));
+		}
 		FDnd5eInlineContent Inline; Inline.Kind = Dnd5e::Content::Inline::Reference;
 		Inline.Payload = FInstancedStruct::Make<FDnd5eReferenceContent>(MoveTemp(Reference)); Inline.Metadata = MakeContentMetadata(Pointer, State);
 		Inlines.Add(MoveTemp(Inline)); return true;

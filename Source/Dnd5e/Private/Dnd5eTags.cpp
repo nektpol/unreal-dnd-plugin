@@ -80,6 +80,7 @@ namespace Dnd5e
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Reward, "Dnd5e.Category.Reward", "Reward record category");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Item, "Dnd5e.Category.Item", "Item selector domain");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemGroup, "Dnd5e.Category.ItemGroup", "Named item group record");
+		UE_DEFINE_GAMEPLAY_TAG_COMMENT(ItemEntry, "Dnd5e.Category.ItemEntry", "Reusable item entry template");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Creature, "Dnd5e.Category.Creature", "Creature selector domain");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Condition, "Dnd5e.Category.Condition", "Condition selector domain");
 		UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status, "Dnd5e.Category.Status", "Status selector domain");
