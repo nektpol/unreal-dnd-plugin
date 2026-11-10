@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **874 cases**; the standard and explicitly supplied-data checks pass **908 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **876 cases**; the standard and explicitly supplied-data checks pass **910 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -359,3 +359,7 @@ The catalog tests cover atomic replacement, source diagnostics, edition namespac
 ### Supplied-document item catalog builder
 
 Two synthetic cases verify input ordering, multiple namespaces, typed copy conversion, group members, empty replacement and Blueprint access. They check that malformed JSON, a missing copy target and duplicate IDs preserve the active catalog and retain earlier diagnostics. The main report covers 907 cases under Saved/Automation/Dnd5eItemCatalogBuilder. The one selected-spell smoke case is reported separately under Saved/Automation/Dnd5eItemCatalogBuilderSmoke.
+
+### Item catalog variants and supplements
+
+Two synthetic cases cover selected variant generation, pair identity, the base link, supplementary attachment to ordinary items and groups, same-name records across namespaces, and unmatched supplementary rows. They also cover invalid request indices and duplicate supplementary identities across documents, including the duplicate row location and preservation of the active catalog. The 910-case report is under Saved/Automation/Dnd5eItemCatalogEnrichment.

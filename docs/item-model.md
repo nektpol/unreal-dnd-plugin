@@ -296,3 +296,9 @@ Try Get Item and Try Get Group return copies by exact record ID. Query Record Id
 Call Build Item Catalog with an Item Catalog Object and a build request. Base Documents accept a `baseitem` array. Item Documents accept `item` and `itemGroup` arrays, with at least one present in each document. Copy rows resolve against their original item document. Each document supplies its own dataset namespace and relative file path for identity and diagnostics.
 
 The builder stages base items first, then ordinary items and copies in input order, followed by groups in input order. It validates the combined replacement before publishing it. A failed build reports zero records, retains collected diagnostics and preserves the active catalog. A successful empty request clears the catalog. [Native and Blueprint builder](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemCatalogBuilder.h)
+
+### Selected variants and supplements
+
+Add Variant Documents and Variant Selections to generate specific items as part of the build. Each selection names a zero-based document index and row index for the variant template and the base item, plus an edition policy. The base document is selected from Base Documents. Generated items follow the ordinary items in selection order and precede the groups in catalog queries. Each generated item retains its pair ID, base link, and source provenance. Repeating a pair fails duplicate ID validation.
+
+Supplement Documents supply `itemFluff` arrays. The builder matches supplementary rows to staged base items, ordinary items, generated variants and group details by canonical name and publication within the exact dataset namespace. Records with distinct IDs can share a supplement if their authored identity matches. Unmatched rows are allowed. A duplicate supplement identity, malformed document, or failed variant selection aborts the replacement and leaves the active catalog available.

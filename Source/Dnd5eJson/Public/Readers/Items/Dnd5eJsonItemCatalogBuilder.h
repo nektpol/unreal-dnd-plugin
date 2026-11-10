@@ -5,7 +5,25 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Readers/Dnd5eJsonDocument.h"
 #include "Readers/Dnd5eJsonReadStatus.h"
+#include "Readers/Items/Dnd5eJsonItemVariantMatcher.h"
 #include "Dnd5eJsonItemCatalogBuilder.generated.h"
+
+USTRUCT(BlueprintType)
+struct DND5EJSON_API FDnd5eJsonItemCatalogVariantSelection
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	int32 VariantDocumentIndex = INDEX_NONE;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	int32 VariantIndex = INDEX_NONE;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	int32 BaseDocumentIndex = INDEX_NONE;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	int32 BaseIndex = INDEX_NONE;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	EDnd5eJsonItemVariantEditionPolicy Policy = EDnd5eJsonItemVariantEditionPolicy::SourceDefault;
+};
 
 USTRUCT(BlueprintType)
 struct DND5EJSON_API FDnd5eJsonItemCatalogBuildRequest
@@ -16,6 +34,12 @@ struct DND5EJSON_API FDnd5eJsonItemCatalogBuildRequest
 	TArray<FDnd5eJsonDocument> BaseDocuments;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
 	TArray<FDnd5eJsonDocument> ItemDocuments;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	TArray<FDnd5eJsonDocument> VariantDocuments;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	TArray<FDnd5eJsonItemCatalogVariantSelection> VariantSelections;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|ItemCatalog")
+	TArray<FDnd5eJsonDocument> SupplementDocuments;
 };
 
 USTRUCT(BlueprintType)

@@ -90,4 +90,72 @@ bool FDnd5eItemCatalogBuildFailureTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("A null target returns a diagnostic"), Missing.Status == EDnd5eJsonReadStatus::Failure && Missing.Diagnostics.Num() == 1);
 	return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemCatalogBuildEnrichmentTest, "Dnd5e.Items.CatalogBuilder.VariantsAndSupplements", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemCatalogBuildEnrichmentTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonItemCatalogBuildRequest Request;
+	Request.BaseDocuments.Add(CatalogBuildDocument(TEXT(R"({"baseitem":[{"name":"Blade","source":"SYN","type":"M|SYN","rarity":"none"}]})"), TEXT("base.json")));
+	Request.ItemDocuments.Add(CatalogBuildDocument(TEXT(R"({"item":[{"name":"Enchanted Blade","source":"SYN","rarity":"rare"}],
+		"itemGroup":[{"name":"Family","source":"SYN","items":["Blade|SYN"],"rarity":"rare"}]})"), TEXT("items.json")));
+	Request.ItemDocuments.Add(CatalogBuildDocument(TEXT(R"({"item":[{"name":"Enchanted Blade","source":"SYN","rarity":"rare"}]})"),
+		TEXT("modern.json"), TEXT("guide-2024")));
+	Request.VariantDocuments.Add(CatalogBuildDocument(TEXT(R"({"magicvariant":[{"name":"Pattern","requires":[{"type":"M|SYN"}],
+		"inherits":{"source":"SYN","namePrefix":"Enchanted ","rarity":"rare","charges":2}}]})"), TEXT("variants.json")));
+	Request.VariantSelections.Add({0, 0, 0, 0});
+	Request.SupplementDocuments.Add(CatalogBuildDocument(TEXT(R"({"itemFluff":[{"name":"Enchanted Blade","source":"SYN","entries":["Blade lore."]},
+		{"name":"Family","source":"SYN","entries":["Family lore."]},{"name":"Unloaded","source":"SYN","entries":["Unmatched lore."]}]})"), TEXT("fluff.json")));
+	auto* Catalog = NewObject<UDnd5eItemCatalogObject>();
+	const auto Result = UDnd5eJsonItemCatalogBuilder::BuildItemCatalog(Request, Catalog);
+	if (!TestTrue(TEXT("Variant, primary records, and group publish together"),
+		Result.Status == EDnd5eJsonReadStatus::Success && Result.RecordCount == 5)) { return false; }
+	FDnd5eItemCatalogQuery Query;
+	Query.DatasetNamespace = TEXT("guide-2014");
+	TArray<FDnd5eRecordId> Ids;
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	if (!TestTrue(TEXT("Four classic IDs retain build order"), Catalog->QueryRecordIds(Query, Ids, Diagnostics) && Ids.Num() == 4)) { return false; }
+	FDnd5eItem Item;
+	TestTrue(TEXT("Ordinary record receives shared authored supplement"), Catalog->TryGetItem(Ids[1], Item) && Item.bHasSupplementaryContent);
+	TestTrue(TEXT("Variant keeps separate pair identity, base link, typed charges, and supplement"),
+		Ids[1] != Ids[2] && Catalog->TryGetItem(Ids[2], Item) && Item.BaseItemId == Ids[0] &&
+		Item.ChargeData.Charges.Fixed == 2 && Item.bHasSupplementaryContent);
+	FDnd5eItemGroup Group;
+	TestTrue(TEXT("Group details receive their own supplement"), Catalog->TryGetGroup(Ids[3], Group) && Group.Details.bHasSupplementaryContent);
+	Query.DatasetNamespace = TEXT("guide-2024");
+	TestTrue(TEXT("Same name and publication in another namespace receive no supplement"),
+		Catalog->QueryRecordIds(Query, Ids, Diagnostics) && Ids.Num() == 1 && Catalog->TryGetItem(Ids[0], Item) && !Item.bHasSupplementaryContent);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemCatalogEnrichmentFailureTest, "Dnd5e.Items.CatalogBuilder.EnrichmentFailure", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemCatalogEnrichmentFailureTest::RunTest(const FString& Parameters)
+{
+	auto* Catalog = NewObject<UDnd5eItemCatalogObject>();
+	FDnd5eJsonItemCatalogBuildRequest Request;
+	Request.ItemDocuments.Add(CatalogBuildDocument(TEXT(R"({"item":[{"name":"Old","source":"SYN","rarity":"rare"}]})"), TEXT("old.json")));
+	if (!TestTrue(TEXT("Initial build succeeds"), UDnd5eJsonItemCatalogBuilder::BuildItemCatalog(Request, Catalog).Status ==
+		EDnd5eJsonReadStatus::Success)) { return false; }
+	Request.ItemDocuments.Reset();
+	Request.VariantSelections.Add({});
+	const auto BadSelection = UDnd5eJsonItemCatalogBuilder::BuildItemCatalog(Request, Catalog);
+	TestTrue(TEXT("Missing document indices fail with the selection index"),
+		BadSelection.Status == EDnd5eJsonReadStatus::Failure && BadSelection.RecordCount == 0 &&
+		BadSelection.Diagnostics.Num() == 1 && BadSelection.Diagnostics[0].Message.Contains(TEXT("selection 0")));
+	Request.VariantSelections.Reset();
+	const TCHAR* Supplement = TEXT(R"({"itemFluff":[{"name":"Old","source":"SYN","entries":["Lore."]}]})");
+	Request.SupplementDocuments = {CatalogBuildDocument(Supplement, TEXT("fluff.json")),
+		CatalogBuildDocument(Supplement, TEXT("duplicate.json"))};
+	const auto Duplicate = UDnd5eJsonItemCatalogBuilder::BuildItemCatalog(Request, Catalog);
+	TestTrue(TEXT("Cross-document duplicate reports the second source row"), Duplicate.Status == EDnd5eJsonReadStatus::Failure &&
+		Duplicate.RecordCount == 0 && Duplicate.Diagnostics.Num() == 1 &&
+		Duplicate.Diagnostics[0].RelativeFilePath == TEXT("duplicate.json") && Duplicate.Diagnostics[0].JsonPointer == TEXT("/itemFluff/0"));
+	FDnd5eItemCatalogQuery Query;
+	Query.NameContains = TEXT("Old");
+	TArray<FDnd5eRecordId> Ids;
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FDnd5eItem Item;
+	TestTrue(TEXT("Failures preserve the original item and its supplementary state"), Catalog->GetRecordCount() == 1 &&
+		Catalog->QueryRecordIds(Query, Ids, Diagnostics) && Ids.Num() == 1 &&
+		Catalog->TryGetItem(Ids[0], Item) && !Item.bHasSupplementaryContent);
+	return !HasAnyErrors();
+}
 #endif
