@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **823 cases**; the combined explicitly supplied-data run passes **850 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **826 cases**; the combined explicitly supplied-data run passes **854 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -256,3 +256,11 @@ The two new synthetic cases cover independent primary and alternative indexes, g
 The Development Editor build and all **850 combined cases** passed on 2026-11-10, including **823 standard cases** and 27 opt-in audits. The run reported zero failed, not-run, or warning cases. The local report is Saved/Automation/Dnd5eBaseItemReference/index.json.
 
 Three synthetic cases cover canonical normalization against base rows, explicit publication, malformed or self links, and reflected Blueprint lookup. The lookup tests cover unique, missing, cross-namespace and duplicate matches, default output on failure, and output value isolation. The existing item schema and copy/serialization tests cover the two reflected fields. The base-item link cases use synthetic documents.
+
+### Modifier-free ordinary-item copy assembly
+
+The Development Editor build and all **854 combined cases** passed on 2026-11-10, including **826 standard cases** and 28 opt-in audits. The report under Saved/Automation/Dnd5eItemCopyAssembly records zero failures, not-run cases or automation warnings.
+
+Three synthetic cases cover the preview and typed handoff, child-to-ancestor origins, whole-field overrides, null removal, explicit null retention, preserve rules, malformed or unsupported directives, missing or ambiguous targets, cycles and the 32-hop limit. The preview result's Blueprint access flags and callable node are also verified.
+
+Pass `-Dnd5eJsonItemCopyFile="<absolute-path-to-items.json>"` to enable the inspected-snapshot audit. It checks all 13 modifier-free copy chains among the snapshot's 67 declared copies. The opt-in test reads the supplied file locally and exercises raw assembly. The ordinary reader's typed handoff is covered by the synthetic case.

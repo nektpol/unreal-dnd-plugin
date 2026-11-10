@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. Copy and variant assembly and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for modifier-free ordinary-item copy chains. Copy modifiers, variant generation and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -8,6 +8,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 
 - [Fields](#fields)
 - [Base-item references](#base-item-references)
+- [Ordinary-item copy assembly](#ordinary-item-copy-assembly)
 - [Definition selection](#definition-selection)
 - [Rarity](#rarity)
 - [Content and presence](#content-and-presence)
@@ -113,7 +114,7 @@ Editor conditions enable active payloads without clearing inactive data or valid
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links are available for ordinary rows. Copy and variant assembly remain later stages. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links and modifier-free copy previews are available for ordinary rows. Copy modifiers and variant assembly remain later stages. Source data and generated variants remain externally supplied; none is bundled with this model.
 
 
 ## Supplied base-item JSON
@@ -151,3 +152,19 @@ Ordinary rows use the shared item identity, header, Content, price, weight and e
 Readable reqAttune and reqAttuneAlt accept Booleans and nonempty strings. True maps to Required and false to NotRequired. The exact string optional maps to Optional. Other nonempty strings become Required with converted inline conditions. Omission leaves the mode Unspecified. Alternate presence is tracked independently. The optional reqAttuneTags and reqAttuneAltTags fields populate the primary and alternative indexes independently. An alternative index sets alternative presence even when reqAttuneAlt is absent. Omission leaves index presence false. An empty array sets presence and is fully represented with zero groups.
 
 Each nonempty object in the array becomes a group. Supported members include class, race/species, background and skill selectors with optional explicit source, spellcasting and psionics Booleans, a positive integer Intelligence minimum, single G or E alignment, language proficiency, fey or humanoid creature type, and Small size. Unknown members and unsupported member values stay in the group's UnsupportedContent. Non-object and empty-object rows stay in the index's UnsupportedContent, as do malformed top-level index values. These fragments set completeness to false and emit located warnings. Converted index keys are consumed from the row's additional provenance metadata, since the typed index carries its own evidence.
+
+## Ordinary-item copy assembly
+
+Call `FDnd5eJsonItemCopyAssembler::AssembleAtIndex` or **Assemble Item Copy at Index** in Blueprint with the supplied document and the original zero-based index in its `item` array. A selected row needs an exact `_copy` declaration. Its target name and explicit source identify a unique ordinary row in the same document. The assembler follows the chain with a limit of 32 copy links. Missing, ambiguous or cyclic targets fail with a diagnostic at the source declaration. `_mod` and other unsupported copy instructions fail at the offending member. [Native API](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemCopyAssembler.h)
+
+Each hop overlays top-level fields on the assembled parent. A supplied value overrides the whole parent field, including false, zero and empty arrays. A child null removes the field when the parent has it. Null stays explicit when the parent omits that field. Protected publication, membership, presentation and item metadata such as page, SRD markers, fluff flags, tier and loot tables require a true field-specific or wildcard `_preserve` value to inherit. Protection applies at each hop. Child-authored protected values are retained.
+
+| Result field | C++ type and default | Meaning |
+| --- | --- | --- |
+| Status | `EDnd5eJsonReadStatus`, NotAttempted | Whether assembly succeeded |
+| AssembledJson | `FString`, empty | Preview document containing one ordinary item at index 0 |
+| SourceRowIndices | `TArray<int32>`, empty | Original indices from the selected child to the terminal ancestor |
+| FieldSourceRows | `TMap<FString, int32>`, empty | Surviving top-level field names and their original row indices |
+| Diagnostics | `TArray<FDnd5eDiagnostic>`, empty | Located assembly diagnostics |
+
+A successful preview retains the selected name and source and omits the applied copy declaration. Failure publishes diagnostics with empty JSON and origin collections. To convert the preview into an item, pass it to **Read Item at Index** at index 0 with a preview-specific relative file path. Typed provenance then describes the preview, and the origin collections identify rows in the original document.
