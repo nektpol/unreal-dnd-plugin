@@ -4,6 +4,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Readers/Items/Dnd5eJsonItemReader.h"
 #include "Readers/Items/Dnd5eJsonItemCopyAssembler.h"
+#include "Readers/Items/Dnd5eJsonItemVariantMatcher.h"
 #include "Dnd5eJsonItemLibrary.generated.h"
 
 UCLASS()
@@ -20,4 +21,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
 	static FDnd5eJsonItemCopyReadResult ReadItemCopyAtIndex(const FDnd5eJsonDocument& Document, int32 Index);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
+	static FDnd5eJsonItemVariantMatchResult MatchMagicItemVariantAtIndex(const FDnd5eJsonDocument& VariantDocument,
+		int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, EDnd5eJsonItemVariantEditionPolicy Policy);
 };
