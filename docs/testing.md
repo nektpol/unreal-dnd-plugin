@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **858 cases**; the combined explicitly supplied-data run passes **891 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **100 structs (87 Core, 13 JSON), 481 fields, 29 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **868 cases**; the combined explicitly supplied-data run passes **902 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **103 structs (90 Core, 13 JSON), 498 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -342,3 +342,9 @@ Two synthetic tests cover copy chains, child overrides, explicit clears, inherit
 The Development Editor build and all **891 combined cases** passed on 2026-11-11, including **858 standard cases** and 33 opt-in audits. The report under Saved/Automation/Dnd5eItemChargesVerified records zero failures, not-run cases or automation warnings.
 
 The model suite freezes the charge structs, fields and enum values. Two synthetic tests verify fixed and dice values, numeric text, zero, explicit null, omission, retained metadata and the ordinary, base, copied, group and generated item read paths. The opt-in audit uses the supplied items and magic variants arguments and projects authored fields into minimal base-item records. The shared reader converts all 326 charge counts, 325 triggers and 293 recharge amounts, including five dice capacities and 252 dice recharge amounts.
+
+### Item bonuses and attached spells
+
+The Development Editor build and all **902 combined cases** passed on 2026-11-11, including **868 standard cases** and 34 opt-in audits. The report under Saved/Automation/Dnd5eItemMagic records zero failures, not-run cases or automation warnings.
+
+The model suite verifies the three item magic structs and two enums. Two synthetic tests cover signed bonus literals, all observed usage modes, numeric bucket ordering, zero cost, source omission, cast-level suffixes, null and empty declarations, whole-field fallback, and the ordinary, copied, group and generated paths. The opt-in audit uses the supplied items and magic variants arguments. The shared typed reader converts all 519 authored bonuses and 462 spell declarations with 1,196 references, including 18 with cast levels.

@@ -122,6 +122,27 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("RechargeTrigger"), TEXT("EDnd5eItemRechargeTrigger"), TEXT("EDnd5eItemRechargeTrigger::Unspecified") },
 			{ TEXT("RechargeAmount"), TEXT("FDnd5eItemChargeAmount"), TEXT("") },
 		} },
+		{ TEXT("FDnd5eItemBonus"), &FDnd5eItemBonus::StaticStruct, {
+			{ TEXT("Kind"), TEXT("EDnd5eItemBonusKind"), TEXT("EDnd5eItemBonusKind::Unspecified") },
+			{ TEXT("Amount"), TEXT("int32"), TEXT("0") },
+			{ TEXT("SourceLiteral"), TEXT("FString"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItemAttachedSpell"), &FDnd5eItemAttachedSpell::StaticStruct, {
+			{ TEXT("Selector"), TEXT("FDnd5eRecordSelector"), TEXT("") },
+			{ TEXT("bHasTargetId"), TEXT("bool"), TEXT("false") },
+			{ TEXT("TargetId"), TEXT("FDnd5eRecordId"), TEXT("") },
+			{ TEXT("SourceUid"), TEXT("FString"), TEXT("") },
+			{ TEXT("Use"), TEXT("EDnd5eItemSpellUse"), TEXT("EDnd5eItemSpellUse::Unspecified") },
+			{ TEXT("bHasCount"), TEXT("bool"), TEXT("false") },
+			{ TEXT("Count"), TEXT("int32"), TEXT("0") },
+			{ TEXT("bEach"), TEXT("bool"), TEXT("false") },
+			{ TEXT("CastLevel"), TEXT("int32"), TEXT("-1") },
+		} },
+		{ TEXT("FDnd5eItemAttachedSpellData"), &FDnd5eItemAttachedSpellData::StaticStruct, {
+			{ TEXT("Presence"), TEXT("EDnd5eValuePresence"), TEXT("EDnd5eValuePresence::Unspecified") },
+			{ TEXT("Ability"), TEXT("FGameplayTag"), TEXT("") },
+			{ TEXT("Spells"), TEXT("TArray<FDnd5eItemAttachedSpell>"), TEXT("") },
+		} },
 		{ TEXT("FDnd5eItem"), &FDnd5eItem::StaticStruct, {
 			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
 			{ TEXT("bHasBaseItemId"), TEXT("bool"), TEXT("false") },
@@ -148,6 +169,8 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("ArmorData"), TEXT("FDnd5eItemArmorData"), TEXT("") },
 			{ TEXT("Masteries"), TEXT("TArray<FDnd5eItemMasteryReference>"), TEXT("") },
 			{ TEXT("ChargeData"), TEXT("FDnd5eItemChargeData"), TEXT("") },
+			{ TEXT("Bonuses"), TEXT("TArray<FDnd5eItemBonus>"), TEXT("") },
+			{ TEXT("AttachedSpells"), TEXT("FDnd5eItemAttachedSpellData"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eClassFeatureSelector"), &FDnd5eClassFeatureSelector::StaticStruct, {
 			{ TEXT("ClassName"), TEXT("FString"), TEXT(""), false },

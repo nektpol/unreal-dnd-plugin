@@ -94,6 +94,8 @@ namespace
 			{ TEXT("EDnd5eValuePresence"), &StaticEnum<EDnd5eValuePresence>, { TEXT("Unspecified"), TEXT("ExplicitNull"), TEXT("Present") } },
 			{ TEXT("EDnd5eItemChargeAmountKind"), &StaticEnum<EDnd5eItemChargeAmountKind>, { TEXT("Unspecified"), TEXT("ExplicitNull"), TEXT("Fixed"), TEXT("Dice") } },
 			{ TEXT("EDnd5eItemRechargeTrigger"), &StaticEnum<EDnd5eItemRechargeTrigger>, { TEXT("Unspecified"), TEXT("Dawn"), TEXT("Dusk"), TEXT("Midnight"), TEXT("ShortRest"), TEXT("LongRest"), TEXT("Decade"), TEXT("Special") } },
+			{ TEXT("EDnd5eItemBonusKind"), &StaticEnum<EDnd5eItemBonusKind>, { TEXT("Unspecified"), TEXT("ArmorClass"), TEXT("WeaponAttackAndDamage"), TEXT("WeaponAttack"), TEXT("WeaponDamage"), TEXT("SpellAttack"), TEXT("SpellDamage"), TEXT("SpellSaveDc"), TEXT("SavingThrow"), TEXT("ConcentrationSavingThrow"), TEXT("AbilityCheck"), TEXT("ProficiencyBonus") } },
+			{ TEXT("EDnd5eItemSpellUse"), &StaticEnum<EDnd5eItemSpellUse>, { TEXT("Unspecified"), TEXT("AtWill"), TEXT("Ritual"), TEXT("Other"), TEXT("Charges"), TEXT("Daily"), TEXT("Rest"), TEXT("Limited") } },
 			{ TEXT("EDnd5eAttunementMode"), &StaticEnum<EDnd5eAttunementMode>, { TEXT("Unspecified"), TEXT("NotRequired"), TEXT("Required"), TEXT("Optional") } },
 			{ TEXT("EDnd5eSourceInclusion"), &StaticEnum<EDnd5eSourceInclusion>, { TEXT("Unspecified"), TEXT("Excluded"), TEXT("Included"), TEXT("IncludedWithAlternateName") } },
 			{ TEXT("EDnd5eDataAvailability"), &StaticEnum<EDnd5eDataAvailability>, { TEXT("Unknown"), TEXT("Absent"), TEXT("Present") } },

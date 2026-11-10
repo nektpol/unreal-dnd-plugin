@@ -4,6 +4,7 @@
 #include "Readers/Dnd5eJsonReaderInternal.h"
 #include "Items/Dnd5eItemIdentity.h"
 #include "Readers/Items/Dnd5eJsonItemChargeReader.h"
+#include "Readers/Items/Dnd5eJsonItemMagicReader.h"
 #include "Dnd5eTags.h"
 
 namespace
@@ -815,6 +816,7 @@ namespace
         bool bRetainRawPrice = false;
 		TSet<FString> ConsumedFields;
 		ReadItemChargeFields(Object, Item.ChargeData, ConsumedFields);
+		ReadItemMagicFields(Object, State.Context.DatasetNamespace, Item, ConsumedFields);
 		return (bBaseItem || ReadBaseItemLink(Object, Pointer, Item, ConsumedFields, State)) &&
 			ReadBaseItemSelectors(Object, Pointer, Item, bRetainRawProperty, bBaseItem, State) &&
 			ReadBaseItemValues(Object, Pointer, Item, bRetainRawRarity, bRetainRawPrice, State) &&

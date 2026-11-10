@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry references can expand into typed Content with caller-supplied templates and arguments. Supplementary item text and images are available through an explicit join. Charges and recharge declarations are available on typed items. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry references can expand into typed Content with caller-supplied templates and arguments. Supplementary item text and images are available through an explicit join. Charges and recharge declarations are available on typed items. Typed items also carry bonuses and attached spell declarations. The item catalog is the next stage. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -12,6 +12,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 - [Reusable item entry templates](#reusable-item-entry-templates)
 - [Supplementary item content](#supplementary-item-content)
 - [Charges and recharge](#charges-and-recharge)
+- [Bonuses and attached spells](#bonuses-and-attached-spells)
 - [Ordinary-item copy assembly](#ordinary-item-copy-assembly)
   - [Typed copy reading](#typed-copy-reading)
 - [Magic variant matching](#magic-variant-matching)
@@ -56,6 +57,8 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 | ArmorData | `FDnd5eItemArmorData`, default | Active when its flag is true |
 | Masteries | `TArray<FDnd5eItemMasteryReference>`, empty | Ordered named mastery references with independent notes |
 | ChargeData | `FDnd5eItemChargeData`, all declarations unspecified | Capacity, recharge trigger, and recharge amount |
+| Bonuses | `TArray<FDnd5eItemBonus>`, empty | Independent signed bonuses and their authored literals |
+| AttachedSpells | `FDnd5eItemAttachedSpellData`, unspecified | Spell selectors, optional casting ability, and usage declarations |
 
 Default construction supplies no Category::Item or canonical key. Authors/adapters provide identity deliberately. Empty Properties means no normalized properties have been represented; this declaration does not define whether a missing raw template field inherits or an explicit empty array clears earlier properties. The future assembly stage must retain source presence/override evidence.
 
@@ -190,6 +193,12 @@ Call **Try Apply Item Supplement** with an item and one supplementary row. The j
 `FDnd5eItem::ChargeData` stores three independent declarations. `Charges` and `RechargeAmount` accept a nonnegative integer or an authored dice expression. Fixed numbers and numeric strings retain their source literal. Dice markup supplies the expression and retains the original token. Zero, explicit null and omission remain distinct.
 
 `RechargePresence` records whether the trigger was supplied. `RechargeTrigger` maps the supported source codes for dawn, dusk, midnight, short rest, long rest, a decade, and special recharge. The item description carries the source wording for special conditions. A missing recharge amount stays unspecified. Unrecognized field values are retained in provenance metadata with a located warning. [Charge data types](../Source/Dnd5e/Public/Items/Dnd5eItemChargeData.h)
+
+## Bonuses and attached spells
+
+`FDnd5eItem::Bonuses` contains the supported signed integer declarations with their source literals. The combined weapon attack-and-damage bonus remains separate from the individual weapon attack and damage bonuses. Armor Class, spell attack, spell damage, spell save DC, saving throws, concentration saves, ability checks and proficiency each have their own bonus kind.
+
+`FDnd5eItem::AttachedSpells` accepts a legacy UID array or an object with at-will, ritual, other, charge, daily, rest and limited usage fields. Each spell retains its source UID and selector. Counted buckets retain explicit zero and the each-spell flag. A `#level` suffix supplies the cast level independently of spell identity. Explicit publications produce an ID with the authored spelling. The selector remains available for case-insensitive catalog matching. An omitted publication remains unspecified. An unsupported spell declaration is retained as a whole in provenance metadata with a located warning. [Item magic data types](../Source/Dnd5e/Public/Items/Dnd5eItemMagicData.h)
 
 ## Ordinary-item copy assembly
 
