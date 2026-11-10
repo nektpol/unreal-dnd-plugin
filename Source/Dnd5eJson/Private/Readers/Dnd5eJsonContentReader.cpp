@@ -248,6 +248,28 @@ namespace Dnd5eJsonReader
 		return true;
 	}
 
+	bool ReadSupplementaryImages(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		TArray<FDnd5eContentBlock>& OutImages, FReadState& State)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Images = nullptr;
+		if (!RequireArray(Value, Pointer, Images, State)) { return false; }
+		TArray<FDnd5eContentBlock> Candidate;
+		Candidate.Reserve(Images->Num());
+		for (int32 Index = 0; Index < Images->Num(); ++Index)
+		{
+			FDnd5eContentBlock Image;
+			const FString ImagePointer = AppendPointer(Pointer, FString::FromInt(Index));
+			if (!ReadContent((*Images)[Index], ImagePointer, Image, State)) { return false; }
+			if (Image.Kind != Dnd5e::Content::Block::Image && Image.Kind != Dnd5e::Content::Block::Unsupported)
+			{
+				return Fail(State, Codes::InvalidFieldValue, ImagePointer, TEXT("Supplement images need image or preserved unsupported payloads."));
+			}
+			Candidate.Add(MoveTemp(Image));
+		}
+		OutImages = MoveTemp(Candidate);
+		return true;
+	}
+
 	bool ReadInlineField(const FJsonObject& Object, const TCHAR* Key, const FString& Pointer, TArray<FDnd5eInlineContent>& OutInlines, FReadState& State, int32 Depth)
 	{
 		if (!FindExactField(Object, Key).IsValid()) { return true; }

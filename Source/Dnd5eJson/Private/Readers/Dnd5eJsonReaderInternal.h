@@ -107,4 +107,5 @@ namespace Dnd5eJsonReader
 	bool ApplyEditionAssignment(const TArray<FDnd5eSourceEditionAssignment>& Assignments, const FString& PolicyId, FDnd5eSpell& Spell, FReadState& State);
 	bool SerializeValue(const TSharedPtr<FJsonValue>& Value, FString& OutJson, const FString& Pointer, FReadState& State);
 	bool ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, FReadState& State, const FDnd5eRecordId* RecordIdOverride = nullptr);
+	bool ReadSupplementaryImages(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, TArray<FDnd5eContentBlock>& OutImages, FReadState& State);
 }

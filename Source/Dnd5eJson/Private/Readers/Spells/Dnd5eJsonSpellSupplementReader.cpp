@@ -2,7 +2,6 @@
 
 #include "Readers/Spells/Dnd5eJsonSpellSupplementReader.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
-#include "Dnd5eTags.h"
 
 bool FDnd5eJsonSpellSupplementReader::ReadDocument(const FDnd5eJsonDocument& Document,
 	TArray<FDnd5eJsonSpellSupplement>& Rows, int32& ConvertedValues, TArray<FDnd5eDiagnostic>& Diagnostics)
@@ -32,19 +31,7 @@ bool FDnd5eJsonSpellSupplementReader::ReadDocument(const FDnd5eJsonDocument& Doc
 		}
 		if (const auto Images = FindExactField(*Object, TEXT("images")))
 		{
-			const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
-			if (!RequireArray(Images, AppendPointer(Pointer, TEXT("images")), Array, Child)) { return false; }
-			for (int32 ImageIndex = 0; ImageIndex < Array->Num(); ++ImageIndex)
-			{
-				FDnd5eContentBlock Image;
-				const FString ImagePointer = AppendPointer(AppendPointer(Pointer, TEXT("images")), FString::FromInt(ImageIndex));
-				if (!ReadContent((*Array)[ImageIndex], ImagePointer, Image, Child)) { return false; }
-				if (Image.Kind != Dnd5e::Content::Block::Image && Image.Kind != Dnd5e::Content::Block::Unsupported)
-				{
-					return Fail(Child, Codes::InvalidFieldValue, ImagePointer, TEXT("Supplement images need image or preserved unsupported payloads."));
-				}
-				Row.Content.Images.Add(MoveTemp(Image));
-			}
+			if (!ReadSupplementaryImages(Images, AppendPointer(Pointer, TEXT("images")), Row.Content.Images, Child)) { return false; }
 		}
 		if (Child.Budget->ContentValues > 1000000 - Total) { return Fail(Child, Codes::ResourceLimitExceeded, Pointer, TEXT("Supplement conversion budget exceeded.")); }
 		Total += Child.Budget->ContentValues; Candidate.Add(MoveTemp(Row));

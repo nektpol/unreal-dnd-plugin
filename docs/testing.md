@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **848 cases**; the combined explicitly supplied-data run passes **879 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **850 cases**; the combined explicitly supplied-data run passes **882 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -330,3 +330,9 @@ Two synthetic tests check recipe identity, nested JSON and placeholder preservat
 The Development Editor build and all **879 combined cases** passed on 2026-11-11, including **848 standard cases** and 31 opt-in audits. The report under Saved/Automation/Dnd5eItemEntryExpansionVerified records zero failures, not-run cases or automation warnings.
 
 Two synthetic tests verify all four substitutions, formatted damage names, explicitly empty arguments, nested Content and unchanged numeric literals. Lookup, ambiguity, missing arguments, malformed JSON, unsupported placeholders and output limits return located diagnostics. The existing opt-in recipe audit expands all 122 authored references with arguments from the original item or variant row. The audit supplies DMG for the 30 selectors with omitted publications.
+
+### Supplementary item content
+
+The Development Editor build and all **882 combined cases** passed on 2026-11-11, including **850 standard cases** and 32 opt-in audits. The report under Saved/Automation/Dnd5eItemSupplements records zero failures, not-run cases or automation warnings.
+
+Two synthetic tests cover copy chains, child overrides, explicit clears, inherited image locations, exact attachment, and failure for duplicate identities, missing targets, cycles and invalid field shapes. The opt-in case takes `-Dnd5eJsonItemSupplementFile="<absolute-path-to-fluff-items.json>"`. It verifies 980 supplementary rows, 149 copy declarations, 26 resolved text blocks and 984 resolved typed image blocks. The existing spell supplement tests exercise the shared image converter.

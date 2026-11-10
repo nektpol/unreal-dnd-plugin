@@ -49,3 +49,13 @@ FDnd5eJsonItemEntryExpansionResult UDnd5eJsonItemLibrary::ExpandItemEntryReferen
 {
 	return FDnd5eJsonItemEntryExpander::Expand(Request);
 }
+
+FDnd5eJsonItemSupplementReadResult UDnd5eJsonItemLibrary::ReadItemSupplements(const FDnd5eJsonDocument& Document)
+{
+	return FDnd5eJsonItemSupplementReader::ReadDocument(Document);
+}
+
+bool UDnd5eJsonItemLibrary::TryApplyItemSupplement(const FDnd5eItem& Item, const FDnd5eJsonItemSupplement& Supplement, FDnd5eItem& OutItem)
+{
+	return FDnd5eJsonItemSupplementReader::TryApply(Item, Supplement, OutItem);
+}

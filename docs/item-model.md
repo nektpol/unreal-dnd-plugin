@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry references can expand into typed Content with caller-supplied templates and arguments. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry references can expand into typed Content with caller-supplied templates and arguments. Supplementary item text and images are available through an explicit join. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -10,6 +10,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 - [Base-item references](#base-item-references)
 - [Item groups](#item-groups)
 - [Reusable item entry templates](#reusable-item-entry-templates)
+- [Supplementary item content](#supplementary-item-content)
 - [Ordinary-item copy assembly](#ordinary-item-copy-assembly)
   - [Typed copy reading](#typed-copy-reading)
 - [Magic variant matching](#magic-variant-matching)
@@ -175,6 +176,12 @@ Content recognizes whole-entry `{#itemEntry Name|Source}` strings and exact `ref
 Call **Expand Item Entry Reference** or `FDnd5eJsonItemEntryExpander::Expand` with a typed reference inline, a dataset namespace, a supplied template array and the item's arguments. Exact name and publication select the template. A selector without a publication uses the request's explicit `OmittedSourceId`. The four supported substitutions are `item.detail1`, `item.detail2`, `item.resist`, and `getFullImmRes item.resist`. Presence flags distinguish missing arguments from supplied empty values. The formatted resistance helper supports the source's flat canonical damage names, optional title case, and the full ordered damage list.
 
 Expansion returns typed replacement blocks, the chosen template ID and its provenance. The caller inserts those blocks into the description. Lookup diagnostics point to the reference. Parse, substitution and Content diagnostics point to the template. Failure leaves the result blocks and template identity at their defaults. [Native expander](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemEntryExpander.h)
+
+## Supplementary item content
+
+Call **Read Item Supplements** or `FDnd5eJsonItemSupplementReader::ReadDocument` with a supplied `itemFluff` document. It returns supplementary rows in source order. Each row has a canonical item lookup ID, typed text and image blocks, and original provenance. Explicit source-qualified copies resolve within the same document. Each field uses the closest declaration in the chain. Empty arrays and null clear the field. Inherited blocks carry the source and pointer of the ancestor that supplied them. Duplicate identities, missing targets and copy cycles fail the whole read.
+
+Call **Try Apply Item Supplement** with an item and one supplementary row. The join compares dataset namespace, display name and the primary publication. Ordinary items, item groups and generated variants can use the same join while preserving their own record IDs. A match returns an item with supplementary content attached. The original supplementary row retains its full source chain, and each attached block retains its field provenance. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemSupplementReader.h)
 
 ## Ordinary-item copy assembly
 

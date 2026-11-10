@@ -9,6 +9,7 @@
 #include "Readers/Items/Dnd5eJsonItemGroupReader.h"
 #include "Readers/Items/Dnd5eJsonItemEntryTemplateReader.h"
 #include "Readers/Items/Dnd5eJsonItemEntryExpander.h"
+#include "Readers/Items/Dnd5eJsonItemSupplementReader.h"
 #include "Dnd5eJsonItemLibrary.generated.h"
 
 UCLASS()
@@ -48,4 +49,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
 	static FDnd5eJsonItemEntryExpansionResult ExpandItemEntryReference(const FDnd5eJsonItemEntryExpansionRequest& Request);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
+	static FDnd5eJsonItemSupplementReadResult ReadItemSupplements(const FDnd5eJsonDocument& Document);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
+	static bool TryApplyItemSupplement(const FDnd5eItem& Item, const FDnd5eJsonItemSupplement& Supplement, FDnd5eItem& OutItem);
 };
