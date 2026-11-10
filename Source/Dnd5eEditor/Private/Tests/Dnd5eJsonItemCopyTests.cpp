@@ -87,7 +87,7 @@ bool FDnd5eItemCopyFailureTest::RunTest(const FString& Parameters)
 		{"name":"Cycle A","source":"SYN","_copy":{"name":"Cycle B","source":"SYN"}},
 		{"name":"Cycle B","source":"SYN","_copy":{"name":"Cycle A","source":"SYN"}},
 		{"name":"Bad Preserve","source":"SYN","_copy":{"name":"Base","source":"SYN","_preserve":{"x/y~z":1}}},
-		{"name":"Modified","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{}}},
+		{"name":"Modified","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{"entries":{"mode":"prependArr","items":"Unsupported"}}}},
 		{"name":"Needs Modified","source":"SYN","_copy":{"name":"Modified","source":"SYN"}},
 		{"name":"Case Collision","source":"SYN","Entries":[],"_copy":{"name":"Base","source":"SYN"}},
 		{"name":"Missing Source","source":"SYN","_copy":{"name":"Base"}}
@@ -95,7 +95,7 @@ bool FDnd5eItemCopyFailureTest::RunTest(const FString& Parameters)
 	struct FCase { int32 Index; const TCHAR* Pointer; };
 	for (const FCase& Case : {FCase{-1, TEXT("/item")}, {0, TEXT("/item/0/_copy")}, {1, TEXT("/item/1/_copy")},
 		{2, TEXT("/item/2/_copy")}, {5, TEXT("/item/6/_copy")}, {7, TEXT("/item/7/_copy/_preserve/x~1y~0z")},
-		{9, TEXT("/item/8/_copy/_mod")}, {10, TEXT("/item/10")}, {11, TEXT("/item/11/_copy")}})
+		{9, TEXT("/item/8/_copy/_mod/entries/mode")}, {10, TEXT("/item/10")}, {11, TEXT("/item/11/_copy")}})
 	{
 		const auto Result = FDnd5eJsonItemCopyAssembler::AssembleAtIndex(Document, Case.Index);
 		TestTrue(FString::Printf(TEXT("Failure at %s leaves no staged output"), Case.Pointer),
@@ -121,6 +121,105 @@ bool FDnd5eItemCopyDepthTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("A deeper chain fails before returning any preview"), Rejected.Status == EDnd5eJsonReadStatus::Failure &&
 		Rejected.AssembledJson.IsEmpty() && Rejected.SourceRowIndices.IsEmpty() && Rejected.FieldSourceRows.IsEmpty() &&
 		Rejected.Diagnostics.Num() == 1 && Rejected.Diagnostics[0].JsonPointer == TEXT("/item/1/_copy"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemCopyModifierOrderTest, "Dnd5e.Items.CopyAssembly.ModifierOrder", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemCopyModifierOrderTest::RunTest(const FString& Parameters)
+{
+	const auto Document = CopyDocument(TEXT(R"json({"item":[
+		{"name":"Base","source":"BAS","type":"M","rarity":"none","entries":["A","B"],"property":["P"]},
+		{"name":"Middle","source":"MID","_copy":{"name":"Base","source":"BAS","_mod":{
+			"entries":[{"mode":"insertArr","index":0,"items":"Start"},
+				{"mode":"appendArr","items":[{"type":"entries","entries":["Middle note"]}]},
+				{"mode":"replaceArr","replace":{"index":2},"items":["Replacement","After"]}],
+			"property":{"mode":"appendIfNotExistsArr","items":["P","Q","p","Q"]}}}},
+		{"name":"Final","source":"SYN","_copy":{"name":"Middle","source":"MID","_mod":{
+			"entries":[{"mode":"insertArr","index":-1,"items":"Tail"},{"mode":"replaceArr","replace":{"index":1},"items":[]}],
+			"property":{"mode":"appendIfNotExistsArr","items":"Q"}}}},
+		{"name":"Blank","source":"BAS","entries":null},
+		{"name":"New arrays","source":"SYN","_copy":{"name":"Blank","source":"BAS","_mod":{
+			"entries":[{"mode":"appendArr","items":"Created"},{"mode":"insertArr","index":99,"items":"Clamped"}],
+			"property":{"mode":"appendIfNotExistsArr","items":"P"}}}}
+	]})json"));
+	const auto ReadPreview = [&](int32 Index, TSharedPtr<FJsonObject>& Out, FDnd5eJsonItemCopyAssemblyResult& Result)
+	{
+		Result = FDnd5eJsonItemCopyAssembler::AssembleAtIndex(Document, Index);
+		TSharedPtr<FJsonObject> Root;
+		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+		if (!TestTrue(TEXT("Copy assembles a single preview row"), Result.Status == EDnd5eJsonReadStatus::Success &&
+			Result.Diagnostics.IsEmpty() && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Result.AssembledJson), Root) &&
+			Root.IsValid() && Root->TryGetArrayField(TEXT("item"), Rows) && Rows && Rows->Num() == 1)) { return false; }
+		Out = (*Rows)[0]->AsObject();
+		return TestTrue(TEXT("Preview row is an object"), Out.IsValid());
+	};
+	FDnd5eJsonItemCopyAssemblyResult Result;
+	TSharedPtr<FJsonObject> Row;
+	if (!ReadPreview(2, Row, Result)) { return false; }
+	const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Properties = nullptr;
+	if (!TestTrue(TEXT("Modified arrays are present"), Row->TryGetArrayField(TEXT("entries"), Entries) && Entries && Entries->Num() == 5 &&
+		Row->TryGetArrayField(TEXT("property"), Properties) && Properties && Properties->Num() == 4)) { return false; }
+	const TArray<TSharedPtr<FJsonValue>>* Nested = nullptr;
+	TestTrue(TEXT("Directives run in order and preserve structured insertion"), (*Entries)[0]->AsString() == TEXT("Start") &&
+		(*Entries)[1]->AsString() == TEXT("Replacement") && (*Entries)[2]->AsString() == TEXT("After") &&
+		(*Entries)[3]->Type == EJson::Object && (*Entries)[3]->AsObject()->TryGetArrayField(TEXT("entries"), Nested) &&
+		Nested && Nested->Num() == 1 && (*Nested)[0]->AsString() == TEXT("Middle note") && (*Entries)[4]->AsString() == TEXT("Tail"));
+	TestTrue(TEXT("Conditional append is exact and compares against the pre-operation array"),
+		(*Properties)[0]->AsString().Equals(TEXT("P"), ESearchCase::CaseSensitive) &&
+		(*Properties)[1]->AsString().Equals(TEXT("Q"), ESearchCase::CaseSensitive) &&
+		(*Properties)[2]->AsString().Equals(TEXT("p"), ESearchCase::CaseSensitive) &&
+		(*Properties)[3]->AsString().Equals(TEXT("Q"), ESearchCase::CaseSensitive));
+	const TArray<int32> ExpectedChain{2, 1, 0};
+	TestTrue(TEXT("Modified origins follow the last effective operation, not a no-op"),
+		Result.SourceRowIndices == ExpectedChain && Result.FieldSourceRows.FindRef(TEXT("entries"), INDEX_NONE) == 2 &&
+		Result.FieldSourceRows.FindRef(TEXT("property"), INDEX_NONE) == 1);
+	const auto Typed = FDnd5eJsonItemReader::ReadAtIndex(CopyDocument(Result.AssembledJson), 0);
+	TestTrue(TEXT("The modified preview converts to an ordinary item"),
+		Typed.Status == EDnd5eJsonReadStatus::Success && Typed.Item.Description.Num() == 5 && Typed.Item.Properties.Num() == 4);
+
+	if (!ReadPreview(4, Row, Result)) { return false; }
+	if (!TestTrue(TEXT("Append creates arrays from null and absence"),
+		Row->TryGetArrayField(TEXT("entries"), Entries) && Entries && Entries->Num() == 2 &&
+		Row->TryGetArrayField(TEXT("property"), Properties) && Properties && Properties->Num() == 1)) { return false; }
+	TestTrue(TEXT("Out-of-range insertion clamps to end"), (*Entries)[0]->AsString() == TEXT("Created") &&
+		(*Entries)[1]->AsString() == TEXT("Clamped") && (*Properties)[0]->AsString() == TEXT("P"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemCopyModifierFailureTest, "Dnd5e.Items.CopyAssembly.ModifierFailures", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemCopyModifierFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Document = CopyDocument(TEXT(R"json({"item":[
+		{"name":"Base","source":"SYN","entries":["A"],"property":["P"]},
+		{"name":"Late failure","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{"entries":[
+			{"mode":"appendArr","items":"Staged"},{"mode":"replaceArr","replace":{"index":9},"items":"Bad"}]}}},
+		{"name":"Nested target","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{"entries/0~bad":{}}}},
+		{"name":"Variable","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{
+			"entries":{"mode":"appendArr","items":{"entries":["<$unknown$>"]}}}}},
+		{"name":"Wrong property","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{
+			"property":{"mode":"appendIfNotExistsArr","items":5}}}},
+		{"name":"Regex selector","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{
+			"entries":{"mode":"replaceArr","replace":{"regex":"A"},"items":"B"}}}},
+		{"name":"Nonarray target","source":"SYN","entries":"Not an array","_copy":{"name":"Base","source":"SYN","_mod":{
+			"entries":{"mode":"insertArr","index":-1,"items":"B"}}}},
+		{"name":"Invalid modifiers","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":null}},
+		{"name":"Invalid insert index","source":"SYN","_copy":{"name":"Base","source":"SYN","_mod":{
+			"entries":{"mode":"insertArr","index":-2,"items":"B"}}}}
+	]})json"));
+	const TCHAR* Pointers[] = {
+		TEXT("/item/1/_copy/_mod/entries/1/replace/index"), TEXT("/item/2/_copy/_mod/entries~10~0bad"),
+		TEXT("/item/3/_copy/_mod/entries/items"), TEXT("/item/4/_copy/_mod/property/items"),
+		TEXT("/item/5/_copy/_mod/entries/replace/regex"), TEXT("/item/6/_copy/_mod/entries"), TEXT("/item/7/_copy/_mod"), TEXT("/item/8/_copy/_mod/entries/index")
+	};
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(Pointers); ++Index)
+	{
+		const auto Result = FDnd5eJsonItemCopyAssembler::AssembleAtIndex(Document, Index + 1);
+		TestTrue(FString::Printf(TEXT("Modifier failure at %s is atomic"), Pointers[Index]),
+			Result.Status == EDnd5eJsonReadStatus::Failure && Result.AssembledJson.IsEmpty() &&
+			Result.SourceRowIndices.IsEmpty() && Result.FieldSourceRows.IsEmpty() &&
+			Result.Diagnostics.Num() == 1 && Result.Diagnostics[0].JsonPointer == Pointers[Index]);
+	}
 	return !HasAnyErrors();
 }
 
@@ -152,7 +251,6 @@ bool FDnd5eItemCopySnapshotTest::RunTest(const FString& Parameters)
 		const TSharedPtr<FJsonObject>* Copy = nullptr;
 		if (!Row.IsValid() || !Row->TryGetObjectField(TEXT("_copy"), Copy) || !Copy || !Copy->IsValid()) { continue; }
 		++Copies;
-		if ((*Copy)->HasField(TEXT("_mod"))) { continue; }
 		const auto Result = FDnd5eJsonItemCopyAssembler::AssembleAtIndex(Document, Index);
 		if (Result.Status != EDnd5eJsonReadStatus::Success)
 		{
@@ -167,7 +265,7 @@ bool FDnd5eItemCopySnapshotTest::RunTest(const FString& Parameters)
 			Result.FieldSourceRows.FindRef(TEXT("source"), INDEX_NONE) == Index);
 		++Assembled;
 	}
-	TestTrue(TEXT("All 13 modifier-free chains assemble in the inspected snapshot"), Copies == 67 && Assembled == 13);
+	TestTrue(TEXT("All 67 copy chains assemble in the inspected snapshot"), Copies == 67 && Assembled == 67);
 	return !HasAnyErrors();
 }
 #endif

@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for modifier-free ordinary-item copy chains. Copy modifiers, variant generation and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. Direct typed copy import, variant generation and an item catalog are later stages. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system, generated identity, or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -114,7 +114,7 @@ Editor conditions enable active payloads without clearing inactive data or valid
 
 ## Remaining work
 
-The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links and modifier-free copy previews are available for ordinary rows. Copy modifiers and variant assembly remain later stages. Source data and generated variants remain externally supplied; none is bundled with this model.
+The inspected source separates base items, named items, type/property/mastery definitions, groups, entry templates, copy dependencies, variant inheritance and supplementary rows. The base-item reader consumes the baseitem array and the definition reader consumes the three definition arrays. Type/property/mastery records now exist, while their canonical IDs, lookup and supplied JSON reader are implemented. The readers map price and mass, and the ordinary-item reader maps readable attunement and the supported structured index fields. Additional source mappings, richer alignment expressions, validation and remaining item facts are separate stages. Base-item weapon and armor data is converted for the inspected field shapes. Direct base-item links and copy previews with array modifiers are available for ordinary rows. Direct typed copy import and variant assembly remain later stages. Source data and generated variants remain externally supplied; none is bundled with this model.
 
 
 ## Supplied base-item JSON
@@ -155,9 +155,22 @@ Each nonempty object in the array becomes a group. Supported members include cla
 
 ## Ordinary-item copy assembly
 
-Call `FDnd5eJsonItemCopyAssembler::AssembleAtIndex` or **Assemble Item Copy at Index** in Blueprint with the supplied document and the original zero-based index in its `item` array. A selected row needs an exact `_copy` declaration. Its target name and explicit source identify a unique ordinary row in the same document. The assembler follows the chain with a limit of 32 copy links. Missing, ambiguous or cyclic targets fail with a diagnostic at the source declaration. `_mod` and other unsupported copy instructions fail at the offending member. [Native API](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemCopyAssembler.h)
+Call `FDnd5eJsonItemCopyAssembler::AssembleAtIndex` or **Assemble Item Copy at Index** in Blueprint with the supplied document and the original zero-based index in its `item` array. A selected row needs an exact `_copy` declaration. Its target name and explicit source identify a unique ordinary row in the same document. The assembler follows the chain with a limit of 32 copy links. Missing, ambiguous or cyclic targets fail with a diagnostic at the source declaration. Unsupported copy instructions fail at the offending member. [Native API](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemCopyAssembler.h)
 
 Each hop overlays top-level fields on the assembled parent. A supplied value overrides the whole parent field, including false, zero and empty arrays. A child null removes the field when the parent has it. Null stays explicit when the parent omits that field. Protected publication, membership, presentation and item metadata such as page, SRD markers, fluff flags, tier and loot tables require a true field-specific or wildcard `_preserve` value to inherit. Protection applies at each hop. Child-authored protected values are retained.
+
+### Array modifiers
+
+Each row applies its `_mod` after inheriting and overlaying fields, before the next row in the chain. The supported targets are the exact top-level `entries` and `property` keys. Each target accepts a single operation object or an ordered array of objects.
+
+| Target | Mode | Supported behavior |
+| --- | --- | --- |
+| entries | `appendArr` | Append one JSON value or the elements of an array. Create the target array when absent or null. |
+| entries | `insertArr` | Insert into an existing array. Index -1 appends. A nonnegative index past the end clamps to the end. |
+| entries | `replaceArr` | Replace one existing element selected by a zero-based `replace.index`. An empty items array removes that element. |
+| property | `appendIfNotExistsArr` | Append strings missing from the array at the start of the operation, using exact case-sensitive comparison. Create the array when absent or null. |
+
+Each directive reads the preceding result. Effective edits attribute the top-level field to the modifying row. No-op appends leave its previous origin intact. An array edited by several rows still has one top-level origin. The assembler limits a field to 64 directives per row and a modified array to 4,096 values. Nested targets, other modes, copy variables and regex or name replacement selectors produce located failures. A failed directive discards the whole preview.
 
 | Result field | C++ type and default | Meaning |
 | --- | --- | --- |

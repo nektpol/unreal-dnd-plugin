@@ -2,6 +2,7 @@
 
 #include "Readers/Items/Dnd5eJsonItemCopyAssembler.h"
 #include "Items/Dnd5eItemIdentity.h"
+#include "Readers/Items/Dnd5eJsonItemCopyModifiers.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 
 namespace
@@ -17,6 +18,7 @@ namespace
 		int32 Index;
 		TSharedPtr<FJsonObject> Row;
 		TSharedPtr<FJsonObject> Preserve;
+		TSharedPtr<FJsonObject> Modifiers;
 	};
 
 	FString ItemRowPointer(int32 Index)
@@ -95,7 +97,7 @@ namespace
 				return Fail(State, Codes::ResourceLimitExceeded, Pointer, TEXT("Too many fields in an item copy row."));
 			}
 			Visited.Add(Current);
-			FItemCopyStep Step{Current, Row, nullptr};
+			FItemCopyStep Step{Current, Row, nullptr, nullptr};
 			const FString CopyPointer = AppendPointer(Pointer, TEXT("_copy"));
 			const auto CopyValue = FindExactField(*Row, TEXT("_copy"));
 			if (!CopyValue.IsValid())
@@ -114,8 +116,13 @@ namespace
 
 			TSharedPtr<FJsonObject> Copy;
 			if (!RequireObject(CopyValue, CopyPointer, Copy, State) ||
-				!CheckAllowedKeys(*Copy, {TEXT("name"), TEXT("source"), TEXT("_preserve")}, CopyPointer, State) ||
+				!CheckAllowedKeys(*Copy, {TEXT("name"), TEXT("source"), TEXT("_preserve"), TEXT("_mod")}, CopyPointer, State) ||
 				!ReadPreserveMap(*Copy, CopyPointer, Step.Preserve, State)) { return false; }
+
+			if (const auto Modifiers = FindExactField(*Copy, TEXT("_mod")))
+			{
+				if (!RequireObject(Modifiers, AppendPointer(CopyPointer, TEXT("_mod")), Step.Modifiers, State)) { return false; }
+			}
 
 			FDnd5eRecordId TargetId;
 			if (!TryReadItemIdentity(*Copy, State, TargetId))
@@ -203,6 +210,11 @@ namespace
 				NextSources.Add(Key, FieldSources.FindChecked(Key));
 			}
 		}
+		if (Step.Modifiers.IsValid())
+		{
+			const FString ModPointer = AppendPointer(AppendPointer(ItemRowPointer(Step.Index), TEXT("_copy")), TEXT("_mod"));
+			if (!ApplyItemCopyModifiers(*Step.Modifiers, ModPointer, Step.Index, *Merged, NextSources, State)) { return false; }
+		}
 		if (NextSources.Num() > MaxCopyFields)
 		{
 			return Fail(State, Codes::ResourceLimitExceeded, ItemRowPointer(Step.Index),
@@ -257,7 +269,7 @@ FDnd5eJsonItemCopyAssemblyResult FDnd5eJsonItemCopyAssembler::AssembleAtIndex(co
 	FString Json;
 	if (!SerializeValue(MakeShared<FJsonValueObject>(Preview), Json, ItemRowPointer(Index), State)) { return Result; }
 	FReadState PreviewState{Document.Context, Json, Result.Diagnostics};
-	if (!ValidateDocumentText(PreviewState)) { return Result; }
+	if (!ValidateDocumentText(PreviewState) || !PreflightJson(PreviewState)) { return Result; }
 
 	Result.AssembledJson = MoveTemp(Json);
 	Result.FieldSourceRows = MoveTemp(FieldSources);
