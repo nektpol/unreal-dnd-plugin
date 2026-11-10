@@ -12,6 +12,8 @@ namespace Dnd5eJsonReader
 		TSharedPtr<FJsonObject> Variant;
 		TSharedPtr<FJsonObject> BaseRoot;
 		const TArray<TSharedPtr<FJsonValue>>* Bases = nullptr;
+		FString TemplateIdentitySource;
+		TArray<int32> TemplateSourceRowIndices;
 	};
 
 	FDnd5eJsonItemVariantMatchResult MatchItemVariant(const FDnd5eJsonDocument& VariantDocument,

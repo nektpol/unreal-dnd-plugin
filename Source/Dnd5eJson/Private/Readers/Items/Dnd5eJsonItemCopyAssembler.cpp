@@ -3,6 +3,7 @@
 #include "Readers/Items/Dnd5eJsonItemCopyAssembler.h"
 #include "Items/Dnd5eItemIdentity.h"
 #include "Readers/Items/Dnd5eJsonItemCopyModifiers.h"
+#include "Readers/Items/Dnd5eJsonItemCopyPolicy.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 
 namespace
@@ -54,24 +55,7 @@ namespace
 		return Indices;
 	}
 
-	bool ReadPreserveMap(const FJsonObject& Copy, const FString& Pointer, TSharedPtr<FJsonObject>& Out, FReadState& State)
-	{
-		const auto Value = FindExactField(Copy, TEXT("_preserve"));
-		if (!Value.IsValid()) { return true; }
 
-		const FString PreservePointer = AppendPointer(Pointer, TEXT("_preserve"));
-		if (!RequireObject(Value, PreservePointer, Out, State)) { return false; }
-		for (const auto& Pair : Out->Values)
-		{
-			if (Pair.Value->Type != EJson::Boolean)
-			{
-				const FString Key(Pair.Key.Len(), *Pair.Key);
-				return Fail(State, Codes::InvalidFieldValue, AppendPointer(PreservePointer, Key),
-					TEXT("Expected a Boolean copy-preserve value."));
-			}
-		}
-		return true;
-	}
 
 	bool CollectCopyChain(const TArray<TSharedPtr<FJsonValue>>& Rows, int32 Index,
 		const TMap<FDnd5eRecordId, int32>& Indices, TArray<FItemCopyStep>& Chain, FReadState& State)
@@ -142,22 +126,6 @@ namespace
 			Chain.Add(MoveTemp(Step));
 			Current = *Target;
 		}
-	}
-
-	bool IsProtectedCopyField(const FString& Key)
-	{
-		const TCHAR* const Protected[] = {
-			TEXT("page"), TEXT("otherSources"), TEXT("referenceSources"),
-			TEXT("srd"), TEXT("srd52"), TEXT("basicRules"), TEXT("basicRules2024"),
-			TEXT("reprintedAs"), TEXT("hasFluff"), TEXT("hasFluffImages"),
-			TEXT("hasToken"), TEXT("tokenCredit"), TEXT("tokenCustom"), TEXT("foundryTokenScale"),
-			TEXT("altArt"), TEXT("_versions"), TEXT("lootTables"), TEXT("tier")
-		};
-		for (const TCHAR* Field : Protected)
-		{
-			if (Key.Equals(Field, ESearchCase::CaseSensitive)) { return true; }
-		}
-		return false;
 	}
 
 	bool IsPreserved(const TSharedPtr<FJsonObject>& Preserve, const TCHAR* Key)

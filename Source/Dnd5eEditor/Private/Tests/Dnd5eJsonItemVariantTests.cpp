@@ -82,7 +82,7 @@ bool FDnd5eItemVariantFailureTest::RunTest(const FString& Parameters)
 	const TCHAR* BasePath = TEXT("fixtures/base-items.json");
 	const auto Variants = VariantMatchDocument(TEXT(R"json({"magicvariant":[
 		{"name":"Valid","requires":[{}],"inherits":{"source":"VAR"}},
-		{"name":"Copy","_copy":{"name":"Valid","source":"VAR"}},
+		{"name":"Copy","source":"VAR","_copy":{"name":"Missing","source":"VAR"}},
 		{"name":"Nested","requires":[{"odd/key~":[true,{}]}],"inherits":{"source":"VAR"}},
 		{"name":"Missing Source","requires":[{}],"inherits":{}}
 	]})json"), VariantPath);
@@ -189,7 +189,7 @@ bool FDnd5eItemVariantGenerationFailureTest::RunTest(const FString& Parameters)
 		{"name":"Token","requires":[{}],"inherits":{"source":"VAR","entries":[{"type":"entries","entries":["{=unknown}"]}]}},
 		{"name":"Expression","requires":[{}],"inherits":{"source":"VAR","valueExpression":"[[baseItem.value]] + 1d4"}},
 		{"name":"Template Loot","requires":[{}],"inherits":{"source":"VAR","namePrefix":"Magic ","lootTables":"Invalid"}},
-		{"name":"Copy","_copy":{"name":"Literal","source":"VAR"}}
+		{"name":"Copy","source":"VAR","_copy":{"name":"Missing","source":"VAR"}}
 	],"linkedLootTables":{"VAR":{"Magic Blade":["SYN-A"]}}})json"), VariantPath);
 	const auto Bases = VariantMatchDocument(TEXT(R"json({"baseitem":[
 		{"name":"Blade","source":"SYN","sword":true,"lootTables":"Invalid"},
@@ -209,9 +209,144 @@ bool FDnd5eItemVariantGenerationFailureTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("Failure at %s %s withholds staged output"), Case.File, Case.Pointer),
 			Result.Status == EDnd5eJsonReadStatus::Failure && Result.GeneratedJson.IsEmpty() &&
 			Result.GeneratedId == FDnd5eRecordId{} && Result.BaseOrigin.JsonPointer.IsEmpty() &&
-			Result.TemplateOrigin.JsonPointer.IsEmpty() && Result.Diagnostics.Num() == 1 &&
+			Result.TemplateOrigin.JsonPointer.IsEmpty() && Result.TemplateSourceRowIndices.IsEmpty() && Result.Diagnostics.Num() == 1 &&
 			Result.Diagnostics[0].RelativeFilePath == Case.File && Result.Diagnostics[0].JsonPointer == Case.Pointer);
 	}
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantTemplateCopyTest, "Dnd5e.Items.VariantGeneration.TemplateCopyChain", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eVariantTemplateCopyTest::RunTest(const FString& Parameters)
+{
+	const auto Variants = VariantMatchDocument(TEXT(R"json({"magicvariant":[
+		{"name":"Root Pattern","hasFluff":true,"hasFluffImages":true,"requires":[{"sword":true}],
+		 "inherits":{"source":"ROOT","rarity":"rare","namePrefix":"Root ","entries":["Root"],
+		             "lootTables":["REMOVED"],"propertyAdd":["P|SYN"],"resist":["fire"]}},
+		{"name":"Middle Pattern","source":"MID","_copy":{"name":"root pattern","source":"root",
+		 "_preserve":{"*":true},"_mod":{
+		 "inherits.source":{"mode":"setProp","value":"GEN"},
+		 "inherits.namePrefix":{"mode":"setProp","value":"Bright "},
+		 "inherits.page":{"mode":"setProp","value":15},
+		 "inherits.entries":{"mode":"appendArr","items":{"type":"entries","entries":["Middle"]}},
+		 "inherits.lootTables":"remove"}}},
+		{"name":"Final Pattern","source":"SEL","hasFluffImages":null,"_copy":{"name":"Middle Pattern","source":"MID",
+		 "_preserve":{"hasFluff":true,"hasFluffImages":true},"_mod":{
+		 "inherits.nameSuffix":{"mode":"setProp","value":" of Testing"},
+		 "inherits.entries":{"mode":"appendArr","items":["Final"]},
+		 "inherits.propertyAdd":{"mode":"appendIfNotExistsArr","items":["P|SYN","Q|SYN"]},
+		 "inherits.resist":[{"mode":"appendIfNotExistsArr","items":"fire"},{"mode":"appendIfNotExistsArr","items":"cold"}]}}},
+		{"name":"Other Pattern","source":"ALT","_copy":{"name":"Root Pattern","source":"ROOT"}}
+	],"linkedLootTables":{"GEN":{"Bright Invented Blade of Testing":["LINKED"]}}})json"), TEXT("fixtures/variants.json"));
+	const auto Bases = VariantMatchDocument(TEXT(R"({"baseitem":[
+		{"name":"Invented Blade","source":"SYN","sword":true,"entries":["Base"]},
+		{"name":"Invented Coat","source":"SYN"}
+	]})"), TEXT("fixtures/base-items.json"));
+
+	const auto Match = UDnd5eJsonItemLibrary::MatchMagicItemVariantAtIndex(Variants, 2, Bases, EPolicy::SourceDefault);
+	const TArray<int32> ExpectedBases{0};
+	TestTrue(TEXT("Copied requirements filter bases and match reports the effective source"),
+		Match.Status == EDnd5eJsonReadStatus::Success && Match.VariantName == TEXT("Final Pattern") &&
+		Match.VariantSourceId == TEXT("GEN") && Match.MatchingBaseIndices == ExpectedBases && Match.Diagnostics.IsEmpty());
+	const auto Result = UDnd5eJsonItemLibrary::GenerateMagicItemVariantAtIndex(Variants, 2, Bases, 0, EPolicy::SourceDefault);
+	const TArray<int32> ExpectedChain{2, 1, 0};
+	if (!TestTrue(TEXT("The copied preview has original provenance and ancestry"),
+		Result.Status == EDnd5eJsonReadStatus::Success && Result.Diagnostics.IsEmpty() && Result.TemplateSourceRowIndices == ExpectedChain &&
+		Result.TemplateOrigin.SourceId == TEXT("SEL") && Result.TemplateOrigin.JsonPointer == TEXT("/magicvariant/2") &&
+		Result.TemplateOrigin.RelativeFilePath == Variants.Context.RelativeFilePath && Result.BaseOrigin.JsonPointer == TEXT("/baseitem/0")))
+	{
+		return false;
+	}
+	const auto ReadRow = [](const FString& Json) -> TSharedPtr<FJsonObject>
+	{
+		TSharedPtr<FJsonObject> Root;
+		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+		if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Root) || !Root.IsValid() ||
+			!Root->TryGetArrayField(TEXT("item"), Rows) || !Rows || Rows->Num() != 1) { return nullptr; }
+		return (*Rows)[0]->AsObject();
+	};
+	const auto Row = ReadRow(Result.GeneratedJson);
+	if (!TestTrue(TEXT("Preview has one item row"), Row.IsValid())) { return false; }
+	const TSharedPtr<FJsonObject>* Link = nullptr;
+	TestTrue(TEXT("Effective publication, template link and flags follow separate rules"),
+		Row->GetStringField(TEXT("name")) == TEXT("Bright Invented Blade of Testing") &&
+		Row->GetStringField(TEXT("source")) == TEXT("GEN") && Row->GetNumberField(TEXT("page")) == 15 &&
+		Row->GetBoolField(TEXT("hasFluff")) && !Row->HasField(TEXT("hasFluffImages")) && !Row->HasField(TEXT("_copy")) &&
+		Row->TryGetObjectField(TEXT("genericVariant"), Link) && Link && Link->IsValid() &&
+		(*Link)->GetStringField(TEXT("name")) == TEXT("Final Pattern") &&
+		(*Link)->HasTypedField<EJson::String>(TEXT("source")) && (*Link)->GetStringField(TEXT("source")) == TEXT("SEL"));
+	const auto& Entries = Row->GetArrayField(TEXT("entries"));
+	const auto& Properties = Row->GetArrayField(TEXT("property"));
+	const auto& Resist = Row->GetArrayField(TEXT("resist"));
+	const auto& Loot = Row->GetArrayField(TEXT("lootTables"));
+	TestTrue(TEXT("Copies append entries in order and preserve exact array and loot rules"),
+		Entries.Num() == 4 && Entries[0]->AsString() == TEXT("Root") && Entries[1]->Type == EJson::Object &&
+		Entries[1]->AsObject()->GetArrayField(TEXT("entries"))[0]->AsString() == TEXT("Middle") &&
+		Entries[2]->AsString() == TEXT("Final") && Entries[3]->AsString() == TEXT("Base") &&
+		Properties.Num() == 2 && Properties[0]->AsString() == TEXT("P|SYN") && Properties[1]->AsString() == TEXT("Q|SYN") &&
+		Resist.Num() == 2 && Resist[0]->AsString() == TEXT("fire") && Resist[1]->AsString() == TEXT("cold") &&
+		Loot.Num() == 1 && Loot[0]->AsString() == TEXT("LINKED"));
+
+	auto ChangedPublication = Variants;
+	ChangedPublication.JsonText = Variants.JsonText.Replace(TEXT("\"GEN\""), TEXT("\"OTHER\""), ESearchCase::CaseSensitive);
+	const auto SamePair = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(ChangedPublication, 2, Bases, 0, EPolicy::SourceDefault);
+	TestTrue(TEXT("Changing the inherited publication keeps the generated pair identity"),
+		SamePair.Status == EDnd5eJsonReadStatus::Success && SamePair.GeneratedId == Result.GeneratedId);
+	const auto Other = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Variants, 3, Bases, 0, EPolicy::SourceDefault);
+	const auto OtherRow = ReadRow(Other.GeneratedJson);
+	const TArray<int32> OtherChain{3, 0};
+	TestTrue(TEXT("A sibling gets the original template data without protected flags"),
+		Other.Status == EDnd5eJsonReadStatus::Success && Other.TemplateSourceRowIndices == OtherChain &&
+		Other.GeneratedId != Result.GeneratedId && OtherRow.IsValid() &&
+		OtherRow->GetStringField(TEXT("name")) == TEXT("Root Invented Blade") && !OtherRow->HasField(TEXT("hasFluff")) &&
+		OtherRow->GetArrayField(TEXT("lootTables")).Num() == 1 &&
+		OtherRow->GetArrayField(TEXT("lootTables"))[0]->AsString() == TEXT("REMOVED") &&
+		OtherRow->GetArrayField(TEXT("entries")).Num() == 2);
+	const auto* ChainProperty = FDnd5eJsonItemVariantGenerationResult::StaticStruct()->FindPropertyByName(TEXT("TemplateSourceRowIndices"));
+	TestTrue(TEXT("Blueprint can read the original template indices"),
+		ChainProperty && ChainProperty->HasAllPropertyFlags(CPF_BlueprintVisible | CPF_BlueprintReadOnly));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantTemplateCopyFailureTest, "Dnd5e.Items.VariantGeneration.TemplateCopyFailures", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eVariantTemplateCopyFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Bases = VariantMatchDocument(TEXT(R"({"baseitem":[{"name":"Invented Base","source":"BAS"}]})"),
+		TEXT("fixtures/base-items.json"));
+	const auto Check = [&](const FString& Json, int32 Index, const TCHAR* Code, const TCHAR* Pointer)
+	{
+		const auto Variants = VariantMatchDocument(Json, TEXT("fixtures/variants.json"));
+		const auto Result = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Variants, Index, Bases, 0, EPolicy::SourceDefault);
+		TestTrue(FString::Printf(TEXT("Template failure is atomic and located at %s"), Pointer),
+			Result.Status == EDnd5eJsonReadStatus::Failure && Result.GeneratedJson.IsEmpty() &&
+			Result.GeneratedId == FDnd5eRecordId{} && Result.TemplateSourceRowIndices.IsEmpty() &&
+			Result.BaseOrigin.JsonPointer.IsEmpty() && Result.TemplateOrigin.JsonPointer.IsEmpty() &&
+			Result.Diagnostics.Num() == 1 && Result.Diagnostics[0].Code == FName(Code) &&
+			Result.Diagnostics[0].RelativeFilePath == Variants.Context.RelativeFilePath && Result.Diagnostics[0].JsonPointer == Pointer);
+	};
+	Check(TEXT(R"({"magicvariant":[{"name":"A","source":"SYN","_copy":{"name":"B","source":"SYN"}},
+		{"name":"B","source":"SYN","_copy":{"name":"A","source":"SYN"}}]})"), 0,
+		TEXT("Dnd5e.Json.InvalidFieldValue"), TEXT("/magicvariant/1/_copy"));
+	Check(TEXT(R"({"magicvariant":[{"name":"A","source":"SYN","_copy":{"name":"B","source":"SYN"}},
+		{"name":"B","source":"SYN"},{"name":"b","source":"syn"}]})"), 0,
+		TEXT("Dnd5e.Json.InvalidFieldValue"), TEXT("/magicvariant/0/_copy"));
+	Check(TEXT(R"({"magicvariant":[{"name":"A","source":"SYN","_copy":{"name":"B","source":"SYN"}},
+		{"name":"B","source":"SYN","_copy":{"name":"Missing","source":"SYN"}}]})"), 0,
+		TEXT("Dnd5e.Json.UnresolvedReference"), TEXT("/magicvariant/1/_copy"));
+	Check(TEXT(R"({"magicvariant":[{"name":"A","source":"SYN","_copy":{"name":"B","source":"SYN","_mod":{
+		"inherits.entries.0":{"mode":"setProp","value":"Unsupported"}}}},{"name":"B","requires":[{}],"inherits":{"source":"SYN"}}]})"),
+		0, TEXT("Dnd5e.Json.UnsupportedRequiredValue"), TEXT("/magicvariant/0/_copy/_mod/inherits.entries.0"));
+	Check(TEXT(R"({"magicvariant":[{"name":"A","source":"SYN","_copy":{"name":"B","source":"SYN","_mod":{
+		"inherits.page":{"mode":"setProp","value":1.5}}}},{"name":"B","requires":[{}],"inherits":{"source":"SYN"}}]})"),
+		0, TEXT("Dnd5e.Json.InvalidFieldValue"), TEXT("/magicvariant/0/_copy/_mod/inherits.page/value"));
+
+	FString Deep = TEXT("{\"magicvariant\":[");
+	for (int32 Index = 0; Index < 33; ++Index)
+	{
+		Deep += FString::Printf(TEXT("{\"name\":\"Template %d\",\"source\":\"SYN\",\"_copy\":{\"name\":\"Template %d\",\"source\":\"SYN\"}},"),
+			Index, Index + 1);
+	}
+	Deep += TEXT("{\"name\":\"Template 33\",\"source\":\"SYN\",\"requires\":[{}],\"inherits\":{\"source\":\"SYN\"}}]}");
+	Check(Deep, 0, TEXT("Dnd5e.Json.ResourceLimitExceeded"), TEXT("/magicvariant/32/_copy"));
 	return !HasAnyErrors();
 }
 
@@ -460,13 +595,45 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 	const EPolicy Policies[] = {EPolicy::SourceDefault, EPolicy::PreferClassic};
 	int32 Pairs[] = {0, 0};
 	int32 TemplatesWithMatches[] = {0, 0};
-	int32 Copies = 0, Generated = 0, MissingAmounts = 0;
+	const TMap<int32, TArray<int32>> CopyChains{
+		{33, {33, 184, 198, 227}}, {182, {182, 56}}, {184, {184, 198, 227}},
+		{198, {198, 227}}, {200, {200, 182, 56}}};
+	const TMap<int32, int32> CopyBases{{33, 75}, {182, 24}, {184, 75}, {198, 75}, {200, 24}};
+	int32 Copies = 0, CopiedPreviews = 0, Generated = 0, MissingAmounts = 0;
 	for (int32 Index = 0; Index < Rows->Num(); ++Index)
 	{
 		const auto& Row = (*Rows)[Index];
 		if (Row->Type == EJson::Object && Row->AsObject()->HasField(TEXT("_copy")))
 		{
 			++Copies;
+			const auto* ExpectedChain = CopyChains.Find(Index);
+			const auto* ExpectedBase = CopyBases.Find(Index);
+			if (!TestTrue(TEXT("Copy has a recorded chain and matching base"), ExpectedChain && ExpectedBase)) { continue; }
+			const TArray<int32> ModernMatch{*ExpectedBase};
+			for (const EPolicy Policy : Policies)
+			{
+				const auto Match = FDnd5eJsonItemVariantMatcher::MatchAtIndex(Variants, Index, Bases, Policy);
+				TestTrue(FString::Printf(TEXT("Copied row %d matches under policy %d"), Index, static_cast<int32>(Policy)),
+					Match.Status == EDnd5eJsonReadStatus::Success && Match.Diagnostics.IsEmpty() &&
+					(Policy == EPolicy::SourceDefault ? Match.MatchingBaseIndices == ModernMatch : Match.MatchingBaseIndices.IsEmpty()));
+			}
+			const auto Preview = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Variants, Index, Bases, *ExpectedBase, EPolicy::SourceDefault);
+			if (TestTrue(FString::Printf(TEXT("Copied row %d generates its eligible pair"), Index),
+				Preview.Status == EDnd5eJsonReadStatus::Success && Preview.Diagnostics.IsEmpty() &&
+				Preview.TemplateSourceRowIndices == *ExpectedChain && !Preview.GeneratedJson.IsEmpty() &&
+				Preview.TemplateOrigin.SourceId == Row->AsObject()->GetStringField(TEXT("source")) &&
+				Preview.TemplateOrigin.JsonPointer == FString::Printf(TEXT("/magicvariant/%d"), Index) &&
+				Preview.BaseOrigin.JsonPointer == FString::Printf(TEXT("/baseitem/%d"), *ExpectedBase)))
+			{
+				++CopiedPreviews;
+			}
+			else
+			{
+				for (const auto& Diagnostic : Preview.Diagnostics)
+				{
+					AddError(Diagnostic.RelativeFilePath + TEXT(" ") + Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message);
+				}
+			}
 			continue;
 		}
 		for (int32 Policy = 0; Policy < UE_ARRAY_COUNT(Policies); ++Policy)
@@ -513,6 +680,7 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("Template copies in the snapshot"), Copies, 5);
+	TestEqual(TEXT("Eligible copied previews"), CopiedPreviews, 5);
 	TestEqual(TEXT("SourceDefault pair count"), Pairs[0], 3508);
 	TestEqual(TEXT("SourceDefault templates with matches"), TemplatesWithMatches[0], 221);
 	TestEqual(TEXT("PreferClassic pair count"), Pairs[1], 2873);

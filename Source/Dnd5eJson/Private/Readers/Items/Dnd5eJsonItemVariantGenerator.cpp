@@ -165,7 +165,7 @@ namespace
 	bool BuildSpecificVariantRow(const FJsonObject& Base, const FJsonObject& Variant, const FJsonObject& Inherits,
 		const FJsonObject& VariantRoot, const FString& BasePointer, const FString& VariantPointer,
 		const FString& BaseName, const FString& BaseSource, const FString& TemplateName, const FString& TemplateSource,
-		FJsonObject& Row, FReadState& BaseState, FReadState& VariantState)
+		const FString& TemplateIdentitySource, FJsonObject& Row, FReadState& BaseState, FReadState& VariantState)
 	{
 		const FString InheritsPointer = AppendPointer(VariantPointer, TEXT("inherits"));
 		FString Remove, Prefix, Suffix;
@@ -246,7 +246,7 @@ namespace
 		Row.SetStringField(TEXT("baseItem"), BaseName + TEXT("|") + BaseSource);
 		auto TemplateLink = MakeShared<FJsonObject>();
 		TemplateLink->SetStringField(TEXT("name"), TemplateName);
-		TemplateLink->SetStringField(TEXT("source"), TemplateSource);
+		TemplateLink->SetStringField(TEXT("source"), TemplateIdentitySource);
 		Row.SetObjectField(TEXT("genericVariant"), TemplateLink);
 		const bool bTemplateLoot = FindExactField(Inherits, TEXT("lootTables")).IsValid();
 		return AppendLinkedLoot(VariantRoot, TemplateSource, Name, bTemplateLoot ? InheritsPointer : BasePointer, Row,
@@ -294,10 +294,12 @@ FDnd5eJsonItemVariantGenerationResult FDnd5eJsonItemVariantGenerator::GenerateAt
 		return Result;
 	}
 
+	const FString& TemplateIdentitySource = Inputs.TemplateIdentitySource.IsEmpty()
+		? Match.VariantSourceId : Inputs.TemplateIdentitySource;
 	FDnd5eRecordId BaseId, TemplateKey;
 	const FString& Dataset = BaseItemDocument.Context.DatasetNamespace;
 	if (!Dnd5e::Items::TryMakeId(Dataset, BaseName, BaseSource, BaseId) ||
-		!Dnd5e::Items::TryMakeId(Dataset, Match.VariantName, Match.VariantSourceId, TemplateKey))
+		!Dnd5e::Items::TryMakeId(Dataset, Match.VariantName, TemplateIdentitySource, TemplateKey))
 	{
 		Fail(VariantState, Codes::InvalidFieldValue, VariantPointer, TEXT("Could not build a canonical variant pair identity."));
 		return Result;
@@ -308,7 +310,8 @@ FDnd5eJsonItemVariantGenerationResult FDnd5eJsonItemVariantGenerator::GenerateAt
 
 	auto Row = MakeShared<FJsonObject>();
 	if (!BuildSpecificVariantRow(*Base, *Inputs.Variant, *Inherits, *Inputs.VariantRoot, BasePointer, VariantPointer,
-		BaseName, BaseSource, Match.VariantName, Match.VariantSourceId, *Row, BaseState, VariantState)) { return Result; }
+		BaseName, BaseSource, Match.VariantName, Match.VariantSourceId, TemplateIdentitySource,
+		*Row, BaseState, VariantState)) { return Result; }
 
 	auto Preview = MakeShared<FJsonObject>();
 	const TArray<TSharedPtr<FJsonValue>> Rows{MakeShared<FJsonValueObject>(Row)};
@@ -323,9 +326,10 @@ FDnd5eJsonItemVariantGenerationResult FDnd5eJsonItemVariantGenerator::GenerateAt
 	Result.BaseOrigin.SourceId = MoveTemp(BaseSource);
 	Result.BaseOrigin.RelativeFilePath = BaseItemDocument.Context.RelativeFilePath;
 	Result.BaseOrigin.JsonPointer = BasePointer;
-	Result.TemplateOrigin.SourceId = MoveTemp(Match.VariantSourceId);
+	Result.TemplateOrigin.SourceId = TemplateIdentitySource;
 	Result.TemplateOrigin.RelativeFilePath = VariantDocument.Context.RelativeFilePath;
 	Result.TemplateOrigin.JsonPointer = VariantPointer;
+	Result.TemplateSourceRowIndices = MoveTemp(Inputs.TemplateSourceRowIndices);
 	Result.Status = EDnd5eJsonReadStatus::Success;
 	return Result;
 }

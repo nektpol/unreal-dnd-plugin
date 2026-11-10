@@ -22,6 +22,8 @@ struct DND5EJSON_API FDnd5eJsonItemVariantGenerationResult
 	UPROPERTY(BlueprintReadOnly, Category = "Dnd5e|Items")
 	FDnd5eRecordProvenance TemplateOrigin;
 	UPROPERTY(BlueprintReadOnly, Category = "Dnd5e|Items")
+	TArray<int32> TemplateSourceRowIndices;
+	UPROPERTY(BlueprintReadOnly, Category = "Dnd5e|Items")
 	TArray<FDnd5eDiagnostic> Diagnostics;
 };
 

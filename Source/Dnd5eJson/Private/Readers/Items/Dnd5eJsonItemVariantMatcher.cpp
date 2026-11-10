@@ -3,6 +3,7 @@
 #include "Readers/Items/Dnd5eJsonItemVariantMatcher.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
 #include "Dnd5eJsonItemVariantMatcherInternal.h"
+#include "Readers/Items/Dnd5eJsonItemVariantCopy.h"
 
 namespace
 {
@@ -195,20 +196,10 @@ FDnd5eJsonItemVariantMatchResult Dnd5eJsonReader::MatchItemVariant(const FDnd5eJ
 	TSharedPtr<FJsonObject> VariantRoot;
 	const TArray<TSharedPtr<FJsonValue>>* Variants = nullptr;
 	if (!ReadVariantArray(TEXT("magicvariant"), VariantRoot, Variants, VariantState)) { return Result; }
-	if (!Variants->IsValidIndex(VariantIndex))
-	{
-		Fail(VariantState, Codes::InvalidFieldValue, TEXT("/magicvariant"), TEXT("Select an existing variant index."));
-		return Result;
-	}
 	const FString VariantPointer = AppendPointer(TEXT("/magicvariant"), FString::FromInt(VariantIndex));
-	TSharedPtr<FJsonObject> Variant;
-	if (!RequireObject((*Variants)[VariantIndex], VariantPointer, Variant, VariantState)) { return Result; }
-	if (FindExactField(*Variant, TEXT("_copy")).IsValid())
-	{
-		Fail(VariantState, Codes::UnsupportedRequiredValue, AppendPointer(VariantPointer, TEXT("_copy")),
-			TEXT("Magic item template copies require separate assembly."));
-		return Result;
-	}
+	FResolvedItemVariantTemplate Resolved;
+	if (!ResolveItemVariantTemplate(*Variants, VariantIndex, Resolved, VariantState)) { return Result; }
+	TSharedPtr<FJsonObject> Variant = MoveTemp(Resolved.Row);
 
 	FString Name, Source;
 	TSharedPtr<FJsonObject> Inherits;
@@ -273,7 +264,8 @@ FDnd5eJsonItemVariantMatchResult Dnd5eJsonReader::MatchItemVariant(const FDnd5eJ
 	Result.Status = EDnd5eJsonReadStatus::Success;
 	if (OutInputs)
 	{
-		*OutInputs = {MoveTemp(VariantRoot), MoveTemp(Variant), MoveTemp(BaseRoot), Bases};
+		*OutInputs = {MoveTemp(VariantRoot), MoveTemp(Variant), MoveTemp(BaseRoot), Bases,
+			MoveTemp(Resolved.IdentitySource), MoveTemp(Resolved.SourceRowIndices)};
 	}
 	return Result;
 }

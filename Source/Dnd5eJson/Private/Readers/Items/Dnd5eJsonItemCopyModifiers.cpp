@@ -1,6 +1,7 @@
 // Developed by Neko Creative Technologies
 
 #include "Readers/Items/Dnd5eJsonItemCopyModifiers.h"
+#include "Readers/Items/Dnd5eJsonItemCopyPolicy.h"
 #include "Algo/BinarySearch.h"
 
 namespace
@@ -9,29 +10,6 @@ namespace
 
 	constexpr int32 MaxDirectivesPerField = 64;
 	constexpr int32 MaxModifiedArrayValues = 4096;
-
-	bool ContainsCopyVariable(const FJsonValue& Value)
-	{
-		if (Value.Type == EJson::String)
-		{
-			return Value.AsString().Contains(TEXT("<$"), ESearchCase::CaseSensitive);
-		}
-		if (Value.Type == EJson::Array)
-		{
-			for (const auto& Entry : Value.AsArray())
-			{
-				if (ContainsCopyVariable(*Entry)) { return true; }
-			}
-		}
-		if (Value.Type == EJson::Object)
-		{
-			for (const auto& Pair : Value.AsObject()->Values)
-			{
-				if (ContainsCopyVariable(*Pair.Value)) { return true; }
-			}
-		}
-		return false;
-	}
 
 	bool ReadCopyItems(const FJsonObject& Operation, const FString& Pointer,
 		TArray<TSharedPtr<FJsonValue>>& Items, FReadState& State)
