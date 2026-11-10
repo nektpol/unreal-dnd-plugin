@@ -186,7 +186,7 @@ bool FDnd5eItemVariantGenerationFailureTest::RunTest(const FString& Parameters)
 	const TCHAR* BasePath = TEXT("fixtures/base-items.json");
 	const auto Variants = VariantMatchDocument(TEXT(R"json({"magicvariant":[
 		{"name":"Literal","requires":[{"sword":true}],"inherits":{"source":"VAR","namePrefix":"Magic "}},
-		{"name":"Token","requires":[{}],"inherits":{"source":"VAR","entries":[{"type":"entries","entries":["{=baseName}"]}]}},
+		{"name":"Token","requires":[{}],"inherits":{"source":"VAR","entries":[{"type":"entries","entries":["{=unknown}"]}]}},
 		{"name":"Expression","requires":[{}],"inherits":{"source":"VAR","valueExpression":"[[baseItem.value]] * 2"}},
 		{"name":"Template Loot","requires":[{}],"inherits":{"source":"VAR","namePrefix":"Magic ","lootTables":"Invalid"}},
 		{"name":"Copy","_copy":{"name":"Literal","source":"VAR"}}
@@ -211,6 +211,103 @@ bool FDnd5eItemVariantGenerationFailureTest::RunTest(const FString& Parameters)
 			Result.GeneratedId == FDnd5eRecordId{} && Result.BaseOrigin.JsonPointer.IsEmpty() &&
 			Result.TemplateOrigin.JsonPointer.IsEmpty() && Result.Diagnostics.Num() == 1 &&
 			Result.Diagnostics[0].RelativeFilePath == Case.File && Result.Diagnostics[0].JsonPointer == Case.Pointer);
+	}
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantEntrySubstitutionTest, "Dnd5e.Items.VariantGeneration.EntrySubstitution", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eVariantEntrySubstitutionTest::RunTest(const FString& Parameters)
+{
+	const auto Templates = VariantMatchDocument(TEXT(R"json({"magicvariant":[
+		{"name":"Invented Pattern","requires":[{}],"inherits":{
+		 "source":"VAR","rarity":"rare","namePrefix":"Glowing ","bonusWeapon":"+2","bonusAc":1.00,
+		 "bonusWeaponAttack":"+3","bonusWeaponDamage":"+4","bonusSavingThrow":"+5",
+		 "entries":[{"type":"entries","name":"{=baseName}","page":3,"entries":[
+		  "{=baseName/at} {=baseName/l} deals {@damage 1d4} {=dmgType} damage.",
+		  "{@b {=bonusWeapon}}{=bonusAc}; {=bonusWeaponAttack} {=bonusWeaponDamage} {=bonusSavingThrow}",
+		  "{=baseName/a}"]}]}}
+	]})json"), TEXT("fixtures/variants.json"));
+	const auto Bases = VariantMatchDocument(TEXT(R"json({"baseitem":[
+		{"name":"Invented Axe","source":"SYN","type":"M","rarity":"none","dmg1":"1d6","dmgType":"S","entries":["Original base text"]},
+		{"name":"Training Axe","source":"ALT","type":"M","rarity":"none","dmg1":"1d6","dmgType":"B"}
+	]})json"), TEXT("fixtures/base-items.json"));
+
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		const auto Result = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, Index, EPolicy::SourceDefault);
+		TSharedPtr<FJsonObject> Root;
+		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+		if (!TestTrue(TEXT("Generation produces one preview row after substitution"),
+			Result.Status == EDnd5eJsonReadStatus::Success && Result.Diagnostics.IsEmpty() &&
+			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Result.GeneratedJson), Root) && Root.IsValid() &&
+			Root->TryGetArrayField(TEXT("item"), Rows) && Rows && Rows->Num() == 1 && (*Rows)[0]->Type == EJson::Object))
+		{
+			for (const auto& Diagnostic : Result.Diagnostics) { AddError(Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message); }
+			return false;
+		}
+
+		const auto& Row = (*Rows)[0]->AsObject();
+		const TArray<TSharedPtr<FJsonValue>>* Blocks = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+		if (!TestTrue(TEXT("Section shape and source order remain intact"), Row->TryGetArrayField(TEXT("entries"), Blocks) &&
+			Blocks && Blocks->Num() == (Index == 0 ? 2 : 1) && (*Blocks)[0]->Type == EJson::Object &&
+			(*Blocks)[0]->AsObject()->TryGetArrayField(TEXT("entries"), Entries) && Entries && Entries->Num() == 3)) { return false; }
+		const auto& Section = (*Blocks)[0]->AsObject();
+		const TCHAR* BaseName = Index == 0 ? TEXT("Invented Axe") : TEXT("Training Axe");
+		TestTrue(TEXT("Heading uses the original name and the page stays numeric"),
+			Section->GetStringField(TEXT("name")).Equals(BaseName, ESearchCase::CaseSensitive) &&
+			Section->GetNumberField(TEXT("page")) == 3 && Row->GetStringField(TEXT("name")) == FString(TEXT("Glowing ")) + BaseName);
+		const TCHAR* Line = Index == 0 ? TEXT("An invented axe deals {@damage 1d4} Slashing damage.") :
+			TEXT("A training axe deals {@damage 1d4} Bludgeoning damage.");
+		TestTrue(TEXT("Article, lowercase name and damage display name match exact spelling"),
+			(*Entries)[0]->AsString().Equals(Line, ESearchCase::CaseSensitive) &&
+			(*Entries)[2]->AsString().Equals(Index == 0 ? TEXT("an") : TEXT("a"), ESearchCase::CaseSensitive));
+		TestEqual(TEXT("Adjacent tokens and tokens inside markup preserve the original markup and number literal"),
+			(*Entries)[1]->AsString(), FString(TEXT("{@b +2}1.00; +3 +4 +5")));
+		if (Index == 0) { TestEqual(TEXT("Base entries stay unchanged"), (*Blocks)[1]->AsString(), FString(TEXT("Original base text"))); }
+	}
+
+	const auto Default = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, 0, EPolicy::SourceDefault);
+	const auto Classic = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, 0, EPolicy::PreferClassic);
+	TestTrue(TEXT("Matching policy changes neither the generated identity nor damage spelling for the same eligible pair"),
+		Classic.Status == EDnd5eJsonReadStatus::Success && Classic.GeneratedId == Default.GeneratedId &&
+		Classic.GeneratedJson == Default.GeneratedJson);
+	const auto Typed = FDnd5eJsonItemReader::ReadAtIndex(VariantMatchDocument(Default.GeneratedJson, TEXT("fixtures/preview.json")), 0);
+	TestTrue(TEXT("The ordinary reader can consume the substituted preview"), Typed.Status == EDnd5eJsonReadStatus::Success &&
+		Typed.Item.Description.Num() == 2 && Typed.Item.Description[0].Kind.IsValid());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eVariantEntrySubstitutionFailureTest, "Dnd5e.Items.VariantGeneration.EntrySubstitutionFailures", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eVariantEntrySubstitutionFailureTest::RunTest(const FString& Parameters)
+{
+	const auto Bases = VariantMatchDocument(TEXT(R"({"baseitem":[{"name":"Invented Blade","source":"SYN","type":"M"}]})"),
+		TEXT("fixtures/base-items.json"));
+	struct FCase { FString Text; const TCHAR* Code; };
+	FString TooMany;
+	for (int32 Index = 0; Index < 257; ++Index) { TooMany += TEXT("{=baseName}"); }
+	const FCase Cases[] = {
+		{TEXT("{=unknown}"), TEXT("Dnd5e.Json.UnsupportedRequiredValue")},
+		{TEXT("{=baseName/at/a}"), TEXT("Dnd5e.Json.UnsupportedRequiredValue")},
+		{TEXT("{=baseName"), TEXT("Dnd5e.Json.InvalidFieldValue")},
+		{TEXT("{=bonusAc}"), TEXT("Dnd5e.Json.InvalidFieldValue")},
+		{TEXT("{=dmgType}"), TEXT("Dnd5e.Json.InvalidFieldValue")},
+		{MoveTemp(TooMany), TEXT("Dnd5e.Json.ResourceLimitExceeded")}
+	};
+	for (const auto& Case : Cases)
+	{
+		const FString Json = FString::Printf(TEXT(R"json({"magicvariant":[
+			{"name":"Invented Pattern","requires":[{}],"inherits":{"source":"VAR","entries":[
+			 "{=baseName}",{"type":"entries","entries":["%s"]}]}}
+		]})json"), *Case.Text);
+		const auto Templates = VariantMatchDocument(Json, TEXT("fixtures/variants.json"));
+		const auto Result = FDnd5eJsonItemVariantGenerator::GenerateAtIndex(Templates, 0, Bases, 0, EPolicy::SourceDefault);
+		TestTrue(FString::Printf(TEXT("Substitution failure is atomic and located for %s"), Case.Code),
+			Result.Status == EDnd5eJsonReadStatus::Failure && Result.GeneratedJson.IsEmpty() && Result.GeneratedId == FDnd5eRecordId{} &&
+			Result.BaseOrigin.JsonPointer.IsEmpty() && Result.TemplateOrigin.JsonPointer.IsEmpty() && Result.Diagnostics.Num() == 1 &&
+			Result.Diagnostics[0].RelativeFilePath == Templates.Context.RelativeFilePath &&
+			Result.Diagnostics[0].JsonPointer == TEXT("/magicvariant/0/inherits/entries/1/entries/0") &&
+			Result.Diagnostics[0].Code == FName(Case.Code));
 	}
 	return !HasAnyErrors();
 }
@@ -298,8 +395,8 @@ bool FDnd5eItemVariantSnapshotTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("SourceDefault templates with matches"), TemplatesWithMatches[0], 221);
 	TestEqual(TEXT("PreferClassic pair count"), Pairs[1], 2873);
 	TestEqual(TEXT("PreferClassic templates with matches"), TemplatesWithMatches[1], 151);
-	TestEqual(TEXT("First eligible pair generated for each supported template"), Generated, 130);
-	TestEqual(TEXT("First eligible pair deferred for each unsupported template"), Deferred, 91);
+	TestEqual(TEXT("First eligible pair generated for each supported template"), Generated, 189);
+	TestEqual(TEXT("First eligible pair deferred for each unsupported template"), Deferred, 32);
 	return !HasAnyErrors();
 }
 #endif

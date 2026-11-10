@@ -3,6 +3,7 @@
 #include "Readers/Items/Dnd5eJsonItemVariantGenerator.h"
 #include "Readers/Items/Dnd5eJsonItemVariantMatcherInternal.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
+#include "Readers/Items/Dnd5eJsonItemVariantEntries.h"
 #include "Items/Dnd5eItemIdentity.h"
 
 namespace
@@ -35,31 +36,6 @@ namespace
 		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
 		if (!RequireArray(Value, AppendPointer(Pointer, Key), Values, State)) { return false; }
 		Out = *Values;
-		return true;
-	}
-
-	bool CheckLiteralEntries(const FJsonValue& Value, const FString& Pointer, FReadState& State)
-	{
-		if (Value.Type == EJson::String && Value.AsString().Contains(TEXT("{="), ESearchCase::CaseSensitive))
-		{
-			return Fail(State, Codes::UnsupportedRequiredValue, Pointer, TEXT("Variant entry injection needs a later generation pass."));
-		}
-		if (Value.Type == EJson::Array)
-		{
-			const auto& Entries = Value.AsArray();
-			for (int32 Index = 0; Index < Entries.Num(); ++Index)
-			{
-				if (!CheckLiteralEntries(*Entries[Index], AppendPointer(Pointer, FString::FromInt(Index)), State)) { return false; }
-			}
-		}
-		if (Value.Type == EJson::Object)
-		{
-			for (const auto& Pair : Value.AsObject()->Values)
-			{
-				const FString Key(Pair.Key.Len(), *Pair.Key);
-				if (!CheckLiteralEntries(*Pair.Value, AppendPointer(Pointer, Key), State)) { return false; }
-			}
-		}
 		return true;
 	}
 
@@ -195,11 +171,10 @@ namespace
 		{
 			const FString EntriesPointer = AppendPointer(InheritsPointer, TEXT("entries"));
 			const TArray<TSharedPtr<FJsonValue>>* Inserted = nullptr;
-			TArray<TSharedPtr<FJsonValue>> BaseEntries;
+			TArray<TSharedPtr<FJsonValue>> Combined, BaseEntries;
 			if (!RequireArray(Entries, EntriesPointer, Inserted, VariantState) ||
-				!CheckLiteralEntries(*Entries, EntriesPointer, VariantState) ||
+				!RenderItemVariantEntries(*Inserted, Base, Inherits, BaseName, EntriesPointer, Combined, VariantState) ||
 				!ReadVariantArrayValues(Base, TEXT("entries"), BasePointer, BaseEntries, BaseState)) { return false; }
-			TArray<TSharedPtr<FJsonValue>> Combined = *Inserted;
 			Combined.Append(BaseEntries);
 			Row.SetArrayField(TEXT("entries"), Combined);
 		}

@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **834 cases**; the combined explicitly supplied-data run passes **863 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **836 cases**; the combined explicitly supplied-data run passes **865 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -288,3 +288,9 @@ Two synthetic tests cover Blueprint access, exact predicate types and casing, al
 The Development Editor build and all **863 combined cases** passed on 2026-11-10, including **834 standard cases** and 29 opt-in audits. The report under Saved/Automation/Dnd5eItemVariantGeneration records zero failures, not-run cases or automation warnings.
 
 Two synthetic tests cover generated name and pair identity, base cleanup, literal entries, property notes, linked loot, the ordinary reader handoff, original row locations, and atomic failures. The snapshot audit selects the first eligible base under SourceDefault for each of the 221 standalone templates that has a match. It verifies 130 generated previews and 91 located deferrals. Four standalone templates have no eligible base under that policy. This audit samples one eligible pair per template.
+
+### Magic item variant entry substitutions
+
+The Development Editor build and all **865 combined cases** passed on 2026-11-10, including **836 standard cases** and 29 opt-in audits. The report under Saved/Automation/Dnd5eItemVariantEntries records zero failures, not-run cases or automation warnings.
+
+Two synthetic tests verify nested entry substitution, original base names, exact article and damage display spelling, existing markup, numeric bonus literals, unchanged base entries and the typed preview handoff. Failure checks cover unknown tokens, modifiers, incomplete syntax, missing inputs and the per-string substitution limit. The existing snapshot audit now verifies 189 generated previews and 32 expected deferrals for the first eligible base under SourceDefault for each of the 221 matching standalone templates.
