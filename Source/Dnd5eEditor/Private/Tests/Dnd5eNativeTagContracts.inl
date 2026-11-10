@@ -47,6 +47,7 @@
 { &Dnd5e::Category::CharacterOption, TEXT("Dnd5e.Category.CharacterOption") },
 { &Dnd5e::Category::Reward, TEXT("Dnd5e.Category.Reward") },
 { &Dnd5e::Category::Item, TEXT("Dnd5e.Category.Item") },
+{ &Dnd5e::Category::ItemGroup, TEXT("Dnd5e.Category.ItemGroup") },
 { &Dnd5e::Category::Creature, TEXT("Dnd5e.Category.Creature") },
 { &Dnd5e::Category::Condition, TEXT("Dnd5e.Category.Condition") },
 { &Dnd5e::Category::Status, TEXT("Dnd5e.Category.Status") },

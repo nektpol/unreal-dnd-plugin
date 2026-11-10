@@ -6,6 +6,7 @@
 #include "Readers/Items/Dnd5eJsonItemCopyAssembler.h"
 #include "Readers/Items/Dnd5eJsonItemVariantMatcher.h"
 #include "Readers/Items/Dnd5eJsonItemVariantGenerator.h"
+#include "Readers/Items/Dnd5eJsonItemGroupReader.h"
 #include "Dnd5eJsonItemLibrary.generated.h"
 
 UCLASS()
@@ -36,4 +37,7 @@ public:
 	static FDnd5eJsonItemVariantReadResult ReadMagicItemVariantAtIndex(const FDnd5eJsonDocument& VariantDocument,
 		int32 VariantIndex, const FDnd5eJsonDocument& BaseItemDocument, int32 BaseIndex,
 		EDnd5eJsonItemVariantEditionPolicy Policy);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|Items")
+	static FDnd5eJsonItemGroupReadResult ReadItemGroupAtIndex(const FDnd5eJsonDocument& Document, int32 Index);
 };

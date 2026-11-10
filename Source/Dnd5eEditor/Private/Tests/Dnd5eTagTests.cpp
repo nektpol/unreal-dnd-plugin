@@ -28,7 +28,7 @@ bool FDnd5eNativeTagsTest::RunTest(const FString& Parameters)
 			Manager.RequestGameplayTag(FName(Case.Name), false) == Tag);
 		TestTrue(TEXT("The tag uses the correct root prefix"), Tag.GetTagName().ToString().StartsWith(TEXT("Dnd5e.")));
 	}
-	TestEqual(TEXT("Every documented exported native identity was checked"), Seen.Num(), 176);
+	TestEqual(TEXT("Every documented exported native identity was checked"), Seen.Num(), 177);
 	for (const TCHAR* Legacy : { TEXT("Dnd5.e.Damage.Type.Fire"), TEXT("Dnd5.e.Damage.Type.Necrotic"),
 		TEXT("Dnd5e.Condition.Type.Restraint"), TEXT("Dnd5e.Spell.Duration.Requirement.Concentration"),
 		TEXT("Dnd5e.Spell.CastingTime.Unit.Action"), TEXT("Dnd5e.Spell.Attack.Type.Melee") })

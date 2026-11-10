@@ -34,3 +34,8 @@ FDnd5eJsonItemVariantReadResult UDnd5eJsonItemLibrary::ReadMagicItemVariantAtInd
 {
 	return FDnd5eJsonItemVariantGenerator::ReadAtIndex(VariantDocument, VariantIndex, BaseItemDocument, BaseIndex, Policy);
 }
+
+FDnd5eJsonItemGroupReadResult UDnd5eJsonItemLibrary::ReadItemGroupAtIndex(const FDnd5eJsonDocument& Document, int32 Index)
+{
+	return FDnd5eJsonItemGroupReader::ReadAtIndex(Document, Index);
+}

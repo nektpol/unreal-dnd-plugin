@@ -789,7 +789,7 @@ namespace
 		return true;
 	}
 
-    bool ReadItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, bool bBaseItem, FReadState& State, const FDnd5eRecordId* GeneratedId = nullptr)
+    bool ReadItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, bool bBaseItem, FReadState& State, const FDnd5eRecordId* RecordIdOverride = nullptr)
     {
         if (FindExactField(Object, TEXT("_copy")).IsValid())
         {
@@ -797,7 +797,7 @@ namespace
                 TEXT("Base item copy assembly is outside this reader batch."));
         }
         if (!ReadBaseItemHeader(Object, Pointer, Item, State)) { return false; }
-		if (GeneratedId) { Item.Header.RecordId = *GeneratedId; }
+		if (RecordIdOverride) { Item.Header.RecordId = *RecordIdOverride; }
 
         auto& Origin = Item.Header.Provenance[0];
         TGuardValue<FString> SourceGuard(State.SourceId, Origin.SourceId);
@@ -824,9 +824,9 @@ namespace
     }
 }
 bool Dnd5eJsonReader::ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer,
-	FDnd5eItem& Item, FReadState& State, const FDnd5eRecordId* GeneratedId)
+	FDnd5eItem& Item, FReadState& State, const FDnd5eRecordId* RecordIdOverride)
 {
-	return ReadItemRow(Object, Pointer, Item, false, State, GeneratedId);
+	return ReadItemRow(Object, Pointer, Item, false, State, RecordIdOverride);
 }
 
 FDnd5eJsonBaseItemReadResult FDnd5eJsonBaseItemReader::Read(const FDnd5eJsonDocument& Document)

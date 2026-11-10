@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **842 cases**; the combined explicitly supplied-data run passes **871 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 176 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-10, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **844 cases**; the combined explicitly supplied-data run passes **874 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **98 structs (85 Core, 13 JSON), 472 fields, 27 enums, 177 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -312,3 +312,9 @@ The synthetic cases verify ancestor order, protected flags and explicit null del
 The Development Editor build and all **871 combined cases** passed on 2026-11-10, including **842 standard cases** and 29 opt-in audits. The report under Saved/Automation/Dnd5eTypedItemVariants records zero failures, not-run cases or automation warnings.
 
 Two synthetic tests check preview and typed pair ID parity, a valid same-name base link, original numeric literals, Blueprint access, and two-document provenance. Atomic failure checks cover a bad base weight, a bad inherited weight, a nested base entry, a composed template entry and a bad base index. The snapshot audit directly converts all five eligible copied pairs with the same pair IDs and source-row ancestry as their previews.
+
+### Item group reader
+
+The Development Editor build and all **874 combined cases** passed on 2026-11-10, including **844 standard cases** and 30 opt-in audits. The report under Saved/Automation/Dnd5eItemGroups records zero failures, not-run cases or automation warnings.
+
+Two synthetic tests verify group identity, a same-name base link, common item data and provenance, Blueprint access, hidden groups, ordered duplicate members, and atomic failures. The new opt-in case uses the existing supplied items-file argument `-Dnd5eJsonItemCopyFile="<absolute-path-to-items.json>"`. It reads all 119 groups and checks 669 member declarations, including 511 with explicit publications and 158 with omitted publications. The audit also verifies all 12 hidden groups.
