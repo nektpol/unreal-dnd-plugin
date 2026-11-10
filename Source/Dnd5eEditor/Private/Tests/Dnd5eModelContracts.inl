@@ -110,6 +110,18 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("bHasSource"), TEXT("bool"), TEXT("false") },
 			{ TEXT("SourceId"), TEXT("FString"), TEXT("") },
 		} },
+		{ TEXT("FDnd5eItemChargeAmount"), &FDnd5eItemChargeAmount::StaticStruct, {
+			{ TEXT("Kind"), TEXT("EDnd5eItemChargeAmountKind"), TEXT("EDnd5eItemChargeAmountKind::Unspecified") },
+			{ TEXT("Fixed"), TEXT("int32"), TEXT("0") },
+			{ TEXT("Dice"), TEXT("FDnd5eDiceExpression"), TEXT("") },
+			{ TEXT("SourceLiteral"), TEXT("FString"), TEXT("") },
+		} },
+		{ TEXT("FDnd5eItemChargeData"), &FDnd5eItemChargeData::StaticStruct, {
+			{ TEXT("Charges"), TEXT("FDnd5eItemChargeAmount"), TEXT("") },
+			{ TEXT("RechargePresence"), TEXT("EDnd5eValuePresence"), TEXT("EDnd5eValuePresence::Unspecified") },
+			{ TEXT("RechargeTrigger"), TEXT("EDnd5eItemRechargeTrigger"), TEXT("EDnd5eItemRechargeTrigger::Unspecified") },
+			{ TEXT("RechargeAmount"), TEXT("FDnd5eItemChargeAmount"), TEXT("") },
+		} },
 		{ TEXT("FDnd5eItem"), &FDnd5eItem::StaticStruct, {
 			{ TEXT("Header"), TEXT("FDnd5eRecordHeader"), TEXT("") },
 			{ TEXT("bHasBaseItemId"), TEXT("bool"), TEXT("false") },
@@ -135,6 +147,7 @@ const TArray<FModelContract>& ModelContracts()
 			{ TEXT("bHasArmorData"), TEXT("bool"), TEXT("false") },
 			{ TEXT("ArmorData"), TEXT("FDnd5eItemArmorData"), TEXT("") },
 			{ TEXT("Masteries"), TEXT("TArray<FDnd5eItemMasteryReference>"), TEXT("") },
+			{ TEXT("ChargeData"), TEXT("FDnd5eItemChargeData"), TEXT("") },
 		} },
 		{ TEXT("FDnd5eClassFeatureSelector"), &FDnd5eClassFeatureSelector::StaticStruct, {
 			{ TEXT("ClassName"), TEXT("FString"), TEXT(""), false },

@@ -92,6 +92,8 @@ namespace
 			{ TEXT("EDnd5eSize"), &StaticEnum<EDnd5eSize>, { TEXT("Unspecified"), TEXT("Tiny"), TEXT("Small"), TEXT("Medium"), TEXT("Large"), TEXT("Huge"), TEXT("Gargantuan") } },
 			{ TEXT("EDnd5eMassUnit"), &StaticEnum<EDnd5eMassUnit>, { TEXT("Unspecified"), TEXT("Ounces"), TEXT("Pounds"), TEXT("Grams"), TEXT("Kilograms") } },
 			{ TEXT("EDnd5eValuePresence"), &StaticEnum<EDnd5eValuePresence>, { TEXT("Unspecified"), TEXT("ExplicitNull"), TEXT("Present") } },
+			{ TEXT("EDnd5eItemChargeAmountKind"), &StaticEnum<EDnd5eItemChargeAmountKind>, { TEXT("Unspecified"), TEXT("ExplicitNull"), TEXT("Fixed"), TEXT("Dice") } },
+			{ TEXT("EDnd5eItemRechargeTrigger"), &StaticEnum<EDnd5eItemRechargeTrigger>, { TEXT("Unspecified"), TEXT("Dawn"), TEXT("Dusk"), TEXT("Midnight"), TEXT("ShortRest"), TEXT("LongRest"), TEXT("Decade"), TEXT("Special") } },
 			{ TEXT("EDnd5eAttunementMode"), &StaticEnum<EDnd5eAttunementMode>, { TEXT("Unspecified"), TEXT("NotRequired"), TEXT("Required"), TEXT("Optional") } },
 			{ TEXT("EDnd5eSourceInclusion"), &StaticEnum<EDnd5eSourceInclusion>, { TEXT("Unspecified"), TEXT("Excluded"), TEXT("Included"), TEXT("IncludedWithAlternateName") } },
 			{ TEXT("EDnd5eDataAvailability"), &StaticEnum<EDnd5eDataAvailability>, { TEXT("Unknown"), TEXT("Absent"), TEXT("Present") } },

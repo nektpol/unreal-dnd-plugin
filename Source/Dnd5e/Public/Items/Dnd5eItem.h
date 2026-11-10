@@ -11,6 +11,7 @@
 #include "Values/Dnd5eAttunementRequirement.h"
 #include "Items/Dnd5eItemEquipment.h"
 #include "Records/Dnd5eRecordId.h"
+#include "Items/Dnd5eItemChargeData.h"
 #include "Dnd5eItem.generated.h"
 
 USTRUCT(BlueprintType)
@@ -65,4 +66,6 @@ struct DND5E_API FDnd5eItem
 	FDnd5eItemArmorData ArmorData;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
 	TArray<FDnd5eItemMasteryReference> Masteries;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Item")
+	FDnd5eItemChargeData ChargeData;
 };

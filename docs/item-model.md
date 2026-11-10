@@ -1,6 +1,6 @@
 # Item model
 
-Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry references can expand into typed Content with caller-supplied templates and arguments. Supplementary item text and images are available through an explicit join. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
+Status: foundation, shared price/mass values, readable attunement and structured attunement indexes and weapon/armor data, definition records and named mastery-reference storage are implemented. The supplied base-item reader covers identity, selectors, Content, rarity, fixed price, weight, and weapon and armor fields. The ordinary-item reader converts a selected row with readable attunement, structured attunement indexes and direct base-item links. A separate assembler produces previews and field origins for ordinary-item copy chains with supported array modifiers. The typed copy reader converts assembled rows directly with original source locations. Magic variant matching supports standalone and copied templates. Eligible pairs can generate previews with inherited fields, supported entry substitutions and transforms, and original source locations. Typed variant import preserves the generated pair ID, the base link and template ancestry. Item groups read common item fields and ordered member declarations with their own record IDs. Reusable entry references can expand into typed Content with caller-supplied templates and arguments. Supplementary item text and images are available through an explicit join. Charges and recharge declarations are available on typed items. An item catalog is a later stage. The spell reader/catalog do not import or index these values automatically.
 
 The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eItem.h) composes existing shared identity and Content. It is a reference-data value, with no UObject ownership, equipment state, inventory system or gameplay execution. Build/test evidence is recorded in [Automated tests](testing.md).
 
@@ -11,6 +11,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 - [Item groups](#item-groups)
 - [Reusable item entry templates](#reusable-item-entry-templates)
 - [Supplementary item content](#supplementary-item-content)
+- [Charges and recharge](#charges-and-recharge)
 - [Ordinary-item copy assembly](#ordinary-item-copy-assembly)
   - [Typed copy reading](#typed-copy-reading)
 - [Magic variant matching](#magic-variant-matching)
@@ -54,6 +55,7 @@ The exported Blueprint-visible [FDnd5eItem](../Source/Dnd5e/Public/Items/Dnd5eIt
 | bHasArmorData | `bool = false` | Whether ArmorData is represented |
 | ArmorData | `FDnd5eItemArmorData`, default | Active when its flag is true |
 | Masteries | `TArray<FDnd5eItemMasteryReference>`, empty | Ordered named mastery references with independent notes |
+| ChargeData | `FDnd5eItemChargeData`, all declarations unspecified | Capacity, recharge trigger, and recharge amount |
 
 Default construction supplies no Category::Item or canonical key. Authors/adapters provide identity deliberately. Empty Properties means no normalized properties have been represented; this declaration does not define whether a missing raw template field inherits or an explicit empty array clears earlier properties. The future assembly stage must retain source presence/override evidence.
 
@@ -182,6 +184,12 @@ Expansion returns typed replacement blocks, the chosen template ID and its prove
 Call **Read Item Supplements** or `FDnd5eJsonItemSupplementReader::ReadDocument` with a supplied `itemFluff` document. It returns supplementary rows in source order. Each row has a canonical item lookup ID, typed text and image blocks, and original provenance. Explicit source-qualified copies resolve within the same document. Each field uses the closest declaration in the chain. Empty arrays and null clear the field. Inherited blocks carry the source and pointer of the ancestor that supplied them. Duplicate identities, missing targets and copy cycles fail the whole read.
 
 Call **Try Apply Item Supplement** with an item and one supplementary row. The join compares dataset namespace, display name and the primary publication. Ordinary items, item groups and generated variants can use the same join while preserving their own record IDs. A match returns an item with supplementary content attached. The original supplementary row retains its full source chain, and each attached block retains its field provenance. [Native reader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemSupplementReader.h)
+
+## Charges and recharge
+
+`FDnd5eItem::ChargeData` stores three independent declarations. `Charges` and `RechargeAmount` accept a nonnegative integer or an authored dice expression. Fixed numbers and numeric strings retain their source literal. Dice markup supplies the expression and retains the original token. Zero, explicit null and omission remain distinct.
+
+`RechargePresence` records whether the trigger was supplied. `RechargeTrigger` maps the supported source codes for dawn, dusk, midnight, short rest, long rest, a decade, and special recharge. The item description carries the source wording for special conditions. A missing recharge amount stays unspecified. Unrecognized field values are retained in provenance metadata with a located warning. [Charge data types](../Source/Dnd5e/Public/Items/Dnd5eItemChargeData.h)
 
 ## Ordinary-item copy assembly
 
