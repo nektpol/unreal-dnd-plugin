@@ -9,6 +9,7 @@
 #include "Dom/JsonValue.h"
 #include <initializer_list>
 
+struct FDnd5eItemGroup;
 struct FDnd5eItem;
 
 namespace Dnd5eJsonReader
@@ -108,4 +109,5 @@ namespace Dnd5eJsonReader
 	bool SerializeValue(const TSharedPtr<FJsonValue>& Value, FString& OutJson, const FString& Pointer, FReadState& State);
 	bool ReadStandaloneItemRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItem& Item, FReadState& State, const FDnd5eRecordId* RecordIdOverride = nullptr);
 	bool ReadSupplementaryImages(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, TArray<FDnd5eContentBlock>& OutImages, FReadState& State);
+	bool ReadItemGroupRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItemGroup& Group, FReadState& State);
 }

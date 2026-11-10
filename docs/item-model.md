@@ -290,3 +290,9 @@ The first header provenance entry carries the generated publication, page, membe
 Use the native item catalog or construct a Blueprint Item Catalog Object. Replace Records accepts typed item and group arrays. It validates their categories, IDs and display names before publishing the replacement. Duplicate IDs fail with a diagnostic and preserve the active records. An empty successful replacement clears the catalog.
 
 Try Get Item and Try Get Group return copies by exact record ID. Query Record Ids supports optional exact dataset, publication, category and rarity filters. Name Contains matches case-insensitively and can include aliases. Results retain input order with items followed by groups. Set the dataset filter to query edition-specific inputs independently. [Blueprint catalog object](../Source/Dnd5e/Public/Catalog/Dnd5eItemCatalogObject.h)
+
+### Build from supplied documents
+
+Call Build Item Catalog with an Item Catalog Object and a build request. Base Documents accept a `baseitem` array. Item Documents accept `item` and `itemGroup` arrays, with at least one present in each document. Copy rows resolve against their original item document. Each document supplies its own dataset namespace and relative file path for identity and diagnostics.
+
+The builder stages base items first, then ordinary items and copies in input order, followed by groups in input order. It validates the combined replacement before publishing it. A failed build reports zero records, retains collected diagnostics and preserves the active catalog. A successful empty request clears the catalog. [Native and Blueprint builder](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemCatalogBuilder.h)

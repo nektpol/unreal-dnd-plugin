@@ -32,45 +32,45 @@ namespace
 		Out = MoveTemp(Member);
 		return true;
 	}
+}
 
-	bool ReadItemGroupRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItemGroup& Group, FReadState& State)
+bool Dnd5eJsonReader::ReadItemGroupRow(const FJsonObject& Object, const FString& Pointer, FDnd5eItemGroup& Group, FReadState& State)
+{
+	FString Name, Source;
+	if (!ReadRequiredString(Object, TEXT("name"), Pointer, Name, State) ||
+		!ReadRequiredString(Object, TEXT("source"), Pointer, Source, State) ||
+		!ValidateIdentityText(Name, AppendPointer(Pointer, TEXT("name")), State) ||
+		!ValidateIdentityText(Source, AppendPointer(Pointer, TEXT("source")), State)) { return false; }
+	FDnd5eRecordId GroupId;
+	if (!Dnd5e::Items::TryMakeGroupId(State.Context.DatasetNamespace, Name, Source, GroupId))
 	{
-		FString Name, Source;
-		if (!ReadRequiredString(Object, TEXT("name"), Pointer, Name, State) ||
-			!ReadRequiredString(Object, TEXT("source"), Pointer, Source, State) ||
-			!ValidateIdentityText(Name, AppendPointer(Pointer, TEXT("name")), State) ||
-			!ValidateIdentityText(Source, AppendPointer(Pointer, TEXT("source")), State)) { return false; }
-		FDnd5eRecordId GroupId;
-		if (!Dnd5e::Items::TryMakeGroupId(State.Context.DatasetNamespace, Name, Source, GroupId))
-		{
-			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Invalid item group identity."));
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* Members = nullptr;
-		const FString MembersPointer = AppendPointer(Pointer, TEXT("items"));
-		if (!ReadRequiredArray(Object, TEXT("items"), Pointer, Members, State) ||
-			!ReadOptionalBool(Object, TEXT("itemsHidden"), Pointer, Group.bItemsHidden, State)) { return false; }
-		if (Members->Num() > MaxItemGroupMembers)
-		{
-			return Fail(State, Codes::ResourceLimitExceeded, MembersPointer, TEXT("Too many item group members."));
-		}
-		Group.Members.Reserve(Members->Num());
-		for (int32 Index = 0; Index < Members->Num(); ++Index)
-		{
-			FDnd5eItemGroupMember Member;
-			if (!ReadItemGroupMember((*Members)[Index], AppendPointer(MembersPointer, FString::FromInt(Index)), Member, State))
-			{
-				return false;
-			}
-			Group.Members.Add(MoveTemp(Member));
-		}
-
-		FJsonObject Details;
-		Details.Values = Object.Values;
-		Details.RemoveField(TEXT("items"));
-		if (FindExactField(Object, TEXT("itemsHidden")).IsValid()) { Details.RemoveField(TEXT("itemsHidden")); }
-		return ReadStandaloneItemRow(Details, Pointer, Group.Details, State, &GroupId);
+		return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Invalid item group identity."));
 	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Members = nullptr;
+	const FString MembersPointer = AppendPointer(Pointer, TEXT("items"));
+	if (!ReadRequiredArray(Object, TEXT("items"), Pointer, Members, State) ||
+		!ReadOptionalBool(Object, TEXT("itemsHidden"), Pointer, Group.bItemsHidden, State)) { return false; }
+	if (Members->Num() > MaxItemGroupMembers)
+	{
+		return Fail(State, Codes::ResourceLimitExceeded, MembersPointer, TEXT("Too many item group members."));
+	}
+	Group.Members.Reserve(Members->Num());
+	for (int32 Index = 0; Index < Members->Num(); ++Index)
+	{
+		FDnd5eItemGroupMember Member;
+		if (!ReadItemGroupMember((*Members)[Index], AppendPointer(MembersPointer, FString::FromInt(Index)), Member, State))
+		{
+			return false;
+		}
+		Group.Members.Add(MoveTemp(Member));
+	}
+
+	FJsonObject Details;
+	Details.Values = Object.Values;
+	Details.RemoveField(TEXT("items"));
+	if (FindExactField(Object, TEXT("itemsHidden")).IsValid()) { Details.RemoveField(TEXT("itemsHidden")); }
+	return ReadStandaloneItemRow(Details, Pointer, Group.Details, State, &GroupId);
 }
 
 FDnd5eJsonItemGroupReadResult FDnd5eJsonItemGroupReader::ReadAtIndex(const FDnd5eJsonDocument& Document, int32 Index)
