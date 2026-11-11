@@ -16,7 +16,7 @@
 | Skills | `TArray<FDnd5eCreatureSkillBonus>` | Skill name and signed integer bonus. |
 | Senses and Languages | `TArray<FString>` each | Authored senses and languages. |
 | PassivePerception | `int32` | Printed passive Perception. |
-| ChallengeRating | `FString` | Authored challenge rating text, including fractions. |
+| ChallengeRating | `FDnd5eCreatureChallengeRating` | Presence, authored base, lair and coven CR strings, and optional base and lair XP overrides. Use `ChallengeRating.Base` to read the base string. |
 | Traits, Actions, BonusActions | `TArray<FDnd5eCreatureEntry>` each | Ordered named entries. Each entry holds a name and `TArray<FDnd5eContentBlock> Entries`. |
 
 Integer members default to zero. Arrays, strings, and tag containers default to empty. The model currently provides the initial stat-block representation. The native `FDnd5eJsonCreatureReader::ReadCreature` reads a selected direct row from a supplied `monster` document by exact authored name and source. It maps all 14 native creature types from a string or an object with a string type and optional string subtypes. The initial stat-block conversion supports numeric and sourced AC entries, signed skill bonuses, and separate trait, action, and bonus action groups. Failure returns diagnostics and an empty creature. Selected copy rows require a future assembly step. Catalog lookup, supplementary lore and media, and editor browsing are pending.

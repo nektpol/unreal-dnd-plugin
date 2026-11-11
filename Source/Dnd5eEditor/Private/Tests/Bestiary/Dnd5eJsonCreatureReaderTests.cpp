@@ -56,7 +56,7 @@ bool FDnd5eCreatureConversionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Positive and negative skill bonuses"), Creature.Skills.Num() == 2 &&
 		Creature.Skills.ContainsByPredicate([](const auto& Skill) { return Skill.Skill == TEXT("stealth") && Skill.Bonus == 6; }) &&
 		Creature.Skills.ContainsByPredicate([](const auto& Skill) { return Skill.Skill == TEXT("arcana") && Skill.Bonus == -2; }));
-	TestTrue(TEXT("Observations"), Creature.PassivePerception == 9 && Creature.ChallengeRating == TEXT("1/4") &&
+	TestTrue(TEXT("Observations"), Creature.PassivePerception == 9 && Creature.ChallengeRating.Base == TEXT("1/4") &&
 		Creature.Senses.Num() == 1 && Creature.Languages.Num() == 1);
 	TestTrue(TEXT("Independent ordered rule groups"), Creature.Traits.Num() == 1 && Creature.Traits[0].Name == TEXT("Glow") &&
 		Creature.Actions.Num() == 1 && Creature.Actions[0].Name == TEXT("Flicker") && Creature.Actions[0].Entries.Num() == 1 &&
@@ -234,6 +234,52 @@ bool FDnd5eCreatureAlignmentTest::RunTest(const FString& Parameters)
 	CheckFailure(TEXT(R"("alignment":["N",{"special":"as its host"}],)"), TEXT("/monster/1/alignment/1"));
 	CheckFailure(TEXT(R"("alignment":[{"alignment":["N"],"chance":101}],)"), TEXT("/monster/1/alignment/0/chance"));
 	CheckFailure(TEXT(R"("alignment":null,)"), TEXT("/monster/1/alignment"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureChallengeRatingTest, "Dnd5e.Bestiary.Reader.ChallengeRating",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureChallengeRatingTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Field)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT(R"(,"cr":"1/4")"), Field, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Missing = Read(TEXT(""));
+	const auto Null = Read(TEXT(R"(,"cr":null)"));
+	const auto Plain = Read(TEXT(R"(,"cr":"Unknown")"));
+	TestTrue(TEXT("Omitted, null and authored text are distinct"),
+		Missing.Status == EDnd5eJsonReadStatus::Success && Missing.Creature.ChallengeRating.Presence == EDnd5eValuePresence::Unspecified &&
+		Null.Status == EDnd5eJsonReadStatus::Success && Null.Creature.ChallengeRating.Presence == EDnd5eValuePresence::ExplicitNull &&
+		Plain.Status == EDnd5eJsonReadStatus::Success && Plain.Creature.ChallengeRating.Presence == EDnd5eValuePresence::Present &&
+		Plain.Creature.ChallengeRating.Base == TEXT("Unknown") && !Plain.Creature.ChallengeRating.bHasXp);
+
+	const auto Variants = Read(TEXT(R"(,"cr":{"cr":"1/4","lair":"1/2","coven":"1"})"));
+	const auto& Ratings = Variants.Creature.ChallengeRating;
+	TestTrue(TEXT("Base, lair, and coven ratings remain separate"), Variants.Status == EDnd5eJsonReadStatus::Success &&
+		Ratings.Base == TEXT("1/4") && Ratings.Lair == TEXT("1/2") && Ratings.Coven == TEXT("1") &&
+		!Ratings.bHasXp && !Ratings.bHasLairXp);
+
+	const auto Overrides = Read(TEXT(R"(,"cr":{"cr":"3","xp":0,"xpLair":900})"));
+	const auto& Xp = Overrides.Creature.ChallengeRating;
+	TestTrue(TEXT("Zero XP override is present and lair XP stays separate"), Overrides.Status == EDnd5eJsonReadStatus::Success &&
+		Xp.bHasXp && Xp.Xp == 0 && Xp.bHasLairXp && Xp.LairXp == 900 && Xp.Lair.IsEmpty());
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Field, const TCHAR* Pointer)
+	{
+		const auto Result = Read(Field);
+		TestTrue(Pointer, Result.Status == EDnd5eJsonReadStatus::Failure &&
+			Result.Creature.ChallengeRating.Presence == EDnd5eValuePresence::Unspecified &&
+			Result.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"(,"cr":{"lair":"6"})"), TEXT("/monster/1/cr/cr"));
+	CheckFailure(TEXT(R"(,"cr":{"cr":"3","xpLair":-1})"), TEXT("/monster/1/cr/xpLair"));
+	CheckFailure(TEXT(R"(,"cr":{"cr":"3","xp":1.5})"), TEXT("/monster/1/cr/xp"));
 	return !HasAnyErrors();
 }
 

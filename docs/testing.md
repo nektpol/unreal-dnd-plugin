@@ -410,7 +410,7 @@ The focused editor run under Saved/Automation/Dnd5eSpellStatCard checks the shar
 
 ## Bestiary reader
 
-Run the `Dnd5e.Bestiary.Reader` automation filter for the synthetic conversion and failure tests. The alignment test covers omitted and empty arrays, simple tags, compound codes, qualified alternatives, and exact diagnostics for malformed values. The creature type test checks all 14 native types in plain and nested forms and verifies exact diagnostic locations for unsupported type strings. The conversion and failure tests exercise numeric and sourced AC, signed skills, record identity, grouped Content, and precise failures for invalid, duplicate, missing, and copy rows.
+Run the `Dnd5e.Bestiary.Reader` automation filter for the synthetic conversion and failure tests. The challenge rating test covers field presence, fractional and alternate CR, authored XP overrides, and exact diagnostics for invalid fields. The alignment test covers omitted and empty arrays, simple tags, compound codes, qualified alternatives, and exact diagnostics for malformed values. The creature type test checks all 14 native types in plain and nested forms and verifies exact diagnostic locations for unsupported type strings. The conversion and failure tests exercise numeric and sourced AC, signed skills, record identity, grouped Content, and precise failures for invalid, duplicate, missing, and copy rows.
 
 Run `Dnd5e.Bestiary.Local.GoblinSmoke` with `-Dnd5eBestiaryRoot="<absolute path to the supplied data/bestiary folder>"` to include the optional local check. The check uses the supplied MM and XMM documents. The plugin repository contains only synthetic fixtures.
 

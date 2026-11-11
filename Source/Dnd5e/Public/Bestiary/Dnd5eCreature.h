@@ -60,7 +60,7 @@ struct DND5E_API FDnd5eCreature
 	TArray<FString> Languages;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
-	FString ChallengeRating;
+	FDnd5eCreatureChallengeRating ChallengeRating;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eCreatureEntry> Traits;

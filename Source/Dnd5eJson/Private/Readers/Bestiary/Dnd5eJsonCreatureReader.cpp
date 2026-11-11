@@ -440,6 +440,58 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureChallengeRating(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreatureChallengeRating& Out, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("cr"));
+		if (!Value.IsValid()) { return true; }
+
+		if (Value->Type == EJson::Null)
+		{
+			Out.Presence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+		if (Value->Type == EJson::String)
+		{
+			if (!ReadRequiredString(Object, TEXT("cr"), Pointer, Out.Base, State)) { return false; }
+			Out.Presence = EDnd5eValuePresence::Present;
+			return true;
+		}
+
+		const FString RatingPointer = AppendPointer(Pointer, TEXT("cr"));
+		TSharedPtr<FJsonObject> Rating;
+		if (!RequireObject(Value, RatingPointer, Rating, State) ||
+			!CheckAllowedKeys(*Rating, {TEXT("cr"), TEXT("lair"), TEXT("coven"), TEXT("xp"), TEXT("xpLair")},
+				RatingPointer, State) ||
+			!ReadRequiredString(*Rating, TEXT("cr"), RatingPointer, Out.Base, State))
+		{
+			return false;
+		}
+		if (FindExactField(*Rating, TEXT("lair")).IsValid() &&
+			!ReadRequiredString(*Rating, TEXT("lair"), RatingPointer, Out.Lair, State))
+		{
+			return false;
+		}
+		if (FindExactField(*Rating, TEXT("coven")).IsValid() &&
+			!ReadRequiredString(*Rating, TEXT("coven"), RatingPointer, Out.Coven, State))
+		{
+			return false;
+		}
+		if (FindExactField(*Rating, TEXT("xp")).IsValid())
+		{
+			if (!ReadStatInteger(*Rating, TEXT("xp"), RatingPointer, Out.Xp, State)) { return false; }
+			Out.bHasXp = true;
+		}
+		if (FindExactField(*Rating, TEXT("xpLair")).IsValid())
+		{
+			if (!ReadStatInteger(*Rating, TEXT("xpLair"), RatingPointer, Out.LairXp, State)) { return false; }
+			Out.bHasLairXp = true;
+		}
+
+		Out.Presence = EDnd5eValuePresence::Present;
+		return true;
+	}
+
 	bool ReadCreatureObservations(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -447,7 +499,7 @@ namespace
 			ReadStrings(Object, TEXT("senses"), Pointer, Creature.Senses, State) &&
 			ReadStrings(Object, TEXT("languages"), Pointer, Creature.Languages, State) &&
 			ReadStatInteger(Object, TEXT("passive"), Pointer, Creature.PassivePerception, State) &&
-			ReadRequiredString(Object, TEXT("cr"), Pointer, Creature.ChallengeRating, State);
+			ReadCreatureChallengeRating(Object, Pointer, Creature.ChallengeRating, State);
 	}
 
 	bool ReadCreatureEntries(const FJsonObject& Object, const TCHAR* Key, const FString& Pointer,

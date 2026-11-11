@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "Content/Dnd5eContentType.h"
 #include "Values/Dnd5eDiceExpression.h"
+#include "Values/Dnd5eValuePresence.h"
 #include "Dnd5eCreatureTypes.generated.h"
 
 USTRUCT(BlueprintType)
@@ -97,4 +98,34 @@ struct DND5E_API FDnd5eCreatureAlignmentOption
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	FString Special;
+};
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureChallengeRating
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence Presence = EDnd5eValuePresence::Unspecified;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString Base;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString Lair;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString Coven;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bHasXp = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	int32 Xp = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bHasLairXp = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	int32 LairXp = 0;
 };
