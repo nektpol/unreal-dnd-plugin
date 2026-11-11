@@ -76,6 +76,7 @@ The [file loader reference](docs/json-spell-file-loader.md) documents runtime/Bl
 - [Content validation](docs/content-validation.md): read-only structural/value validation, model issue paths, and opt-in atomic builder integration.
 - [Shared models](docs/shared-models.md): reusable metadata, measurements, money, components, and structured content.
 - [Item definitions](docs/item-definitions.md): type/property/mastery records, named references, retained templates and identity limits.
+- [Bestiary model](docs/bestiary-model.md) documents the Blueprint-visible creature stat block.
 - [Item model](docs/item-model.md): implemented foundation fields, selector/rarity roles, shared Content reuse, and remaining item work.
 - [Spell model](docs/spell-model.md): implemented spell fields, classification roles, relationships, and spell-specific area/duration context.
 
