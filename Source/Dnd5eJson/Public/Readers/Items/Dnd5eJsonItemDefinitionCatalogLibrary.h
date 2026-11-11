@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #pragma once
 #include "Kismet/BlueprintFunctionLibrary.h"
@@ -18,4 +18,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dnd5e|ItemDefinitions")
 	static bool BuildItemDefinitionCatalog(UDnd5eItemDefinitionCatalogObject* CatalogObject,
 		const FDnd5eJsonDocument& Document, TArray<FDnd5eDiagnostic>& Diagnostics);
+
+	UFUNCTION(BlueprintCallable, Category = "Dnd5e|ItemDefinitions")
+	static bool BuildItemDefinitionCatalogFromDocuments(UDnd5eItemDefinitionCatalogObject* CatalogObject,
+		const TArray<FDnd5eJsonDocument>& Documents, TArray<FDnd5eDiagnostic>& Diagnostics);
 };

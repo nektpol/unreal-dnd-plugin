@@ -1,6 +1,7 @@
 ﻿// Developed by Neko Creative Technologies
 
 #include "Catalog/Dnd5eItemCatalog.h"
+#include "Items/Dnd5eItemIdentity.h"
 #include "Dnd5eTags.h"
 
 namespace
@@ -119,6 +120,40 @@ bool FDnd5eItemCatalog::TryGetGroup(const FDnd5eRecordId& Id, FDnd5eItemGroup& O
 	if (!Found) { Out = {}; return false; }
 	Out = *Found;
 	return true;
+}
+
+EDnd5eItemSelectorMatchStatus FDnd5eItemCatalog::MatchItemSelector(const FString& DatasetNamespace,
+	const FDnd5eItemGroupMember& Selector, TArray<FDnd5eRecordId>& CandidateIds) const
+{
+	using EStatus = EDnd5eItemSelectorMatchStatus;
+	CandidateIds.Reset();
+
+	const FString ComparisonSource = Selector.bHasSource ? Selector.SourceId : TEXT("name-only");
+	FDnd5eRecordId Wanted;
+	if (!Dnd5e::Items::TryMakeId(DatasetNamespace, Selector.Name, ComparisonSource, Wanted) ||
+		!Wanted.DatasetNamespace.Equals(DatasetNamespace, ESearchCase::CaseSensitive))
+	{
+		return EStatus::InvalidSelector;
+	}
+
+	for (const auto& Id : OrderedIds)
+	{
+		if (!Id.DatasetNamespace.Equals(DatasetNamespace, ESearchCase::CaseSensitive)) { continue; }
+		const auto* Item = ItemsById.Find(Id);
+		if (!Item || (Selector.bHasSource && Item->Header.Provenance.IsEmpty())) { continue; }
+
+		const FString Publication = Selector.bHasSource ? Item->Header.Provenance[0].SourceId : ComparisonSource;
+		FDnd5eRecordId AuthoredId;
+		if (Dnd5e::Items::TryMakeId(DatasetNamespace, Item->Header.DisplayName, Publication, AuthoredId) && AuthoredId == Wanted)
+		{
+			CandidateIds.Add(Id);
+		}
+	}
+
+	if (!Selector.bHasSource) { return EStatus::MissingSource; }
+	if (CandidateIds.IsEmpty()) { return EStatus::NoMatch; }
+	if (CandidateIds.Num() > 1) { return EStatus::Ambiguous; }
+	return EStatus::Matched;
 }
 
 bool FDnd5eItemCatalog::QueryRecordIds(const FDnd5eItemCatalogQuery& Query, TArray<FDnd5eRecordId>& OutIds,

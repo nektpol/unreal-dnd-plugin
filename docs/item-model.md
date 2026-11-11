@@ -302,3 +302,11 @@ The builder stages base items first, then ordinary items and copies in input ord
 Add Variant Documents and Variant Selections to generate specific items as part of the build. Each selection names a zero-based document index and row index for the variant template and the base item, plus an edition policy. The base document is selected from Base Documents. Generated items follow the ordinary items in selection order and precede the groups in catalog queries. Each generated item retains its pair ID, base link, and source provenance. Repeating a pair fails duplicate ID validation.
 
 Supplement Documents supply `itemFluff` arrays. The builder matches supplementary rows to staged base items, ordinary items, generated variants and group details by canonical name and publication within the exact dataset namespace. Records with distinct IDs can share a supplement if their authored identity matches. Unmatched rows are allowed. A duplicate supplement identity, malformed document, or failed variant selection aborts the replacement and leaves the active catalog available.
+
+### Definition and selector lookups
+
+Build Item Definition Catalog From Documents reads each supplied definition document using its own namespace and replaces the definition catalog only after all documents and the combined definitions pass validation. Duplicate identities or malformed documents preserve the active definitions. A successful empty build clears them. To look up an item's type, properties, or masteries, match its typed selector in the item's namespace, then retrieve the definition by the returned ID.
+
+Match Item Selector takes a group member and the owning group's namespace. It matches canonical item names and primary publications and returns stored IDs in catalog order. Groups are excluded. Generated variants can appear alongside ordinary items with the same authored identity, producing Ambiguous. An omitted publication produces MissingSource even with one name candidate. Retrieve automatically only after Matched.
+
+Match Item Attached Spell accepts the intended spell dataset namespace, an attachment, and a loaded Spell Catalog Object. It forwards the attachment's authored selector to the spell catalog and reports the match status, candidate IDs, and diagnostics. These operations leave the original item and its authored selectors available to callers.

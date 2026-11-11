@@ -6,6 +6,17 @@
 #include "Items/Dnd5eItemGroup.h"
 #include "Dnd5eItemCatalog.generated.h"
 
+UENUM(BlueprintType)
+enum class EDnd5eItemSelectorMatchStatus : uint8
+{
+	NotAttempted,
+	Matched,
+	MissingSource,
+	InvalidSelector,
+	NoMatch,
+	Ambiguous
+};
+
 USTRUCT(BlueprintType)
 struct DND5E_API FDnd5eItemCatalogQuery
 {
@@ -35,6 +46,8 @@ public:
 	bool QueryRecordIds(const FDnd5eItemCatalogQuery& Query, TArray<FDnd5eRecordId>& OutIds,
 		TArray<FDnd5eDiagnostic>& Diagnostics) const;
 	int32 GetRecordCount() const { return OrderedIds.Num(); }
+	EDnd5eItemSelectorMatchStatus MatchItemSelector(const FString& DatasetNamespace,
+		const FDnd5eItemGroupMember& Selector, TArray<FDnd5eRecordId>& CandidateIds) const;
 
 private:
 	TMap<FDnd5eRecordId, FDnd5eItem> ItemsById;

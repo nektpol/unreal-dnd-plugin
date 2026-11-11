@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **876 cases**; the standard and explicitly supplied-data checks pass **910 cases**, with zero failed/not-run cases, automation warnings, or automation errors. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **879 cases**; the standard and explicitly supplied-data checks pass **913 cases**, across the full suite and a focused rerun. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -363,3 +363,7 @@ Two synthetic cases verify input ordering, multiple namespaces, typed copy conve
 ### Item catalog variants and supplements
 
 Two synthetic cases cover selected variant generation, pair identity, the base link, supplementary attachment to ordinary items and groups, same-name records across namespaces, and unmatched supplementary rows. They also cover invalid request indices and duplicate supplementary identities across documents, including the duplicate row location and preservation of the active catalog. The 910-case report is under Saved/Automation/Dnd5eItemCatalogEnrichment.
+
+### Item catalog joins
+
+Three synthetic automation cases exercise multi-document definition replacement across namespaces, malformed input and duplicate atomicity, group member ambiguity and source handling, and the attached-spell adapter against a loaded spell catalog. The initial report under Saved/Automation/Dnd5eItemCatalogJoins includes one unrelated editor HTTP timeout warning and one attached-spell fixture failure. The corrected join tests are reported under Saved/Automation/Dnd5eItemCatalogJoinsVerified.

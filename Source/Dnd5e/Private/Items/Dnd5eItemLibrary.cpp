@@ -35,3 +35,28 @@ bool UDnd5eItemLibrary::TryGetReferencedBaseItem(const FDnd5eItem& Item, const T
 	OutBaseItem = *Match;
 	return true;
 }
+
+EDnd5eSpellSelectorMatchStatus UDnd5eItemLibrary::MatchItemAttachedSpell(const FString& DatasetNamespace,
+	const FDnd5eItemAttachedSpell& AttachedSpell, const UDnd5eSpellCatalogObject* SpellCatalog,
+	TArray<FDnd5eRecordId>& CandidateIds, TArray<FDnd5eDiagnostic>& Diagnostics)
+{
+	CandidateIds.Reset();
+	Diagnostics.Reset();
+	const auto& Selector = AttachedSpell.Selector;
+	if (!IsValid(SpellCatalog) || Selector.Category != Dnd5e::Category::Spell.GetTag() || Selector.Qualifier.IsValid() ||
+		(Selector.bHasSource && Selector.SourceId.TrimStartAndEnd().IsEmpty()))
+	{
+		FDnd5eDiagnostic Diagnostic;
+		Diagnostic.Severity = EDnd5eDiagnosticSeverity::Error;
+		Diagnostic.Code = TEXT("Dnd5e.Items.InvalidAttachedSpellLookup");
+		Diagnostic.Message = TEXT("Supply a spell catalog and a plain spell selector with a value for any explicit publication.");
+		Diagnostics.Add(MoveTemp(Diagnostic));
+		return EDnd5eSpellSelectorMatchStatus::InvalidSelector;
+	}
+
+	FDnd5eSpellSelector SpellSelector;
+	SpellSelector.DatasetNamespace = DatasetNamespace;
+	SpellSelector.Name = Selector.Name;
+	SpellSelector.SourceId = Selector.bHasSource ? Selector.SourceId : FString();
+	return SpellCatalog->MatchSpellSelector(SpellSelector, CandidateIds, Diagnostics);
+}

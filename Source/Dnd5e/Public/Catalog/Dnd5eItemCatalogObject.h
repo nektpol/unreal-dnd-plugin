@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #pragma once
 #include "UObject/Object.h"
@@ -25,6 +25,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Dnd5e|ItemCatalog")
 	int32 GetRecordCount() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|ItemCatalog")
+	EDnd5eItemSelectorMatchStatus MatchItemSelector(const FString& DatasetNamespace,
+		const FDnd5eItemGroupMember& Selector, TArray<FDnd5eRecordId>& CandidateIds) const;
 
 private:
 	FDnd5eItemCatalog Catalog;

@@ -18,6 +18,12 @@ bool UDnd5eItemCatalogObject::TryGetGroup(const FDnd5eRecordId& Id, FDnd5eItemGr
 	return Catalog.TryGetGroup(Id, Out);
 }
 
+EDnd5eItemSelectorMatchStatus UDnd5eItemCatalogObject::MatchItemSelector(const FString& DatasetNamespace,
+	const FDnd5eItemGroupMember& Selector, TArray<FDnd5eRecordId>& CandidateIds) const
+{
+	return Catalog.MatchItemSelector(DatasetNamespace, Selector, CandidateIds);
+}
+
 bool UDnd5eItemCatalogObject::QueryRecordIds(const FDnd5eItemCatalogQuery& Query, TArray<FDnd5eRecordId>& OutIds,
 	TArray<FDnd5eDiagnostic>& Diagnostics) const
 {
