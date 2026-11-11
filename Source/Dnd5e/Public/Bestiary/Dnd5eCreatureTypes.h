@@ -5,7 +5,18 @@
 #include "Content/Dnd5eContentType.h"
 #include "Values/Dnd5eDiceExpression.h"
 #include "Values/Dnd5eValuePresence.h"
+#include "Values/Dnd5eDistance.h"
 #include "Dnd5eCreatureTypes.generated.h"
+
+UENUM(BlueprintType)
+enum class EDnd5eCreatureMovementMode : uint8
+{
+	Walk,
+	Burrow,
+	Climb,
+	Fly,
+	Swim,
+};
 
 USTRUCT(BlueprintType)
 struct DND5E_API FDnd5eCreatureArmorClass
@@ -164,4 +175,46 @@ struct DND5E_API FDnd5eCreatureSubtype
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	bool bPrefixHidden = false;
+};
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureSpeed
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eCreatureMovementMode Mode = EDnd5eCreatureMovementMode::Walk;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eDistance Distance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eInlineContent> Condition;
+};
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureMovement
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence Presence = EDnd5eValuePresence::Unspecified;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureSpeed> Speeds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureSpeed> AlternateSpeeds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bCanHover = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<EDnd5eCreatureMovementMode> ChoiceModes;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eDistance ChoiceDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eInlineContent> ChoiceNote;
 };

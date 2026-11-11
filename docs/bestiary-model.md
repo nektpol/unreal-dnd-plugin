@@ -11,7 +11,8 @@
 | bHasAlignment and AlignmentOptions | `bool`, `TArray<FDnd5eCreatureAlignmentOption>` | Authored field presence and ordered options. Each option retains its `TArray<FString> Codes`, optional chance, note, and special text. |
 | ArmorClasses | `TArray<FDnd5eCreatureArmorClass>` | Ordered numeric or special AC entries. Each holds `bool bHasValue`, `int32 Value`, `TArray<FDnd5eContentBlock> Sources`, `TArray<FDnd5eInlineContent>` for each of `Condition` and `Special`, and `bool bWrapInParentheses`. |
 | HitPoints | `FDnd5eCreatureHitPoints` | Field presence, printed average and dice formula, or special text in `TArray<FDnd5eInlineContent> Special`. Check `bHasAverage` before reading the numeric value. |
-| WalkSpeed | `FDnd5eDistance` | Walking distance with its unit. |
+| WalkSpeed | `FDnd5eDistance` | Convenience projection of the top-level walking distance, including authored zero. |
+| Movement | `FDnd5eCreatureMovement` | Presence, standard and alternate speeds with conditions, hover, and ordered choice modes with a shared distance and note. |
 | AbilityScores | `FDnd5eCreatureAbilityScores` | Six named `int32` ability scores. |
 | Skills | `TArray<FDnd5eCreatureSkillBonus>` | Skill name and signed integer bonus. |
 | Senses and Languages | `TArray<FString>` each | Authored senses and languages. |

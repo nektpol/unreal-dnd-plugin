@@ -45,6 +45,9 @@ struct DND5E_API FDnd5eCreature
 	FDnd5eDistance WalkSpeed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eCreatureMovement Movement;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	FDnd5eCreatureAbilityScores AbilityScores;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")

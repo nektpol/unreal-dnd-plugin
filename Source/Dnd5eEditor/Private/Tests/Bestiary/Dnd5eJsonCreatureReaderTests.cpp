@@ -410,6 +410,61 @@ bool FDnd5eCreatureHitPointsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureMovementTest, "Dnd5e.Bestiary.Reader.Movement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureMovementTest::RunTest(const FString& Parameters)
+{
+	using FMode = EDnd5eCreatureMovementMode;
+	const auto Read = [](const TCHAR* Field)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT(R"("speed":{"walk":25},)"), Field, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Missing = Read(TEXT(""));
+	const auto Null = Read(TEXT(R"("speed":null,)"));
+	TestTrue(TEXT("Omitted and null movement are distinct"), Missing.Status == EDnd5eJsonReadStatus::Success &&
+		Missing.Creature.Movement.Presence == EDnd5eValuePresence::Unspecified &&
+		Null.Status == EDnd5eJsonReadStatus::Success && Null.Creature.Movement.Presence == EDnd5eValuePresence::ExplicitNull);
+	const auto Fly = Read(TEXT(R"("speed":{"fly":40,"canHover":true},)"));
+	TestTrue(TEXT("Fly and hover need no walking speed"), Fly.Status == EDnd5eJsonReadStatus::Success &&
+		Fly.Creature.Movement.bCanHover && Fly.Creature.Movement.Speeds.Num() == 1 &&
+		Fly.Creature.Movement.Speeds[0].Mode == FMode::Fly && Fly.Creature.Movement.Speeds[0].Distance.Amount.Integer == 40 &&
+		Fly.Creature.WalkSpeed.Unit == EDnd5eDistanceUnit::Unspecified);
+
+	const auto Result = Read(TEXT(R"json("speed":{"walk":{"number":0,"condition":"while rooted"},"swim":30,
+		"alternate":{"walk":[{"number":50,"condition":"in another form"},60]},
+		"choose":{"from":["fly","climb"],"amount":20,"note":"choose one"}},)json"));
+	const auto& Movement = Result.Creature.Movement;
+	if (!TestTrue(TEXT("Combined movement converts"), Result.Status == EDnd5eJsonReadStatus::Success)) { return false; }
+	TestTrue(TEXT("Conditional zero is preserved in movement and projected into WalkSpeed"),
+		Movement.Presence == EDnd5eValuePresence::Present && Movement.Speeds.Num() == 2 &&
+		Movement.Speeds[0].Mode == FMode::Walk && !Movement.Speeds[0].Condition.IsEmpty() &&
+		Movement.Speeds[1].Mode == FMode::Swim && Result.Creature.WalkSpeed.Unit == EDnd5eDistanceUnit::Feet &&
+		Result.Creature.WalkSpeed.Amount.Integer == 0);
+	TestTrue(TEXT("Alternates and choices keep their ordering"), Movement.AlternateSpeeds.Num() == 2 &&
+		Movement.AlternateSpeeds[0].Distance.Amount.Integer == 50 && !Movement.AlternateSpeeds[0].Condition.IsEmpty() &&
+		Movement.AlternateSpeeds[1].Distance.Amount.Integer == 60 &&
+		Movement.ChoiceModes == TArray<FMode>{FMode::Fly, FMode::Climb} &&
+		Movement.ChoiceDistance.Amount.Integer == 20 && !Movement.ChoiceNote.IsEmpty());
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Field, const TCHAR* Pointer)
+	{
+		const auto Failed = Read(Field);
+		TestTrue(Pointer, Failed.Status == EDnd5eJsonReadStatus::Failure &&
+			Failed.Creature.Movement.Presence == EDnd5eValuePresence::Unspecified &&
+			Failed.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"("speed":{"choose":{"from":["teleport"],"amount":20}},)"), TEXT("/monster/1/speed/choose/from/0"));
+	CheckFailure(TEXT(R"("speed":{"walk":{"number":-5}},)"), TEXT("/monster/1/speed/walk/number"));
+	CheckFailure(TEXT(R"("speed":{"alternate":{"walk":[{"number":20,"condition":false}]}},)"),
+		TEXT("/monster/1/speed/alternate/walk/0/condition"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

@@ -2,6 +2,7 @@
 
 #include "Readers/Bestiary/Dnd5eJsonCreatureReader.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
+#include "Algo/Find.h"
 #include "Dnd5eTags.h"
 
 namespace
@@ -470,20 +471,189 @@ namespace
 		return true;
 	}
 
-	bool ReadMovementAndScores(const FJsonObject& Object, const FString& Pointer,
-		FDnd5eCreature& Creature, FReadState& State)
+	struct FCreatureMovementKey
 	{
-		TSharedPtr<FJsonObject> Speed;
-		const FString SpeedPointer = AppendPointer(Pointer, TEXT("speed"));
-		int32 Walk = 0;
-		if (!ReadRequiredObject(Object, TEXT("speed"), Pointer, Speed, State) ||
-			!ReadStatInteger(*Speed, TEXT("walk"), SpeedPointer, Walk, State))
+		const TCHAR* Key;
+		EDnd5eCreatureMovementMode Mode;
+	};
+
+	const FCreatureMovementKey CreatureMovementKeys[] = {
+		{TEXT("walk"), EDnd5eCreatureMovementMode::Walk},
+		{TEXT("burrow"), EDnd5eCreatureMovementMode::Burrow},
+		{TEXT("climb"), EDnd5eCreatureMovementMode::Climb},
+		{TEXT("fly"), EDnd5eCreatureMovementMode::Fly},
+		{TEXT("swim"), EDnd5eCreatureMovementMode::Swim},
+	};
+
+	FDnd5eDistance MakeCreatureSpeedDistance(int32 Feet)
+	{
+		FDnd5eDistance Distance;
+		Distance.Unit = EDnd5eDistanceUnit::Feet;
+		Distance.Amount.Kind = EDnd5eNumberKind::Integer;
+		Distance.Amount.Integer = Feet;
+		return Distance;
+	}
+
+	bool ReadCreatureSpeed(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		EDnd5eCreatureMovementMode Mode, FDnd5eCreatureSpeed& Out, FReadState& State)
+	{
+		int32 Feet = 0;
+		if (Value.IsValid() && Value->Type == EJson::Number)
+		{
+			FString Literal;
+			if (!Value->TryGetString(Literal) || !TryParseBoundedIntegerToken(Literal, 0, MAX_int32, Feet))
+			{
+				return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected a nonnegative integer speed."));
+			}
+		}
+		else
+		{
+			TSharedPtr<FJsonObject> Object;
+			FString Condition;
+			if (!RequireObject(Value, Pointer, Object, State) ||
+				!CheckAllowedKeys(*Object, {TEXT("number"), TEXT("condition")}, Pointer, State) ||
+				!ReadStatInteger(*Object, TEXT("number"), Pointer, Feet, State))
+			{
+				return false;
+			}
+			if (FindExactField(*Object, TEXT("condition")).IsValid() &&
+				(!ReadRequiredString(*Object, TEXT("condition"), Pointer, Condition, State) ||
+				!ReadInlines(Condition, AppendPointer(Pointer, TEXT("condition")), Out.Condition, State)))
+			{
+				return false;
+			}
+		}
+		Out.Mode = Mode;
+		Out.Distance = MakeCreatureSpeedDistance(Feet);
+		return true;
+	}
+
+	bool ReadCreatureMovementAlternates(const FJsonObject& Speed, const FString& Pointer,
+		TArray<FDnd5eCreatureSpeed>& Out, FReadState& State)
+	{
+		const auto Value = FindExactField(Speed, TEXT("alternate"));
+		if (!Value.IsValid()) { return true; }
+
+		const FString AlternatePointer = AppendPointer(Pointer, TEXT("alternate"));
+		TSharedPtr<FJsonObject> Alternate;
+		if (!RequireObject(Value, AlternatePointer, Alternate, State) ||
+			!CheckAllowedKeys(*Alternate, {TEXT("walk"), TEXT("burrow"), TEXT("climb"), TEXT("fly"), TEXT("swim")},
+				AlternatePointer, State))
 		{
 			return false;
 		}
-		Creature.WalkSpeed.Unit = EDnd5eDistanceUnit::Feet;
-		Creature.WalkSpeed.Amount.Kind = EDnd5eNumberKind::Integer;
-		Creature.WalkSpeed.Amount.Integer = Walk;
+		for (const auto& Key : CreatureMovementKeys)
+		{
+			const auto Entries = FindExactField(*Alternate, Key.Key);
+			if (!Entries.IsValid()) { continue; }
+
+			const FString ModePointer = AppendPointer(AlternatePointer, Key.Key);
+			const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+			if (!RequireArray(Entries, ModePointer, Rows, State)) { return false; }
+			for (int32 Index = 0; Index < Rows->Num(); ++Index)
+			{
+				FDnd5eCreatureSpeed Entry;
+				if (!ReadCreatureSpeed((*Rows)[Index], AppendPointer(ModePointer, FString::FromInt(Index)),
+					Key.Mode, Entry, State))
+				{
+					return false;
+				}
+				Out.Add(MoveTemp(Entry));
+			}
+		}
+		return true;
+	}
+
+	bool ReadCreatureMovementChoice(const FJsonObject& Speed, const FString& Pointer,
+		FDnd5eCreatureMovement& Out, FReadState& State)
+	{
+		const auto Value = FindExactField(Speed, TEXT("choose"));
+		if (!Value.IsValid()) { return true; }
+
+		const FString ChoicePointer = AppendPointer(Pointer, TEXT("choose"));
+		TSharedPtr<FJsonObject> Choice;
+		int32 Amount = 0;
+		TArray<FString> Modes;
+		if (!RequireObject(Value, ChoicePointer, Choice, State) ||
+			!CheckAllowedKeys(*Choice, {TEXT("from"), TEXT("amount"), TEXT("note")}, ChoicePointer, State) ||
+			!ReadStrings(*Choice, TEXT("from"), ChoicePointer, Modes, State, true) ||
+			!ReadStatInteger(*Choice, TEXT("amount"), ChoicePointer, Amount, State))
+		{
+			return false;
+		}
+
+		const FString FromPointer = AppendPointer(ChoicePointer, TEXT("from"));
+		if (Modes.IsEmpty())
+		{
+			return Fail(State, Codes::InvalidFieldValue, FromPointer, TEXT("Expected at least one movement choice."));
+		}
+		for (int32 Index = 0; Index < Modes.Num(); ++Index)
+		{
+			const auto* Key = Algo::FindByPredicate(CreatureMovementKeys, [&Modes, Index](const FCreatureMovementKey& Entry)
+			{
+				return Modes[Index] == Entry.Key;
+			});
+			if (!Key)
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, AppendPointer(FromPointer, FString::FromInt(Index)),
+					TEXT("Unsupported movement mode."));
+			}
+			Out.ChoiceModes.Add(Key->Mode);
+		}
+
+		Out.ChoiceDistance = MakeCreatureSpeedDistance(Amount);
+		FString Note;
+		return !FindExactField(*Choice, TEXT("note")).IsValid() ||
+			(ReadRequiredString(*Choice, TEXT("note"), ChoicePointer, Note, State) &&
+				ReadInlines(Note, AppendPointer(ChoicePointer, TEXT("note")), Out.ChoiceNote, State));
+	}
+
+	bool ReadCreatureMovement(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("speed"));
+		if (!Value.IsValid()) { return true; }
+
+		auto& Out = Creature.Movement;
+		if (Value->Type == EJson::Null)
+		{
+			Out.Presence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+
+		const FString SpeedPointer = AppendPointer(Pointer, TEXT("speed"));
+		TSharedPtr<FJsonObject> Speed;
+		if (!RequireObject(Value, SpeedPointer, Speed, State) ||
+			!CheckAllowedKeys(*Speed, {TEXT("walk"), TEXT("burrow"), TEXT("climb"), TEXT("fly"), TEXT("swim"),
+				TEXT("canHover"), TEXT("alternate"), TEXT("choose")}, SpeedPointer, State))
+		{
+			return false;
+		}
+		for (const auto& Key : CreatureMovementKeys)
+		{
+			const auto Field = FindExactField(*Speed, Key.Key);
+			if (!Field.IsValid()) { continue; }
+
+			FDnd5eCreatureSpeed Entry;
+			if (!ReadCreatureSpeed(Field, AppendPointer(SpeedPointer, Key.Key), Key.Mode, Entry, State)) { return false; }
+			if (Key.Mode == EDnd5eCreatureMovementMode::Walk) { Creature.WalkSpeed = Entry.Distance; }
+			Out.Speeds.Add(MoveTemp(Entry));
+		}
+		if (!ReadOptionalBool(*Speed, TEXT("canHover"), SpeedPointer, Out.bCanHover, State) ||
+			!ReadCreatureMovementAlternates(*Speed, SpeedPointer, Out.AlternateSpeeds, State) ||
+			!ReadCreatureMovementChoice(*Speed, SpeedPointer, Out, State))
+		{
+			return false;
+		}
+
+		Out.Presence = EDnd5eValuePresence::Present;
+		return true;
+	}
+
+	bool ReadMovementAndScores(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		if (!ReadCreatureMovement(Object, Pointer, Creature, State)) { return false; }
 
 		auto& Scores = Creature.AbilityScores;
 		return ReadStatInteger(Object, TEXT("str"), Pointer, Scores.Strength, State) &&
