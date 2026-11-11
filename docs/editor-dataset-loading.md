@@ -1,6 +1,6 @@
 # Editor dataset loading
 
-Dnd5eEditor provides local dataset settings, load actions, editor-session catalogs, and Message Log results for spells and items. The searchable spell browser uses the spell editor catalog. The editor actions call the existing [spell file loader](json-spell-file-loader.md) and [item file loader](item-model.md#load-offline-files).
+Dnd5eEditor provides local dataset settings, load actions, editor-session catalogs, and Message Log results for spells and items. Separate searchable browsers use the spell and item editor catalogs. The editor actions call the existing [spell file loader](json-spell-file-loader.md) and [item file loader](item-model.md#load-offline-files).
 
 ## Select files
 
@@ -78,7 +78,7 @@ Reports and summary counts are computed once per row selection. The text attribu
 
 ## Verification
 
-The user verified editor loading of 319 source-marked SRD records, selection persistence after restart, and successful spell selection after the details-view correction. The current 883-case standard / 918-case total [automation run](testing.md) retains coverage of browser metadata/exact identity, name searching, refresh notifications, the production widget's selection/search/details flow, copy isolation, garbage collection, and menu/tab registration. Report-specific tests additionally drive populated read-only inspection, cached summary text, zero/failure states, private property flags/defaults, GC/copy isolation, and search/refresh clearing. Existing config tests check that the actual user-config file and settings default object remain unchanged. The new runtime reference lookup does not add automatic browser navigation.
+The user verified editor loading of 319 source-marked SRD records, selection persistence after restart, and successful spell selection after the details-view correction. The current 884-case standard / 920-case total [automation run](testing.md) retains coverage of browser metadata/exact identity, name searching, refresh notifications, the production widget's selection/search/details flow, copy isolation, garbage collection, and menu/tab registration. Report-specific tests additionally drive populated read-only inspection, cached summary text, zero/failure states, private property flags/defaults, GC/copy isolation, and search/refresh clearing. Existing config tests check that the actual user-config file and settings default object remain unchanged. The new runtime reference lookup does not add automatic browser navigation.
 
 Automated coverage drives the real Slate controls and details updates without simulating screen clicks, docking gestures, or native file dialogs; it does not unload its own executing test module. Interactive picker/persistence and corrected spell selection have manual evidence. Docking appearance, scrolling/expansion presentation, and teardown during module unload are not claimed as fully simulated UI coverage. The runtime source-mapping limits remain those documented by the reader and loader.
 
@@ -92,4 +92,10 @@ Open **Tools → Dnd5e Item Dataset Settings**, or **Editor Preferences → Gene
 
 **Tools → Load Dnd5e Item Dataset** saves the local item settings and opens an item load page in the **Dnd5e Dataset** Message Log. Success reports the total of item and group records, the definition count, and the diagnostic count. The item subsystem retains both new catalogs before notifying listeners. A failed reload reports its diagnostics and preserves both active objects. The item catalog and definition catalog belong to the editor session, while selected paths persist in the per-project user settings.
 
-The editor item settings expose base, primary, definition, and supplement inputs. Explicit variant selection is available through the item loader request. The Spell Browser continues to read the spell session. The item catalog is available through the item editor subsystem for an item browser to consume.
+The editor item settings expose base, primary, definition, and supplement inputs. Explicit variant selection is available through the item loader request. The Spell Browser continues to read the spell session. The Item Browser reads its own catalog through the item editor subsystem.
+
+## Browse loaded items and groups
+
+Open **Tools → Dnd5e Item Browser**. The separate dockable tab reads the current item catalog. Opening it performs no file load. The summary counts items and groups, and each row shows name, record kind, primary publication, and rarity. Search matches names case-insensitively and preserves catalog order.
+
+Selecting a row retrieves the exact record by ID. Item details show a detached typed item. Group details include the group's common item values and authored member selectors. The property inspector is read-only. Search and successful reloads clear the previous selection. The active search is reapplied after a reload. Failed loads leave the current catalog and selection available.

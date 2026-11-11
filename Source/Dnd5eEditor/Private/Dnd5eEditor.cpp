@@ -17,6 +17,7 @@
 #include "ToolMenus.h"
 #include "Settings/Dnd5eEditorItemDatasetSettings.h"
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
+#include "Browser/SDnd5eItemBrowser.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eEditor"
 
@@ -24,6 +25,7 @@ namespace
 {
     const FName DatasetLogName(TEXT("Dnd5eDataset"));
     const FName SpellBrowserTabName(TEXT("Dnd5eSpellBrowser"));
+    const FName ItemBrowserTabName(TEXT("Dnd5eItemBrowser"));
 
     void WriteDatasetDiagnostics(FMessageLog& Log, const TArray<FDnd5eDiagnostic>& Diagnostics)
     {
@@ -47,6 +49,10 @@ void FDnd5eEditorModule::StartupModule()
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(SpellBrowserTabName, FOnSpawnTab::CreateRaw(this, &FDnd5eEditorModule::SpawnSpellBrowser))
         .SetDisplayName(LOCTEXT("BrowserTabTitle", "Dnd5e Spell Browser"))
         .SetMenuType(ETabSpawnerMenuType::Hidden);
+    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(ItemBrowserTabName,
+        FOnSpawnTab::CreateRaw(this, &FDnd5eEditorModule::SpawnItemBrowser))
+        .SetDisplayName(LOCTEXT("ItemBrowserTitle", "Dnd5e Item Browser"))
+        .SetMenuType(ETabSpawnerMenuType::Hidden);
     FMessageLogInitializationOptions Options;
     Options.bShowPages = true;
     Options.bAllowClear = true;
@@ -66,6 +72,13 @@ void FDnd5eEditorModule::ShutdownModule()
             Tab->RequestCloseTab();
         }
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(SpellBrowserTabName);
+
+        if (TSharedPtr<SDockTab> Tab = ItemBrowserTab.Pin())
+        {
+            Tab->SetContent(SNullWidget::NullWidget);
+            Tab->RequestCloseTab();
+        }
+        FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ItemBrowserTabName);
     }
     SpellBrowserTab.Reset();
     if (FModuleManager::Get().IsModuleLoaded("ToolMenus"))
@@ -73,6 +86,7 @@ void FDnd5eEditorModule::ShutdownModule()
         UToolMenus::UnRegisterStartupCallback(this);
         UToolMenus::UnregisterOwner(this);
     }
+
     if (FMessageLogModule* MessageLog = FModuleManager::GetModulePtr<FMessageLogModule>("MessageLog"))
     {
         MessageLog->UnregisterLogListing(DatasetLogName);
@@ -105,6 +119,9 @@ void FDnd5eEditorModule::RegisterMenus()
         LOCTEXT("LoadItemDataset", "Load Dnd5e Item Dataset"),
         LOCTEXT("LoadItemDatasetTip", "Load the selected item dataset and show its diagnostics."),
         FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::LoadItemDataset)));
+    Section.AddMenuEntry("Dnd5eItemBrowser", LOCTEXT("ItemBrowser", "Dnd5e Item Browser"),
+        LOCTEXT("ItemBrowserTip", "Search and inspect items and groups in the current editor catalog."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenItemBrowser)));
 }
 
 void FDnd5eEditorModule::OpenDatasetSettings()
@@ -191,6 +208,21 @@ TSharedRef<SDockTab> FDnd5eEditorModule::SpawnSpellBrowser(const FSpawnTabArgs& 
         SNew(SDnd5eSpellBrowser)
     ];
     SpellBrowserTab = Tab;
+    return Tab;
+}
+
+void FDnd5eEditorModule::OpenItemBrowser()
+{
+    FGlobalTabmanager::Get()->TryInvokeTab(ItemBrowserTabName);
+}
+
+TSharedRef<SDockTab> FDnd5eEditorModule::SpawnItemBrowser(const FSpawnTabArgs& Args)
+{
+    TSharedRef<SDockTab> Tab = SNew(SDockTab).TabRole(ETabRole::NomadTab)
+    [
+        SNew(SDnd5eItemBrowser)
+    ];
+    ItemBrowserTab = Tab;
     return Tab;
 }
 

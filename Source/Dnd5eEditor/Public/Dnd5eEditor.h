@@ -20,5 +20,8 @@ private:
 	void OpenSpellBrowser();
 	TSharedRef<SDockTab> SpawnSpellBrowser(const FSpawnTabArgs& Args);
 	TWeakPtr<SDockTab> SpellBrowserTab;
+	void OpenItemBrowser();
+	TSharedRef<SDockTab> SpawnItemBrowser(const FSpawnTabArgs& Args);
+	TWeakPtr<SDockTab> ItemBrowserTab;
 	bool bEditorUiRegistered = false;
 };

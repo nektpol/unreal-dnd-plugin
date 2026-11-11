@@ -2,6 +2,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Browser/Dnd5eItemBrowserSelection.h"
+#include "Browser/SDnd5eItemBrowser.h"
 #include "Browser/Dnd5eSpellBrowserModel.h"
 #include "Browser/SDnd5eSpellBrowser.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
@@ -13,7 +15,10 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
+#include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "ToolMenu.h"
 #include "ToolMenuSection.h"
 #include "ToolMenus.h"
@@ -280,18 +285,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBrowserRegistrationTest, "Dnd5e.Editor.Sp
 bool FDnd5eBrowserRegistrationTest::RunTest(const FString& Parameters)
 {
 	TestTrue(TEXT("The stable browser tab factory is registered"), FGlobalTabmanager::Get()->HasTabSpawner(TEXT("Dnd5eSpellBrowser")));
+	TestTrue(TEXT("The separate item tab factory is registered"), FGlobalTabmanager::Get()->HasTabSpawner(TEXT("Dnd5eItemBrowser")));
 	UToolMenu* Menu = UToolMenus::Get()->FindMenu(TEXT("LevelEditor.MainMenu.Tools"));
 	FToolMenuSection* Section = Menu ? Menu->FindSection(TEXT("Dnd5e")) : nullptr;
 	if (!TestNotNull(TEXT("Browser tools section exists"), Section)) { return false; }
 	auto& Module = FModuleManager::GetModuleChecked<FDnd5eEditorModule>(TEXT("Dnd5eEditor"));
-	int32 Count = 0;
-	for (const auto& Entry : Section->Blocks)
+	for (FName Name : {FName(TEXT("Dnd5eSpellBrowser")), FName(TEXT("Dnd5eItemBrowser"))})
 	{
-		if (Entry.Name != FName(TEXT("Dnd5eSpellBrowser"))) { continue; }
-		++Count;
-		TestTrue(TEXT("The browser menu uses the module's cleanup owner"), Entry.Owner == FToolMenuOwner(&Module));
+		int32 Count = 0;
+		for (const auto& Entry : Section->Blocks)
+		{
+			if (Entry.Name != Name) { continue; }
+			++Count;
+			TestTrue(TEXT("The browser menu uses the module's cleanup owner"), Entry.Owner == FToolMenuOwner(&Module));
+		}
+		TestEqual(TEXT("Each browser command has one registration"), Count, 1);
 	}
-	TestEqual(TEXT("Exactly one browser command is registered"), Count, 1);
 	return !HasAnyErrors();
 }
 
@@ -350,6 +359,116 @@ bool FDnd5eBrowserReportTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Refresh clears old report and summary"), Details->GetSelectedObjects().IsEmpty() && FindBrowserText(Browser, NoSelection).IsValid());
 	List->SetSelection(List->GetItems()[0]);
 	TestTrue(TEXT("Reselection builds a fresh report"), FindBrowserText(Browser, TEXT("Typed references: 2")).IsValid());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemBrowserWidgetTest, "Dnd5e.Editor.ItemBrowser.WidgetSelectionAndRefresh", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
+{
+	FBrowserFiles Files;
+	if (!TestTrue(TEXT("Write item and group fixture"), Files.Write(TEXT(R"({
+		"item":[{"name":"Invented Compass","source":"SYN","rarity":"rare","charges":2}],
+		"itemGroup":[{"name":"Invented Family","source":"SYN","rarity":"rare","items":["Invented Compass|SYN"]}]
+	})")))) { return false; }
+	FDnd5eJsonItemCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("item-browser");
+	Request.ItemFiles = {TEXT("synthetic.json")};
+	const auto Loaded = UDnd5eJsonItemCatalogLoader::LoadItemCatalog(Request);
+	if (!TestTrue(TEXT("Load browser fixture"), Loaded.Status == EDnd5eJsonReadStatus::Success && Loaded.ItemCatalog)) { return false; }
+
+	auto* Session = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorItemDatasetSubsystem>() : nullptr;
+	if (!TestNotNull(TEXT("Actual editor item subsystem exists"), Session)) { return false; }
+	auto* Property = FindFProperty<FObjectPropertyBase>(Session->GetClass(), TEXT("ItemCatalog"));
+	if (!TestNotNull(TEXT("Transient catalog fixture can be installed"), Property)) { return false; }
+	struct FRestore
+	{
+		UDnd5eEditorItemDatasetSubsystem& Session;
+		FObjectPropertyBase& Property;
+		TStrongObjectPtr<UDnd5eItemCatalogObject> Original;
+		~FRestore()
+		{
+			Property.SetObjectPropertyValue_InContainer(&Session, Original.Get());
+			Session.OnCatalogChanged().Broadcast();
+		}
+	};
+	FRestore Restore{*Session, *Property, TStrongObjectPtr<UDnd5eItemCatalogObject>(Session->GetItemCatalog())};
+	Property->SetObjectPropertyValue_InContainer(Session, Loaded.ItemCatalog.Get());
+	TSharedPtr<SDnd5eItemBrowser> Browser = SNew(SDnd5eItemBrowser);
+	auto List = StaticCastSharedPtr<SListView<FDnd5eItemBrowserRowPtr>>(FindWidget(Browser.ToSharedRef(), TEXT("SListView<FDnd5eItemBrowserRowPtr>")));
+	auto Search = StaticCastSharedPtr<SSearchBox>(FindWidget(Browser.ToSharedRef(), TEXT("SSearchBox")));
+	auto Details = StaticCastSharedPtr<IDetailsView>(FindWidget(Browser.ToSharedRef(), TEXT("SDetailsView")));
+	if (!TestTrue(TEXT("Browser lists both kinds from the current catalog"),
+		List && Search && Details && List->GetItems().Num() == 2)) { return false; }
+
+	const FDnd5eRecordId ItemId = List->GetItems()[0]->Id;
+	List->SetSelection(List->GetItems()[0]);
+	if (!TestEqual(TEXT("Item selection installs one details object"), Details->GetSelectedObjects().Num(), 1)) { return false; }
+	auto* ItemSelection = Cast<UDnd5eItemBrowserSelection>(Details->GetSelectedObjects()[0].Get());
+	if (!TestNotNull(TEXT("Item selection uses typed wrapper"), ItemSelection)) { return false; }
+	TestTrue(TEXT("Exact selected item retains typed charges"), ItemSelection->Item.Header.RecordId == ItemId &&
+		ItemSelection->Item.ChargeData.Charges.Fixed == 2);
+	TestFalse(TEXT("Details editing is disabled"), Details->GetIsPropertyEditingEnabledDelegate().Execute());
+	TWeakObjectPtr<UDnd5eItemBrowserSelection> WeakItem = ItemSelection;
+	CollectGarbage(RF_NoFlags);
+	if (!TestTrue(TEXT("The item selection survives collection"), WeakItem.IsValid())) { return false; }
+	for (int32 Frame = 0; Frame < 3; ++Frame) { Details->Tick(FGeometry(), FPlatformTime::Seconds(), 1.0f / 60.0f); }
+	WeakItem->Item.Header.DisplayName = TEXT("Inspection copy");
+	FDnd5eItem Original;
+	TestTrue(TEXT("Selection is independent of catalog storage"), Session->GetItemCatalog()->TryGetItem(ItemId, Original) &&
+		Original.Header.DisplayName == TEXT("Invented Compass"));
+
+	Search->SetText(FText::FromString(TEXT(" FAMILY ")));
+	if (!TestTrue(TEXT("Search selects the matching row set and clears stale details"),
+		List->GetItems().Num() == 1 && List->GetSelectedItems().IsEmpty() && Details->GetSelectedObjects().IsEmpty())) { return false; }
+	List->SetSelection(List->GetItems()[0]);
+	if (!TestEqual(TEXT("Group selection installs one details object"), Details->GetSelectedObjects().Num(), 1)) { return false; }
+	const auto* Group = Cast<UDnd5eItemGroupBrowserSelection>(Details->GetSelectedObjects()[0].Get());
+	TestTrue(TEXT("Group selection exposes its authored members"), Group && Group->Group.Members.Num() == 1 &&
+		Group->Group.Details.Header.RecordId == List->GetItems()[0]->Id);
+	Session->OnCatalogChanged().Broadcast();
+	TestTrue(TEXT("Reload notification clears details and preserves active search"),
+		List->GetItems().Num() == 1 && Details->GetSelectedObjects().IsEmpty() && List->GetSelectedItems().IsEmpty());
+	TWeakPtr<SDnd5eItemBrowser> WeakBrowser = Browser;
+	List.Reset(); Search.Reset(); Details.Reset(); Browser.Reset();
+	TestFalse(TEXT("Releasing browser removes its shared callback"), WeakBrowser.IsValid());
+	Session->OnCatalogChanged().Broadcast();
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_COMPLEX_AUTOMATION_TEST(FDnd5eSrdItemBrowserTest, "Dnd5e.Editor.ItemBrowser.External", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+void FDnd5eSrdItemBrowserTest::GetTests(TArray<FString>& Names, TArray<FString>& Commands) const
+{
+	FString Root;
+	if (FParse::Value(FCommandLine::Get(), TEXT("Dnd5eJsonSrdItemBrowserRoot="), Root))
+	{
+		Names.Add(TEXT("Srd51"));
+		Commands.Add(TEXT("Srd51"));
+	}
+}
+
+bool FDnd5eSrdItemBrowserTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonItemCatalogLoadRequest Request;
+	if (!FParse::Value(FCommandLine::Get(), TEXT("Dnd5eJsonSrdItemBrowserRoot="), Request.DatasetRoot)) { return false; }
+	Request.DatasetNamespace = TEXT("srd51-local");
+	Request.BaseFiles = {TEXT("items-base-srd51.json")};
+	Request.DefinitionFiles = Request.BaseFiles;
+	Request.ItemFiles = {TEXT("items-srd51.json")};
+	TStrongObjectPtr<UDnd5eEditorItemDatasetSubsystem> Session(NewObject<UDnd5eEditorItemDatasetSubsystem>());
+	const auto& Result = Session->LoadSelection(Request);
+	if (!TestTrue(TEXT("Load the prepared SRD catalog pair"), Result.Status == EDnd5eJsonReadStatus::Success &&
+		Session->GetRecordCount() == 590 && Session->GetDefinitionCount() == 34)) { return false; }
+	FDnd5eItemBrowserModel Model;
+	Model.Rebuild(Session->GetItemCatalog());
+	TestEqual(TEXT("Every SRD record has a browser row"), Model.GetTotalCount(), 590);
+	Model.SetSearchText(TEXT("gaming set"));
+	TestTrue(TEXT("Search finds the SRD group"), Model.GetRows().ContainsByPredicate([](const auto& Row)
+	{
+		return Row->Id.Category == Dnd5e::Category::ItemGroup.GetTag() && Row->Name == TEXT("Gaming Set");
+	}));
+	Model.SetSearchText(TEXT(""));
+	TestEqual(TEXT("Clearing search restores all SRD rows"), Model.GetRows().Num(), 590);
 	return !HasAnyErrors();
 }
 
