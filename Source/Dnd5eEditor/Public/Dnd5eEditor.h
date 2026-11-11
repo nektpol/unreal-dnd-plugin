@@ -15,6 +15,8 @@ private:
 	void RegisterMenus();
 	void OpenDatasetSettings();
 	void LoadDataset();
+	void OpenItemDatasetSettings();
+	void LoadItemDataset();
 	void OpenSpellBrowser();
 	TSharedRef<SDockTab> SpawnSpellBrowser(const FSpawnTabArgs& Args);
 	TWeakPtr<SDockTab> SpellBrowserTab;

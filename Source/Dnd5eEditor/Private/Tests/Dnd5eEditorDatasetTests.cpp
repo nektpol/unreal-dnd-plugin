@@ -3,7 +3,9 @@
 #include "Dnd5eTestSupport.h"
 #include "Dnd5eEditor.h"
 #include "Settings/Dnd5eEditorDatasetSettings.h"
+#include "Settings/Dnd5eEditorItemDatasetSettings.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
+#include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/FileManager.h"
@@ -276,6 +278,9 @@ bool FDnd5eEditorDatasetMenuTest::RunTest(const FString& Parameters)
 	const auto Section = Category->GetSection(TEXT("Dnd5eDataset"));
 	if (!TestTrue(TEXT("Settings auto-register at their stable location"), Section.IsValid())) { return false; }
 	TestTrue(TEXT("Settings registration points to the default selection object"), Section->GetSettingsObject().Get() == GetDefault<UDnd5eEditorDatasetSettings>());
+	const auto ItemSection = Category->GetSection(TEXT("Dnd5eItemDataset"));
+	TestTrue(TEXT("Item settings register separately from spell settings"),
+		ItemSection.IsValid() && ItemSection->GetSettingsObject().Get() == GetDefault<UDnd5eEditorItemDatasetSettings>());
 	UToolMenu* Menu = FSlateApplication::IsInitialized() ? UToolMenus::Get()->FindMenu(TEXT("LevelEditor.MainMenu.Tools")) : nullptr;
 	FToolMenuSection* Tools = Menu ? Menu->FindSection(TEXT("Dnd5e")) : nullptr;
 	if (!Tools && !FApp::CanEverRender())
@@ -285,7 +290,8 @@ bool FDnd5eEditorDatasetMenuTest::RunTest(const FString& Parameters)
 	}
 	if (!TestNotNull(TEXT("Dataset tools section exists"), Tools)) { return false; }
 	auto& Module = FModuleManager::GetModuleChecked<FDnd5eEditorModule>(TEXT("Dnd5eEditor"));
-	for (FName Name : {FName(TEXT("Dnd5eDatasetSettings")), FName(TEXT("Dnd5eLoadDataset"))})
+	for (FName Name : {FName(TEXT("Dnd5eDatasetSettings")), FName(TEXT("Dnd5eLoadDataset")),
+		FName(TEXT("Dnd5eItemDatasetSettings")), FName(TEXT("Dnd5eLoadItemDataset"))})
 	{
 		int32 Count = 0;
 		for (const auto& Entry : Tools->Blocks)
@@ -301,6 +307,84 @@ bool FDnd5eEditorDatasetMenuTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Dataset results listing is registered"), LogModule->IsRegisteredLogListing(TEXT("Dnd5eDataset")));
 	}
 	else { AddError(TEXT("Message Log module is unavailable in an interactive editor.")); }
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eEditorItemSettingsTest, "Dnd5e.Editor.ItemDataset.Settings", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eEditorItemSettingsTest::RunTest(const FString& Parameters)
+{
+	FEditorDatasetFiles Files;
+	TStrongObjectPtr<UDnd5eEditorItemDatasetSettings> Settings(NewObject<UDnd5eEditorItemDatasetSettings>());
+	Settings->DatasetRoot.Path = Files.Root;
+	Settings->DatasetNamespace = TEXT("items-test");
+	FFilePath Base, Primary, Relative, Supplement;
+	Base.FilePath = FPaths::Combine(Files.Root, TEXT("base.json"));
+	Primary.FilePath = FPaths::Combine(Files.Root, TEXT("items/first.json"));
+	Relative.FilePath = TEXT("items/second.json");
+	Supplement.FilePath = TEXT("fluff.json");
+	Settings->BaseFiles = {Base};
+	Settings->DefinitionFiles = {Base};
+	Settings->ItemFiles = {Primary, Relative};
+	Settings->SupplementFiles = {Supplement};
+
+	const auto Request = Settings->MakeLoadRequest();
+	TestTrue(TEXT("Settings preserve roles, array order and the selected dataset context"),
+		Request.DatasetRoot == Files.Root && Request.DatasetNamespace == TEXT("items-test") &&
+		Request.BaseFiles == TArray<FString>{TEXT("base.json")} && Request.DefinitionFiles == Request.BaseFiles &&
+		Request.ItemFiles == TArray<FString>{TEXT("items/first.json"), TEXT("items/second.json")} &&
+		Request.SupplementFiles == TArray<FString>{TEXT("fluff.json")} && Request.VariantSelections.IsEmpty());
+	TestTrue(TEXT("Item settings use their own per-project user section"),
+		Settings->GetSectionName() == TEXT("Dnd5eItemDataset") &&
+		Settings->GetClass()->ClassConfigName == TEXT("EditorPerProjectUserSettings") && Settings->SupportsAutoRegistration());
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eEditorItemSessionTest, "Dnd5e.Editor.ItemDataset.Session", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eEditorItemSessionTest::RunTest(const FString& Parameters)
+{
+	FEditorDatasetFiles Files;
+	if (!TestTrue(TEXT("Write item and definition fixtures"), IFileManager::Get().MakeDirectory(*Files.Root, true) &&
+		FFileHelper::SaveStringToFile(TEXT(R"({"baseitem":[{"name":"Blade","source":"SYN","rarity":"none","type":"M|SYN"}],
+			"itemType":[{"name":"Melee","source":"SYN","abbreviation":"M"}]})"), *FPaths::Combine(Files.Root, TEXT("base.json")))))
+	{
+		return false;
+	}
+
+	TStrongObjectPtr<UDnd5eEditorItemDatasetSubsystem> Subsystem(NewObject<UDnd5eEditorItemDatasetSubsystem>());
+	FDnd5eJsonItemCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("first");
+	Request.BaseFiles = {TEXT("base.json")};
+	Request.DefinitionFiles = Request.BaseFiles;
+	int32 Broadcasts = 0;
+	Subsystem->OnCatalogChanged().AddLambda([&]
+	{
+		++Broadcasts;
+		TestTrue(TEXT("Listeners see both catalogs after publication"),
+			Subsystem->GetItemCatalog() && Subsystem->GetDefinitionCatalog() &&
+			Subsystem->GetRecordCount() == 1 && Subsystem->GetDefinitionCount() == 1);
+	});
+	TestTrue(TEXT("Empty session has zero counts"), Subsystem->GetRecordCount() == 0 && Subsystem->GetDefinitionCount() == 0);
+	if (!TestTrue(TEXT("Initial load publishes once"),
+		Subsystem->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Success && Broadcasts == 1)) { return false; }
+	TWeakObjectPtr<UDnd5eItemCatalogObject> Items(Subsystem->GetItemCatalog());
+	TWeakObjectPtr<UDnd5eItemDefinitionCatalogObject> Definitions(Subsystem->GetDefinitionCatalog());
+	Request.ItemFiles = {TEXT("missing.json")};
+	TestTrue(TEXT("Failed load reports diagnostics and leaves active objects and notification count alone"),
+		Subsystem->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Failure &&
+		!Subsystem->GetLastLoadResult().Diagnostics.IsEmpty() && Broadcasts == 1 &&
+		Subsystem->GetItemCatalog() == Items.Get() && Subsystem->GetDefinitionCatalog() == Definitions.Get());
+	CollectGarbage(RF_NoFlags);
+	TestTrue(TEXT("Active references survive garbage collection after a failed attempt"), Items.IsValid() && Definitions.IsValid());
+	Request.ItemFiles.Reset();
+	Request.DatasetNamespace = TEXT("second");
+	TestTrue(TEXT("Later success replaces both and publishes once"),
+		Subsystem->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Success && Broadcasts == 2 &&
+		Subsystem->GetItemCatalog() != Items.Get() && Subsystem->GetDefinitionCatalog() != Definitions.Get());
+	Subsystem->Deinitialize();
+	TestTrue(TEXT("Deinitialization releases both catalogs and resets the last result"),
+		!Subsystem->GetItemCatalog() && !Subsystem->GetDefinitionCatalog() && Broadcasts == 2 &&
+		Subsystem->GetLastLoadResult().Status == EDnd5eJsonReadStatus::NotAttempted && !Subsystem->OnCatalogChanged().IsBound());
 	return !HasAnyErrors();
 }
 

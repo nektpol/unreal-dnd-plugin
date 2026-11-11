@@ -1,6 +1,6 @@
 # Editor dataset loading
 
-Dnd5eEditor adds a local dataset selection page, three Tools commands, an editor-session catalog, Message Log results, and a searchable spell browser. It uses the existing [file loader](json-spell-file-loader.md) without changing the runtime parser or catalog contract. No test Actor or Play In Editor session is needed.
+Dnd5eEditor provides local dataset settings, load actions, editor-session catalogs, and Message Log results for spells and items. The searchable spell browser uses the spell editor catalog. The editor actions call the existing [spell file loader](json-spell-file-loader.md) and [item file loader](item-model.md#load-offline-files).
 
 ## Select files
 
@@ -78,10 +78,18 @@ Reports and summary counts are computed once per row selection. The text attribu
 
 ## Verification
 
-The user verified editor loading of 319 source-marked SRD records, selection persistence after restart, and successful spell selection after the details-view correction. The current 881-case standard / 915-case total [automation run](testing.md) retains coverage of browser metadata/exact identity, name searching, refresh notifications, the production widget's selection/search/details flow, copy isolation, garbage collection, and menu/tab registration. Report-specific tests additionally drive populated read-only inspection, cached summary text, zero/failure states, private property flags/defaults, GC/copy isolation, and search/refresh clearing. Existing config tests check that the actual user-config file and settings default object remain unchanged. The new runtime reference lookup does not add automatic browser navigation.
+The user verified editor loading of 319 source-marked SRD records, selection persistence after restart, and successful spell selection after the details-view correction. The current 883-case standard / 918-case total [automation run](testing.md) retains coverage of browser metadata/exact identity, name searching, refresh notifications, the production widget's selection/search/details flow, copy isolation, garbage collection, and menu/tab registration. Report-specific tests additionally drive populated read-only inspection, cached summary text, zero/failure states, private property flags/defaults, GC/copy isolation, and search/refresh clearing. Existing config tests check that the actual user-config file and settings default object remain unchanged. The new runtime reference lookup does not add automatic browser navigation.
 
 Automated coverage drives the real Slate controls and details updates without simulating screen clicks, docking gestures, or native file dialogs; it does not unload its own executing test module. Interactive picker/persistence and corrected spell selection have manual evidence. Docking appearance, scrolling/expansion presentation, and teardown during module unload are not claimed as fully simulated UI coverage. The runtime source-mapping limits remain those documented by the reader and loader.
 
 ## Additional runtime request options
 
 The runtime native/Blueprint [supplementary, edition-policy, and validation request fields](spell-data-inputs.md) are implemented. This editor settings page still exposes the five primary/availability selection fields above. It does not automatically supply supplementary files, classify editions, or enable Content validation.
+
+## Load items and definitions
+
+Open **Tools → Dnd5e Item Dataset Settings**, or **Editor Preferences → General → Dnd5e Item Dataset**. Choose an absolute local **Dataset Root**, enter a **Dataset Namespace**, and select explicit JSON files for **Base Files**, **Item Files**, **Definition Files**, and **Supplement Files**. The first two lists together must contain at least one selection. Definition and supplement selections are optional. A combined base and definition document may appear in both roles.
+
+**Tools → Load Dnd5e Item Dataset** saves the local item settings and opens an item load page in the **Dnd5e Dataset** Message Log. Success reports the total of item and group records, the definition count, and the diagnostic count. The item subsystem retains both new catalogs before notifying listeners. A failed reload reports its diagnostics and preserves both active objects. The item catalog and definition catalog belong to the editor session, while selected paths persist in the per-project user settings.
+
+The editor item settings expose base, primary, definition, and supplement inputs. Explicit variant selection is available through the item loader request. The Spell Browser continues to read the spell session. The item catalog is available through the item editor subsystem for an item browser to consume.

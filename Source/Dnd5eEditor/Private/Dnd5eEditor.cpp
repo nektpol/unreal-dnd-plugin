@@ -15,6 +15,8 @@
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SNullWidget.h"
 #include "ToolMenus.h"
+#include "Settings/Dnd5eEditorItemDatasetSettings.h"
+#include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eEditor"
 
@@ -22,6 +24,20 @@ namespace
 {
     const FName DatasetLogName(TEXT("Dnd5eDataset"));
     const FName SpellBrowserTabName(TEXT("Dnd5eSpellBrowser"));
+
+    void WriteDatasetDiagnostics(FMessageLog& Log, const TArray<FDnd5eDiagnostic>& Diagnostics)
+    {
+        for (const FDnd5eDiagnostic& Diagnostic : Diagnostics)
+        {
+            FString Message = FString::Printf(TEXT("[%s] %s"), *Diagnostic.Code.ToString(), *Diagnostic.Message);
+            if (!Diagnostic.RelativeFilePath.IsEmpty()) { Message += TEXT(" | ") + Diagnostic.RelativeFilePath; }
+            if (!Diagnostic.JsonPointer.IsEmpty()) { Message += TEXT(" ") + Diagnostic.JsonPointer; }
+            const FText Text = FText::FromString(Message);
+            if (Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error) { Log.Error(Text); }
+            else if (Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning) { Log.Warning(Text); }
+            else { Log.Info(Text); }
+        }
+    }
 }
 
 void FDnd5eEditorModule::StartupModule()
@@ -69,9 +85,26 @@ void FDnd5eEditorModule::RegisterMenus()
     FToolMenuOwnerScoped Owner(this);
     UToolMenu* Menu = UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Tools");
     FToolMenuSection& Section = Menu->FindOrAddSection("Dnd5e");
-    Section.AddMenuEntry("Dnd5eDatasetSettings", LOCTEXT("Settings", "Dnd5e Dataset Settings"), LOCTEXT("SettingsTip", "Choose external dataset files and remember this local selection."), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenDatasetSettings)));
-    Section.AddMenuEntry("Dnd5eLoadDataset", LOCTEXT("Load", "Load Dnd5e Dataset"), LOCTEXT("LoadTip", "Load the selected files into the editor catalog and show diagnostics."), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::LoadDataset)));
-    Section.AddMenuEntry("Dnd5eSpellBrowser", LOCTEXT("Browser", "Dnd5e Spell Browser"), LOCTEXT("BrowserTip", "Search and inspect spells in the current editor catalog."), FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenSpellBrowser)));
+    Section.AddMenuEntry("Dnd5eDatasetSettings",
+        LOCTEXT("Settings", "Dnd5e Dataset Settings"),
+        LOCTEXT("SettingsTip", "Choose external dataset files and remember this local selection."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenDatasetSettings)));
+    Section.AddMenuEntry("Dnd5eLoadDataset",
+        LOCTEXT("Load", "Load Dnd5e Dataset"),
+        LOCTEXT("LoadTip", "Load the selected files into the editor catalog and show diagnostics."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::LoadDataset)));
+    Section.AddMenuEntry("Dnd5eSpellBrowser",
+        LOCTEXT("Browser", "Dnd5e Spell Browser"),
+        LOCTEXT("BrowserTip", "Search and inspect spells in the current editor catalog."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenSpellBrowser)));
+    Section.AddMenuEntry("Dnd5eItemDatasetSettings",
+        LOCTEXT("ItemDatasetSettings", "Dnd5e Item Dataset Settings"),
+        LOCTEXT("ItemDatasetSettingsTip", "Choose the local files for the item and definition catalogs."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenItemDatasetSettings)));
+    Section.AddMenuEntry("Dnd5eLoadItemDataset",
+        LOCTEXT("LoadItemDataset", "Load Dnd5e Item Dataset"),
+        LOCTEXT("LoadItemDatasetTip", "Load the selected item dataset and show its diagnostics."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::LoadItemDataset)));
 }
 
 void FDnd5eEditorModule::OpenDatasetSettings()
@@ -104,16 +137,45 @@ void FDnd5eEditorModule::LoadDataset()
     {
         Log.Error(FText::Format(LOCTEXT("Failed", "Load failed. The active editor catalog still contains {0} spell records."), FText::AsNumber(Subsystem->GetSpellCount())));
     }
-    for (const FDnd5eDiagnostic& Diagnostic : Result.Diagnostics)
+    WriteDatasetDiagnostics(Log, Result.Diagnostics);
+    Log.Open(EMessageSeverity::Info, true);
+}
+
+void FDnd5eEditorModule::OpenItemDatasetSettings()
+{
+    const auto* Settings = GetDefault<UDnd5eEditorItemDatasetSettings>();
+    FModuleManager::LoadModuleChecked<ISettingsModule>("Settings").ShowViewer(
+        Settings->GetContainerName(), Settings->GetCategoryName(), Settings->GetSectionName());
+}
+
+void FDnd5eEditorModule::LoadItemDataset()
+{
+    FMessageLog Log(DatasetLogName);
+    Log.SuppressLoggingToOutputLog();
+    Log.NewPage(LOCTEXT("ItemLoadPage", "Item dataset load"));
+    auto* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorItemDatasetSubsystem>() : nullptr;
+    if (!Subsystem)
     {
-        FString Message = FString::Printf(TEXT("[%s] %s"), *Diagnostic.Code.ToString(), *Diagnostic.Message);
-        if (!Diagnostic.RelativeFilePath.IsEmpty()) { Message += TEXT(" | ") + Diagnostic.RelativeFilePath; }
-        if (!Diagnostic.JsonPointer.IsEmpty()) { Message += TEXT(" ") + Diagnostic.JsonPointer; }
-        const FText Text = FText::FromString(Message);
-        if (Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error) { Log.Error(Text); }
-        else if (Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning) { Log.Warning(Text); }
-        else { Log.Info(Text); }
+        Log.Error(LOCTEXT("ItemDatasetUnavailable", "The editor item dataset service is unavailable."));
+        Log.Open(EMessageSeverity::Info, true);
+        return;
     }
+
+    auto* Settings = GetMutableDefault<UDnd5eEditorItemDatasetSettings>();
+    Settings->SaveConfig();
+    const auto& Result = Subsystem->LoadSelection(Settings->MakeLoadRequest());
+    if (Result.Status == EDnd5eJsonReadStatus::Success)
+    {
+        Log.Info(FText::Format(LOCTEXT("ItemsLoaded", "Loaded {0} item records and {1} definitions. Diagnostics: {2}."),
+            FText::AsNumber(Result.RecordCount), FText::AsNumber(Result.DefinitionCount),
+            FText::AsNumber(Result.Diagnostics.Num())));
+    }
+    else
+    {
+        Log.Error(FText::Format(LOCTEXT("ItemsLoadFailed", "Load failed. The active catalogs contain {0} item records and {1} definitions."),
+            FText::AsNumber(Subsystem->GetRecordCount()), FText::AsNumber(Subsystem->GetDefinitionCount())));
+    }
+    WriteDatasetDiagnostics(Log, Result.Diagnostics);
     Log.Open(EMessageSeverity::Info, true);
 }
 

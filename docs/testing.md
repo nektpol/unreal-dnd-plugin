@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **881 cases**; the standard and explicitly supplied-data checks pass **915 cases**. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **883 cases**; the standard and explicitly supplied-data checks pass **918 cases**. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -379,3 +379,7 @@ Pass `-Dnd5eJsonItemAuditRoot="<absolute-local-dataset-data-directory>"` and run
 The two edition checks load the same mixed input under separate namespaces and apply different variant policies. This verifies namespace isolation and variant eligibility. Edition-specific record coverage depends on the selected files.
 
 The inspected snapshot passed the opt-in audit with 2,861 primary records and 102 definitions. Supplementary content attached to 875 items and 46 groups. The audit matched 452 group member declarations and retrieved 350 attached-spell targets from the selected spell file. PreferClassic produced 2,873 eligible pairs, including zero copied pairs. SourceDefault produced 3,513 eligible pairs, including five copied pairs. The audit loaded one or two selected generated records respectively. The report is under Saved/Automation/Dnd5eItemImportAudit/Complete.
+
+### Editor item dataset loading
+
+Two synthetic cases verify file-picker conversion and per-project settings schema, ordered role arrays, publication of both catalogs before notification, failure preserving both active objects, garbage collection, a subsequent successful replacement, and teardown. These tests exercise the editor subsystem without writing real user preferences. The combined report is under Saved/Automation/Dnd5eEditorItemDataset. A focused rerun under Saved/Automation/Dnd5eEditorItemDatasetMenu covers the new settings section and Tools entries through the existing registration case.
