@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **879 cases**; the standard and explicitly supplied-data checks pass **913 cases**, across the full suite and a focused rerun. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **881 cases**; the standard and explicitly supplied-data checks pass **915 cases**. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -367,3 +367,7 @@ Two synthetic cases cover selected variant generation, pair identity, the base l
 ### Item catalog joins
 
 Three synthetic automation cases exercise multi-document definition replacement across namespaces, malformed input and duplicate atomicity, group member ambiguity and source handling, and the attached-spell adapter against a loaded spell catalog. The initial report under Saved/Automation/Dnd5eItemCatalogJoins includes one unrelated editor HTTP timeout warning and one attached-spell fixture failure. The corrected join tests are reported under Saved/Automation/Dnd5eItemCatalogJoinsVerified.
+
+### Offline item catalog loading
+
+Two synthetic tests exercise the public file loader with temporary local files. They cover a combined base and definition file, explicit variant selection, supplementary attachment, relative provenance, a second namespace with an empty definition catalog, and separate object lifetimes. Duplicate, traversal, missing-file and malformed-item requests check that both result objects stay null and previously returned catalogs remain available. The spell loader suite continues to exercise the shared file checks. The combined report under Saved/Automation/Dnd5eOfflineItemLoader contains 909 clean passes and six passes with editor HTTP warnings. No cases failed or were skipped.

@@ -2,6 +2,7 @@
 
 #include "Dnd5eTestSupport.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
+#include "Readers/Items/Dnd5eJsonItemCatalogLoader.h"
 #include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
 #include "HAL/FileManager.h"
 #include "Dom/JsonObject.h"
@@ -362,6 +363,109 @@ bool FDnd5eExternalLoaderTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("No availability file was supplied to this audit"), Spell.bHasAvailabilityData);
 	}
 	AddInfo(FString::Printf(TEXT("File loader installed %d records from %d explicitly selected files; returned diagnostics remain API data. No source passages are logged."), Catalog.GetSpellCount(), Request.SpellFiles.Num()));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eOfflineItemLoaderTest, "Dnd5e.Items.Loader.OfflineCatalogs", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eOfflineItemLoaderTest::RunTest(const FString& Parameters)
+{
+	FLoaderFiles Files;
+	if (!TestTrue(TEXT("Write temporary offline fixtures"),
+		Files.Write(TEXT("items-base.json"), TEXT(R"({"baseitem":[{"name":"Blade","source":"SYN","rarity":"none","type":"M|SYN"}],
+			"itemType":[{"name":"Invented Melee","source":"SYN","abbreviation":"M"}]})")) &&
+		Files.Write(TEXT("items.json"), TEXT(R"({"item":[{"name":"Compass","source":"SYN","rarity":"rare"}]})")) &&
+		Files.Write(TEXT("variants.json"), TEXT(R"({"magicvariant":[{"name":"Pattern","requires":[{"type":"M|SYN"}],
+			"inherits":{"source":"SYN","rarity":"rare","namePrefix":"Enchanted "}}]})")) &&
+		Files.Write(TEXT("fluff.json"), TEXT(R"({"itemFluff":[{"name":"Enchanted Blade","source":"SYN","entries":["Invented lore."]}]})"))))
+	{
+		return false;
+	}
+
+	FDnd5eJsonItemCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("classic");
+	Request.BaseFiles = {TEXT("items-base.json")};
+	Request.DefinitionFiles = Request.BaseFiles;
+	Request.ItemFiles = {TEXT("items.json")};
+	Request.VariantFiles = {TEXT("variants.json")};
+	Request.VariantSelections.Add({0, 0, 0, 0});
+	Request.SupplementFiles = {TEXT("fluff.json")};
+	const auto Classic = UDnd5eJsonItemCatalogLoader::LoadItemCatalog(Request);
+	if (!TestTrue(TEXT("One shared file supplies both base items and definitions"),
+		Classic.Status == EDnd5eJsonReadStatus::Success && Classic.ItemCatalog && Classic.DefinitionCatalog &&
+		Classic.RecordCount == 3 && Classic.DefinitionCount == 1)) { return false; }
+	TStrongObjectPtr<UDnd5eItemCatalogObject> Items(Classic.ItemCatalog.Get());
+	TStrongObjectPtr<UDnd5eItemDefinitionCatalogObject> Definitions(Classic.DefinitionCatalog.Get());
+
+	TArray<FDnd5eRecordId> Ids;
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FDnd5eItem Item;
+	if (!TestTrue(TEXT("Offline variant retains identity, provenance and supplement"),
+		Items->QueryRecordIds({}, Ids, Diagnostics) && Ids.Num() == 3 &&
+		Items->TryGetItem(Ids[2], Item) && Item.Header.DisplayName == TEXT("Enchanted Blade") &&
+		Item.bHasSupplementaryContent && Item.BaseItemId == Ids[0])) { return false; }
+	if (!TestTrue(TEXT("Base item retains its relative filename"),
+		Items->TryGetItem(Ids[0], Item) && Item.Header.Provenance.Num() == 1 &&
+		Item.Header.Provenance[0].RelativeFilePath == TEXT("items-base.json"))) { return false; }
+	TestTrue(TEXT("Type selector matches a definition from the same file"),
+		Definitions->MatchDefinitionSelector(TEXT("classic"), Item.Type, Ids, Diagnostics) == EDnd5eItemDefinitionMatchStatus::Matched &&
+		Ids.Num() == 1 && Ids[0].DatasetNamespace == TEXT("classic"));
+
+	Request.DatasetNamespace = TEXT("modern");
+	Request.DefinitionFiles.Reset();
+	const auto Modern = UDnd5eJsonItemCatalogLoader::LoadItemCatalog(Request);
+	TestTrue(TEXT("A second load returns new objects and can omit definitions"),
+		Modern.Status == EDnd5eJsonReadStatus::Success && Modern.ItemCatalog && Modern.DefinitionCatalog &&
+		Modern.ItemCatalog.Get() != Items.Get() && Modern.DefinitionCatalog.Get() != Definitions.Get() && Modern.DefinitionCount == 0 &&
+		Modern.ItemCatalog->QueryRecordIds({}, Ids, Diagnostics) && Ids.Num() == 3 && Ids[0].DatasetNamespace == TEXT("modern"));
+	TestTrue(TEXT("Previously returned catalogs remain available"),
+		Items->QueryRecordIds({}, Ids, Diagnostics) && Ids.Num() == 3 && Ids[0].DatasetNamespace == TEXT("classic") &&
+		Definitions->GetDefinitionCount() == 1);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eOfflineItemLoaderFailureTest, "Dnd5e.Items.Loader.NoPartialResult", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eOfflineItemLoaderFailureTest::RunTest(const FString& Parameters)
+{
+	FLoaderFiles Files;
+	if (!TestTrue(TEXT("Write valid and malformed fixtures"),
+		Files.Write(TEXT("items.json"), TEXT(R"({"item":[{"name":"Compass","source":"SYN","rarity":"rare"}]})")) &&
+		Files.Write(TEXT("definitions.json"), TEXT(R"({"itemType":[{"name":"Melee","source":"SYN","abbreviation":"M"}]})")) &&
+		Files.Write(TEXT("broken.json"), TEXT("[")))) { return false; }
+	FDnd5eJsonItemCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("offline");
+	Request.ItemFiles = {TEXT("items.json")};
+	Request.DefinitionFiles = {TEXT("definitions.json")};
+	const auto Original = UDnd5eJsonItemCatalogLoader::LoadItemCatalog(Request);
+	if (!TestTrue(TEXT("Initial load succeeds"), Original.Status == EDnd5eJsonReadStatus::Success &&
+		Original.ItemCatalog && Original.DefinitionCatalog)) { return false; }
+	TStrongObjectPtr<UDnd5eItemCatalogObject> Items(Original.ItemCatalog.Get());
+	TStrongObjectPtr<UDnd5eItemDefinitionCatalogObject> Definitions(Original.DefinitionCatalog.Get());
+	struct FFailure
+	{
+		TArray<FString> ItemFiles;
+		const TCHAR* RelativePath;
+		const TCHAR* Code;
+	};
+	for (const auto& Case : {
+		FFailure{{TEXT("items.json"), TEXT("items.json")}, TEXT("items.json"), TEXT("Dnd5e.Json.Load.DuplicateFile")},
+		FFailure{{TEXT("../items.json")}, TEXT("../items.json"), TEXT("Dnd5e.Json.InvalidContext")},
+		FFailure{{TEXT("missing.json")}, TEXT("missing.json"), TEXT("Dnd5e.Json.Load.FileReadFailed")},
+		FFailure{{TEXT("broken.json")}, TEXT("broken.json"), nullptr}})
+	{
+		Request.ItemFiles = Case.ItemFiles;
+		const auto Failed = UDnd5eJsonItemCatalogLoader::LoadItemCatalog(Request);
+		TestTrue(Case.RelativePath, Failed.Status == EDnd5eJsonReadStatus::Failure && !Failed.ItemCatalog &&
+			!Failed.DefinitionCatalog && Failed.RecordCount == 0 && Failed.DefinitionCount == 0 &&
+			Failed.Diagnostics.ContainsByPredicate([&Case](const auto& Diagnostic)
+			{
+				return Diagnostic.RelativeFilePath == Case.RelativePath && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error &&
+					(!Case.Code || Diagnostic.Code == FName(Case.Code));
+			}));
+	}
+	TestTrue(TEXT("Failed requests cannot affect the retained objects"), Items->GetRecordCount() == 1 &&
+		Definitions->GetDefinitionCount() == 1);
 	return !HasAnyErrors();
 }
 

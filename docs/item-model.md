@@ -310,3 +310,11 @@ Build Item Definition Catalog From Documents reads each supplied definition docu
 Match Item Selector takes a group member and the owning group's namespace. It matches canonical item names and primary publications and returns stored IDs in catalog order. Groups are excluded. Generated variants can appear alongside ordinary items with the same authored identity, producing Ambiguous. An omitted publication produces MissingSource even with one name candidate. Retrieve automatically only after Matched.
 
 Match Item Attached Spell accepts the intended spell dataset namespace, an attachment, and a loaded Spell Catalog Object. It forwards the attachment's authored selector to the spell catalog and reports the match status, candidate IDs, and diagnostics. These operations leave the original item and its authored selectors available to callers.
+
+### Load offline files
+
+Call Load Item Catalog with an absolute local dataset root, a dataset namespace, and explicit relative JSON filenames for base items, ordinary items and groups, variants, supplements, and definitions. Select at least one base or item file. Each file list preserves input order, including the document indices used by Variant Selections. Definition, variant, and supplement inputs are optional. The loader uses the supplied namespace for all documents in that load.
+
+One selected path can serve more than one role. For example, a file containing both base items and definitions can appear in both Base Files and Definition Files. Repeating a path within one role fails. A normalized path reused across roles is read once, and each document keeps the relative filename for its role. The loader accepts at most 1,024 file selections, with limits of 16 MiB per file and 64 MiB across file reads.
+
+A successful result contains fresh item and definition catalog objects and their counts. Retain both object references for later lookups. A failure returns diagnostics, null catalog references, and zero counts. Previously returned objects remain available to callers. Separate loads can retain different namespaces and variant edition policies. [Native and Blueprint loader](../Source/Dnd5eJson/Public/Readers/Items/Dnd5eJsonItemCatalogLoader.h)
