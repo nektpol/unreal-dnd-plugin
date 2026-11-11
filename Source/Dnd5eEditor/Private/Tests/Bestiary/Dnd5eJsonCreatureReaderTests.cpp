@@ -88,6 +88,45 @@ bool FDnd5eCreatureFailuresTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureAuditTest, "Dnd5e.Bestiary.Reader.DocumentAudit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureAuditTest::RunTest(const FString& Parameters)
+{
+	FString Json(StatBlock);
+	Json.ReplaceInline(TEXT(R"({"name":"Lantern Scout","source":"SYN-A"})"),
+		TEXT(R"(null,{"name":"Bad Scout","source":"SYN-A","hp":{"average":"bad"},"ac":[12,{"ac":14}]},{"name":" ","source":"SYN-A"},{"name":"Copy Scout","source":"SYN-A","_copy":{"name":"Lantern Scout","source":"SYN-B"}})"));
+	const auto Audit = FDnd5eJsonCreatureReader::AuditDocument(MakeDocument(Json));
+	if (!TestTrue(TEXT("All five rows visited"), Audit.Status == EDnd5eJsonReadStatus::Success && Audit.Rows.Num() == 5)) { return false; }
+
+	const auto CheckFailure = [this, &Audit](int32 Index, const TCHAR* Pointer)
+	{
+		const auto& Row = Audit.Rows[Index];
+		TestTrue(Pointer, Row.Status == EDnd5eJsonReadStatus::Failure && Row.Diagnostics.ContainsByPredicate(
+			[Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error && Diagnostic.JsonPointer == Pointer;
+			}));
+	};
+	CheckFailure(0, TEXT("/monster/0"));
+	CheckFailure(1, TEXT("/monster/1/size"));
+	CheckFailure(2, TEXT("/monster/2/name"));
+	CheckFailure(3, TEXT("/monster/3/_copy"));
+	TestTrue(TEXT("Raw shapes survive an earlier conversion failure"), Audit.Rows[1].FieldShapes.ContainsByPredicate(
+		[](const FDnd5eCreatureFieldShape& Shape)
+		{
+			return Shape.Path == TEXT("ac[].ac") && Shape.JsonType == TEXT("Number") &&
+				Shape.JsonPointer == TEXT("/monster/1/ac/1/ac");
+		}));
+	TestTrue(TEXT("Copy marked and later direct row still converts"), Audit.Rows[3].bIsCopy &&
+		!Audit.Rows[4].bIsCopy && Audit.Rows[4].Status == EDnd5eJsonReadStatus::Success &&
+		Audit.Rows[4].SourceId == TEXT("SYN-B") && Audit.Diagnostics.IsEmpty());
+
+	const auto BadEnvelope = FDnd5eJsonCreatureReader::AuditDocument(MakeDocument(TEXT(R"({"monster":false})")));
+	TestTrue(TEXT("Invalid envelope has document diagnostics and no rows"), BadEnvelope.Status == EDnd5eJsonReadStatus::Failure &&
+		BadEnvelope.Rows.IsEmpty() && !BadEnvelope.Diagnostics.IsEmpty());
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

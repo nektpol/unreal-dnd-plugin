@@ -8,6 +8,25 @@ namespace
 {
 	using namespace Dnd5eJsonReader;
 
+	bool ReadCreatureDocument(TSharedPtr<FJsonObject>& OutRoot,
+		const TArray<TSharedPtr<FJsonValue>>*& OutRows, FReadState& State)
+	{
+		TSharedPtr<FJsonValue> RootValue;
+		if (!ValidateReadContext(State) || !ValidateDocumentText(State) ||
+			!PreflightJson(State) || !ParseJsonDocument(RootValue, State) ||
+			!RequireObject(RootValue, TEXT(""), OutRoot, State) ||
+			!ReadRequiredArray(*OutRoot, TEXT("monster"), TEXT(""), OutRows, State))
+		{
+			return false;
+		}
+
+		if (OutRows->Num() > 100000)
+		{
+			return Fail(State, Codes::ResourceLimitExceeded, TEXT("/monster"), TEXT("Too many creature rows."));
+		}
+		return true;
+	}
+
 	bool ReadStatInteger(const FJsonObject& Object, const TCHAR* Key, const FString& Pointer,
 		int32& Out, FReadState& State)
 	{
@@ -75,7 +94,9 @@ namespace
 	{
 		FDnd5eRecordProvenance Origin;
 		if (!ReadRequiredString(Object, TEXT("name"), Pointer, Header.DisplayName, State) ||
-			!ReadRequiredString(Object, TEXT("source"), Pointer, Origin.SourceId, State))
+			!ReadRequiredString(Object, TEXT("source"), Pointer, Origin.SourceId, State) ||
+			!ValidateIdentityText(Header.DisplayName, AppendPointer(Pointer, TEXT("name")), State) ||
+			!ValidateIdentityText(Origin.SourceId, AppendPointer(Pointer, TEXT("source")), State))
 		{
 			return false;
 		}
@@ -316,6 +337,57 @@ namespace
 		return true;
 	}
 
+	const TCHAR* DescribeJsonType(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid()) { return TEXT("Invalid"); }
+		switch (Value->Type)
+		{
+		case EJson::Null: return TEXT("Null");
+		case EJson::String: return TEXT("String");
+		case EJson::Number: return TEXT("Number");
+		case EJson::Boolean: return TEXT("Boolean");
+		case EJson::Array: return TEXT("Array");
+		case EJson::Object: return TEXT("Object");
+		default: return TEXT("Unknown");
+		}
+	}
+
+	void InventoryCreatureValue(const TSharedPtr<FJsonValue>& Value, const FString& Path,
+		const FString& Pointer, int32 Depth, TArray<FDnd5eCreatureFieldShape>& Out)
+	{
+		Out.Add({Path, DescribeJsonType(Value), Pointer});
+		if (!Value.IsValid() || Depth >= 4) { return; }
+
+		if (Value->Type == EJson::Object)
+		{
+			for (const auto& Pair : Value->AsObject()->Values)
+			{
+				const FString Key(Pair.Key.Len(), *Pair.Key);
+				InventoryCreatureValue(Pair.Value, Path + TEXT(".") + Key,
+					AppendPointer(Pointer, Key), Depth + 1, Out);
+			}
+		}
+		else if (Value->Type == EJson::Array)
+		{
+			const auto& Elements = Value->AsArray();
+			for (int32 Index = 0; Index < Elements.Num(); ++Index)
+			{
+				InventoryCreatureValue(Elements[Index], Path + TEXT("[]"),
+					AppendPointer(Pointer, FString::FromInt(Index)), Depth + 1, Out);
+			}
+		}
+	}
+
+	void InventoryCreatureFields(const FJsonObject& Object, const FString& RowPointer,
+		TArray<FDnd5eCreatureFieldShape>& Out)
+	{
+		for (const auto& Pair : Object.Values)
+		{
+			const FString Key(Pair.Key.Len(), *Pair.Key);
+			InventoryCreatureValue(Pair.Value, Key, AppendPointer(RowPointer, Key), 0, Out);
+		}
+	}
+
 	bool ReadCreatureRow(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -346,21 +418,12 @@ FDnd5eJsonCreatureReadResult FDnd5eJsonCreatureReader::ReadCreature(const FDnd5e
 	Result.Status = EDnd5eJsonReadStatus::Failure;
 	FReadState State{Document.Context, Document.JsonText, Result.Diagnostics};
 
-	TSharedPtr<FJsonValue> RootValue;
 	TSharedPtr<FJsonObject> Root;
-	if (!ValidateReadContext(State) || !ValidateDocumentText(State) ||
-		!ValidateIdentityText(Name, TEXT(""), State) || !ValidateIdentityText(SourceId, TEXT(""), State) ||
-		!PreflightJson(State) || !ParseJsonDocument(RootValue, State) ||
-		!RequireObject(RootValue, TEXT(""), Root, State))
-	{
-		return Result;
-	}
-
 	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
-	if (!ReadRequiredArray(*Root, TEXT("monster"), TEXT(""), Rows, State)) { return Result; }
-	if (Rows->Num() > 100000)
+	if (!ValidateIdentityText(Name, TEXT(""), State) ||
+		!ValidateIdentityText(SourceId, TEXT(""), State) ||
+		!ReadCreatureDocument(Root, Rows, State))
 	{
-		Fail(State, Codes::ResourceLimitExceeded, TEXT("/monster"), TEXT("Too many creature rows."));
 		return Result;
 	}
 
@@ -376,4 +439,49 @@ FDnd5eJsonCreatureReadResult FDnd5eJsonCreatureReader::ReadCreature(const FDnd5e
 	Result.Creature = MoveTemp(Candidate);
 	Result.Status = EDnd5eJsonReadStatus::Success;
 	return Result;
+}
+
+FDnd5eCreatureDocumentAudit FDnd5eJsonCreatureReader::AuditDocument(const FDnd5eJsonDocument& Document)
+{
+	using namespace Dnd5eJsonReader;
+
+	FDnd5eCreatureDocumentAudit Report;
+	Report.Status = EDnd5eJsonReadStatus::Failure;
+	FReadState DocumentState{Document.Context, Document.JsonText, Report.Diagnostics};
+
+	TSharedPtr<FJsonObject> Root;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!ReadCreatureDocument(Root, Rows, DocumentState)) { return Report; }
+
+	Report.Rows.Reserve(Rows->Num());
+	for (int32 Index = 0; Index < Rows->Num(); ++Index)
+	{
+		auto& Row = Report.Rows.AddDefaulted_GetRef();
+		Row.Status = EDnd5eJsonReadStatus::Failure;
+		Row.JsonPointer = AppendPointer(TEXT("/monster"), FString::FromInt(Index));
+
+		FReadState RowState{Document.Context, Document.JsonText, Row.Diagnostics};
+		TSharedPtr<FJsonObject> Object;
+		if (!RequireObject((*Rows)[Index], Row.JsonPointer, Object, RowState)) { continue; }
+
+		if (const auto Name = FindExactField(*Object, TEXT("name")); Name.IsValid() && Name->Type == EJson::String)
+		{
+			Row.Name = Name->AsString();
+		}
+		if (const auto Source = FindExactField(*Object, TEXT("source")); Source.IsValid() && Source->Type == EJson::String)
+		{
+			Row.SourceId = Source->AsString();
+		}
+		Row.bIsCopy = FindExactField(*Object, TEXT("_copy")).IsValid();
+		InventoryCreatureFields(*Object, Row.JsonPointer, Row.FieldShapes);
+
+		FDnd5eCreature Candidate;
+		if (ReadCreatureRow(*Object, Row.JsonPointer, Candidate, RowState))
+		{
+			Row.Status = EDnd5eJsonReadStatus::Success;
+		}
+	}
+
+	Report.Status = EDnd5eJsonReadStatus::Success;
+	return Report;
 }

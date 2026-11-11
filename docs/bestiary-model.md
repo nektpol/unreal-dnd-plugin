@@ -21,3 +21,7 @@
 Integer members default to zero. Arrays, strings, and tag containers default to empty. The model currently provides the initial stat-block representation. The native `FDnd5eJsonCreatureReader::ReadCreature` reads a selected direct row from a supplied `monster` document by exact authored name and source. It supports the initial Humanoid and Fey stat blocks, both numeric and sourced AC entries, signed skill bonuses, and separate trait, action, and bonus action groups. Failure returns diagnostics and an empty creature. Selected copy rows require a future assembly step. Catalog lookup, supplementary lore and media, and editor browsing are pending.
 
 See [Shared models](shared-models.md) for record, measurement, dice, and Content definitions.
+
+### Document audit
+
+`FDnd5eJsonCreatureReader::AuditDocument` parses one supplied document and visits every row. The result separates document diagnostics from row status, diagnostics, and raw field shapes. Field shapes include JSON type and exact pointer, with array indices grouped under a shared path. The inventory captures top-level fields and descends up to four levels below each field. Successful row conversion can still leave fields or inline content outside the initial reader scope.

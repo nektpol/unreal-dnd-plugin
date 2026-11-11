@@ -413,3 +413,5 @@ The focused editor run under Saved/Automation/Dnd5eSpellStatCard checks the shar
 Run the `Dnd5e.Bestiary.Reader` automation filter for the synthetic conversion and failure tests. They exercise numeric and sourced AC, signed skills, record identity, grouped Content, and precise failures for invalid, duplicate, missing, and copy rows.
 
 Run `Dnd5e.Bestiary.Local.GoblinSmoke` with `-Dnd5eBestiaryRoot="<absolute path to the supplied data/bestiary folder>"` to include the optional local check. The check uses the supplied MM and XMM documents. The plugin repository contains only synthetic fixtures.
+
+The portable `Dnd5e.Bestiary.Reader.DocumentAudit` test checks traversal past malformed rows, raw shape capture, identity diagnostics, and copy classification. The opt-in `Dnd5e.Bestiary.Local.SnapshotAudit` uses the same local root argument as the Goblin smoke test. It walks the indexed files and writes `Saved/Automation/BestiaryAudit/summary.tsv` under the host project. Conversion failures are counted as coverage gaps. File and document-envelope failures fail the audit test.
