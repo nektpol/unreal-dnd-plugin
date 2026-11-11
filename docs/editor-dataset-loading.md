@@ -107,3 +107,7 @@ The selected item or group's stat card shows its name and primary source with pa
 The overview lists authored group members, item type and property definitions, mastery definitions, and attached spells. Each row shows the selector and its match status. A unique match enables its action. Missing publications, ambiguous selectors, and unavailable targets stay visible as disabled rows.
 
 A member opens the exact item in the Item Browser. A definition opens a preview of its loaded description in the current pane. An attached spell opens or focuses the Spell Browser and selects the exact spell record. If a search hides the target, navigation clears that search to reveal it. For attached spells, use the same dataset namespace in the item and spell settings. Successful spell reloads recompute attachment links for the current item. Search and item reload clear the previous reference preview.
+
+### Item description composition
+
+The card shows direct item text, loaded type and property descriptions, then attached supplementary entries. It uses exact definition IDs within the selected item's dataset namespace. Explicit sources take precedence. For preview text on PHB items, the omitted Artisan's Tools type and Versatile property selectors can use their matching loaded PHB definitions. The original selectors and navigation statuses remain as authored. Retained source metadata is available in Typed details.

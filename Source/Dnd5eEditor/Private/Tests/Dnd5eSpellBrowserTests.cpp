@@ -21,6 +21,7 @@
 #include "Misc/Parse.h"
 #include "Misc/ScopeExit.h"
 #include "Readers/Items/Dnd5eJsonItemReader.h"
+#include "Readers/Items/Dnd5eJsonItemDefinitionCatalogLibrary.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "ToolMenu.h"
@@ -438,7 +439,7 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Exact selected item retains typed charges"), ItemSelection->Item.Header.RecordId == ItemId &&
 		ItemSelection->Item.ChargeData.Charges.Fixed == 2);
 	TestTrue(TEXT("Selected item populates the readable overview"),
-		FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid());
+		FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.\n\nDefinition overview text.")).IsValid());
 	auto DefinitionButton = FindButtonWithCaption(Browser.ToSharedRef(), TEXT("Type: M | SYN"));
 	if (!TestTrue(TEXT("Matched definition can be followed"), DefinitionButton && DefinitionButton->IsEnabled())) { return false; }
 	DefinitionButton->SimulateClick();
@@ -589,6 +590,28 @@ bool FDnd5eSrdItemBrowserTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("All four PHB equipment examples were checked"), VerifiedEquipmentCards, 4);
+	FString CardDefinitionsFile;
+	if (FParse::Value(FCommandLine::Get(), TEXT("Dnd5eJsonSrdCardDefinitionFile="), CardDefinitionsFile))
+	{
+		Request.DefinitionFiles = {CardDefinitionsFile};
+		if (!TestTrue(TEXT("Local enriched definitions load with the same record counts"),
+			Session->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Success &&
+			Session->GetRecordCount() == 590 && Session->GetDefinitionCount() == 34)) { return false; }
+		for (const auto& Name : {FString(TEXT("Longsword")), FString(TEXT("Cobbler's Tools"))})
+		{
+			Model.SetSearchText(Name);
+			const auto* Row = Model.GetRows().FindByPredicate([&Name](const auto& Candidate)
+			{
+				return Candidate->Name == Name && Candidate->SourceId == TEXT("PHB");
+			});
+			FDnd5eItem Item;
+			if (!TestTrue(TEXT("Read the exact local card item"), Row &&
+				Session->GetItemCatalog()->TryGetItem((*Row)->Id, Item))) { return false; }
+			const FString Description = Dnd5eItemBrowserDetails::Build(Item, Session->GetDefinitionCatalog()).Description.ToString();
+			const TCHAR* Expected = Name == TEXT("Longsword") ? TEXT("alternate damage die") : TEXT("particular craft or trade");
+			TestTrue(TEXT("The local definition contributes its rules summary"), Description.Contains(Expected));
+		}
+	}
 	return !HasAnyErrors();
 }
 
@@ -689,6 +712,52 @@ bool FDnd5eItemBrowserLinkStatusTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Omitted source never authorizes a target"), !Links[0].Target.IsSet() && Links[0].Status.ToString() == TEXT("Source omitted"));
 	TestTrue(TEXT("Ambiguity never picks a candidate"), !Links[1].Target.IsSet() && Links[1].Status.ToString() == TEXT("Multiple item matches"));
 	TestTrue(TEXT("Absent target stays visible"), !Links[2].Target.IsSet() && Links[2].Status.ToString() == TEXT("Target unavailable"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemDefinitionPreviewTest, "Dnd5e.Editor.ItemBrowser.DefinitionPreviewComposition", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemDefinitionPreviewTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonDocument Document;
+	Document.Context.DatasetNamespace = TEXT("preview");
+	Document.Context.RelativeFilePath = TEXT("preview.json");
+	Document.JsonText = TEXT(R"({
+		"itemType":[{"name":"Tools","abbreviation":"AT","source":"PHB","entries":["Type rules."]}],
+		"itemProperty":[
+			{"name":"Versatile","abbreviation":"V","source":"PHB","entries":["Classic property rules."]},
+			{"name":"Versatile","abbreviation":"V","source":"XPHB","entries":["Modern property rules."]},
+			{"name":"Other","abbreviation":"F","source":"PHB","entries":["Unqualified property rules."]}],
+		"item":[{"name":"Fixture","source":"PHB","rarity":"none","type":"AT","property":["V","V|PHB","F"],
+			"entries":["Direct rules."],"additionalEntries":["Retained source metadata."]},
+			{"name":"Supplement","source":"PHB","rarity":"none","entries":["Supplement rules."]}]
+	})");
+	TStrongObjectPtr<UDnd5eItemDefinitionCatalogObject> Definitions(NewObject<UDnd5eItemDefinitionCatalogObject>());
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	auto Main = FDnd5eJsonItemReader::ReadAtIndex(Document, 0);
+	auto Supplement = FDnd5eJsonItemReader::ReadAtIndex(Document, 1);
+	if (!TestTrue(TEXT("Fixture definitions and typed items load"),
+		UDnd5eJsonItemDefinitionCatalogLibrary::BuildItemDefinitionCatalog(Definitions.Get(), Document, Diagnostics) &&
+		Main.Status == EDnd5eJsonReadStatus::Success && Supplement.Status == EDnd5eJsonReadStatus::Success &&
+		Main.Item.Properties.Num() == 3)) { return false; }
+
+	auto& Item = Main.Item;
+	Item.bHasSupplementaryContent = true;
+	Item.SupplementaryContent.Entries = MoveTemp(Supplement.Item.Description);
+	const FString Composed = Dnd5eItemBrowserDetails::Build(Item, Definitions.Get()).Description.ToString();
+	TestEqual(TEXT("Composition preserves order and includes each exact property once"), Composed,
+		FString(TEXT("Direct rules.\n\nType rules.\n\nClassic property rules.\n\nSupplement rules.")));
+	TestTrue(TEXT("Default presentation does not rewrite the authored selectors"), !Item.Type.bHasSource && !Item.Properties[0].bHasSource);
+
+	Item.Properties[0].bHasSource = true;
+	Item.Properties[0].SourceId = TEXT("XPHB");
+	Item.Properties.RemoveAt(1);
+	const FString Explicit = Dnd5eItemBrowserDetails::Build(Item, Definitions.Get()).Description.ToString();
+	TestTrue(TEXT("Explicit source selects its exact definition"),
+		Explicit.Contains(TEXT("Modern property rules.")) && !Explicit.Contains(TEXT("Classic property rules.")));
+	Item.Header.RecordId.DatasetNamespace = TEXT("other");
+	const FString Isolated = Dnd5eItemBrowserDetails::Build(Item, Definitions.Get()).Description.ToString();
+	TestEqual(TEXT("An unrelated namespace cannot contribute definition text"), Isolated,
+		FString(TEXT("Direct rules.\n\nSupplement rules.")));
 	return !HasAnyErrors();
 }
 

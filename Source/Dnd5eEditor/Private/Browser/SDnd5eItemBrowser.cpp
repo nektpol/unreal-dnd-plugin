@@ -215,13 +215,14 @@ void SDnd5eItemBrowser::HandleSelectionChanged(FDnd5eItemBrowserRowPtr Row, ESel
 	const auto* Subsystem = DatasetSubsystem.Get();
 	const auto* Catalog = Subsystem ? Subsystem->GetItemCatalog() : nullptr;
 	if (!Row.IsValid() || !IsValid(Catalog)) { return; }
+	const auto* Definitions = Subsystem ? Subsystem->GetDefinitionCatalog() : nullptr;
 	if (Row->Id.Category == Dnd5e::Category::ItemGroup.GetTag())
 	{
 		FDnd5eItemGroup Group;
 		if (!Catalog->TryGetGroup(Row->Id, Group)) { return; }
 		auto* Selection = NewObject<UDnd5eItemGroupBrowserSelection>();
 		Selection->Group = MoveTemp(Group);
-		Overview = Dnd5eItemBrowserDetails::Build(Selection->Group.Details);
+		Overview = Dnd5eItemBrowserDetails::Build(Selection->Group.Details, Definitions);
 		SelectedData.Reset(Selection);
 	}
 	else
@@ -230,7 +231,7 @@ void SDnd5eItemBrowser::HandleSelectionChanged(FDnd5eItemBrowserRowPtr Row, ESel
 		if (!Catalog->TryGetItem(Row->Id, Item)) { return; }
 		auto* Selection = NewObject<UDnd5eItemBrowserSelection>();
 		Selection->Item = MoveTemp(Item);
-		Overview = Dnd5eItemBrowserDetails::Build(Selection->Item);
+		Overview = Dnd5eItemBrowserDetails::Build(Selection->Item, Definitions);
 		SelectedData.Reset(Selection);
 	}
 	DetailsView->SetObject(SelectedData.Get());

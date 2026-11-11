@@ -3,6 +3,8 @@
 #include "Browser/Dnd5eItemBrowserDetails.h"
 #include "Content/Dnd5eContentLibrary.h"
 #include "Dnd5eTags.h"
+#include "Catalog/Dnd5eItemDefinitionCatalogObject.h"
+#include "Items/Dnd5eItemDefinitionIdentity.h"
 #include "Items/Dnd5eItem.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eItemBrowserDetails"
@@ -377,6 +379,56 @@ namespace
 			Facts.Add(LOCTEXT("ArmorStealth", "Stealth disadvantage").ToString());
 		}
 	}
+
+	bool TryGetPreviewDefinitionId(const FDnd5eItem& Item, const FDnd5eItemDefinitionSelector& Selector,
+		FDnd5eRecordId& Id)
+	{
+		FString Source = Selector.SourceId;
+		if (!Selector.bHasSource)
+		{
+			const bool bClassicPhb = !Item.Header.Provenance.IsEmpty() &&
+				Item.Header.Provenance[0].SourceId.Equals(TEXT("PHB"), ESearchCase::IgnoreCase);
+			const bool bArtisanTools = Selector.Category == Dnd5e::Category::ItemType.GetTag() &&
+				Selector.Abbreviation.Equals(TEXT("AT"), ESearchCase::IgnoreCase);
+			const bool bVersatile = Selector.Category == Dnd5e::Category::ItemProperty.GetTag() &&
+				Selector.Abbreviation.Equals(TEXT("V"), ESearchCase::IgnoreCase);
+			if (!bClassicPhb || (!bArtisanTools && !bVersatile)) { return false; }
+			Source = TEXT("PHB");
+		}
+		return Dnd5e::ItemDefinitions::TryMakeId(Item.Header.RecordId.DatasetNamespace, Selector.Category,
+			Selector.Abbreviation, Source, Id);
+	}
+
+	void AppendDescriptionSection(const TArray<FDnd5eContentBlock>& Blocks, FString& Out)
+	{
+		if (Blocks.IsEmpty() || Out.Len() >= MaxPreviewChars) { return; }
+		if (!Out.IsEmpty()) { AppendPreview(Out, TEXT("\n")); }
+		AppendBlocks(Blocks, Out, 0);
+	}
+
+	void AppendDefinitionDescriptions(const FDnd5eItem& Item, const UDnd5eItemDefinitionCatalogObject& Definitions,
+		FString& Out)
+	{
+		FDnd5eRecordId Id;
+		if (Item.bHasType && TryGetPreviewDefinitionId(Item, Item.Type, Id))
+		{
+			FDnd5eItemTypeDefinition Type;
+			if (Definitions.TryGetType(Id, Type)) { AppendDescriptionSection(Type.Description, Out); }
+		}
+
+		TSet<FDnd5eRecordId> SeenProperties;
+		for (const auto& Selector : Item.Properties)
+		{
+			if (Out.Len() >= MaxPreviewChars) { break; }
+			if (!TryGetPreviewDefinitionId(Item, Selector, Id) || SeenProperties.Contains(Id)) { continue; }
+			FDnd5eItemPropertyDefinition Property;
+			if (Definitions.TryGetProperty(Id, Property))
+			{
+				SeenProperties.Add(Id);
+				AppendDescriptionSection(Property.Description, Out);
+			}
+		}
+	}
 }
 
 FText Dnd5eItemBrowserDetails::FormatRarity(const FGameplayTag& Rarity)
@@ -395,7 +447,7 @@ FText Dnd5eItemBrowserDetails::FormatRarity(const FGameplayTag& Rarity)
 	return Rarity.IsValid() ? FText::FromName(Rarity.GetTagName()) : LOCTEXT("Unspecified", "Rarity unspecified");
 }
 
-FDnd5eItemBrowserDetails Dnd5eItemBrowserDetails::Build(const FDnd5eItem& Item)
+FDnd5eItemBrowserDetails Dnd5eItemBrowserDetails::Build(const FDnd5eItem& Item, const UDnd5eItemDefinitionCatalogObject* Definitions)
 {
 	FDnd5eItemBrowserDetails Result;
 	Result.Title = FText::FromString(Item.Header.DisplayName);
@@ -419,10 +471,10 @@ FDnd5eItemBrowserDetails Dnd5eItemBrowserDetails::Build(const FDnd5eItem& Item)
 
 	FString Description;
 	AppendBlocks(Item.Description, Description, 0);
-	if (Item.bHasSupplementaryContent && !Item.SupplementaryContent.Entries.IsEmpty())
+	if (IsValid(Definitions)) { AppendDefinitionDescriptions(Item, *Definitions, Description); }
+	if (Item.bHasSupplementaryContent)
 	{
-		if (!Description.IsEmpty()) { AppendPreview(Description, TEXT("\n")); }
-		AppendBlocks(Item.SupplementaryContent.Entries, Description, 0);
+		AppendDescriptionSection(Item.SupplementaryContent.Entries, Description);
 	}
 	Result.Description = FinishPreview(MoveTemp(Description));
 	return Result;

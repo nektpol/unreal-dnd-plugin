@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #pragma once
 
@@ -7,6 +7,7 @@
 
 struct FDnd5eItem;
 struct FDnd5eContentBlock;
+class UDnd5eItemDefinitionCatalogObject;
 
 struct FDnd5eItemBrowserDetails
 {
@@ -21,6 +22,6 @@ struct FDnd5eItemBrowserDetails
 namespace Dnd5eItemBrowserDetails
 {
 	FText FormatRarity(const FGameplayTag& Rarity);
-	FDnd5eItemBrowserDetails Build(const FDnd5eItem& Item);
+	FDnd5eItemBrowserDetails Build(const FDnd5eItem& Item, const UDnd5eItemDefinitionCatalogObject* Definitions = nullptr);
 	FText FormatDescription(const TArray<FDnd5eContentBlock>& Blocks);
 }

@@ -399,3 +399,7 @@ The reference status case covers missing publications, ambiguous matches, and ab
 ### Item stat cards
 
 The Item Browser run under Saved/Automation/Dnd5eItemStatCardVerified checks the prepared SRD 5.1 cards for Longsword, Longbow, Leather Armor, and Chain Mail. It verifies source and page, price conversion and weight, primary and versatile damage, both ranges, armor formulas, and the direct Leather Armor description. The synthetic widget and formatter cases continue to cover selection, navigation, and clearing.
+
+### Item description composition
+
+The formatter case verifies direct, definition and supplementary text order, duplicate property suppression, explicit-source precedence and namespace isolation. The production widget case confirms a loaded definition contributes to its visible overview. For the opt-in SRD browser audit, `-Dnd5eJsonSrdCardDefinitionFile` optionally specifies a relative definition filename containing the two local summaries. The audit confirms the item and definition counts and checks the Longsword and Cobbler's Tools previews. The focused report is under Saved/Automation/Dnd5eItemDescriptionVerified.
