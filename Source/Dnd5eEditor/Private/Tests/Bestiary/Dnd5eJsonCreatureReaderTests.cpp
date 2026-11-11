@@ -182,6 +182,61 @@ bool FDnd5eCreatureTypeTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureAlignmentTest, "Dnd5e.Bestiary.Reader.Alignment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureAlignmentTest::RunTest(const FString& Parameters)
+{
+	const auto ReadAlignment = [](const FString& Field)
+	{
+		const FString Json = FString(StatBlock).Replace(
+			TEXT(R"("alignment":["C","N"],)"), *Field, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Missing = ReadAlignment(TEXT(""));
+	const auto Empty = ReadAlignment(TEXT(R"("alignment":[],)"));
+	TestTrue(TEXT("Omitted and empty arrays have distinct presence"), Missing.Status == EDnd5eJsonReadStatus::Success &&
+		!Missing.Creature.bHasAlignment && Missing.Creature.AlignmentOptions.IsEmpty() &&
+		Empty.Status == EDnd5eJsonReadStatus::Success && Empty.Creature.bHasAlignment &&
+		Empty.Creature.AlignmentOptions.IsEmpty());
+
+	const auto Pair = ReadAlignment(TEXT(R"("alignment":["E","N"],)"));
+	TestTrue(TEXT("Simple pair keeps source order and exact tags"), Pair.Status == EDnd5eJsonReadStatus::Success &&
+		Pair.Creature.AlignmentOptions.Num() == 1 &&
+		Pair.Creature.AlignmentOptions[0].Codes == TArray<FString>{TEXT("E"), TEXT("N")} &&
+		Pair.Creature.Alignment.HasTagExact(Dnd5e::Alignment::Evil) &&
+		Pair.Creature.Alignment.HasTagExact(Dnd5e::Alignment::Neutral));
+
+	for (const TCHAR* Field : {TEXT(R"("alignment":["A"],)"), TEXT(R"("alignment":["NX","NY","N"],)")})
+	{
+		const auto Compound = ReadAlignment(Field);
+		TestTrue(TEXT("Compound codes preserve a source option without simple tags"),
+			Compound.Status == EDnd5eJsonReadStatus::Success && Compound.Creature.AlignmentOptions.Num() == 1 &&
+			!Compound.Creature.AlignmentOptions[0].Codes.IsEmpty() && Compound.Creature.Alignment.IsEmpty());
+	}
+
+	const auto Alternatives = ReadAlignment(TEXT(R"("alignment":[{"alignment":["N","G"],"chance":0},
+		{"special":"as its host","note":"when linked"}],)"));
+	const auto& Options = Alternatives.Creature.AlignmentOptions;
+	TestTrue(TEXT("Qualified alternatives preserve order, zero chance and special text"),
+		Alternatives.Status == EDnd5eJsonReadStatus::Success && Alternatives.Creature.Alignment.IsEmpty() &&
+		Options.Num() == 2 && Options[0].Codes == TArray<FString>{TEXT("N"), TEXT("G")} &&
+		Options[0].bHasChance && Options[0].ChancePercent == 0 && !Options[1].bHasChance &&
+		Options[1].Special == TEXT("as its host") && Options[1].Note == TEXT("when linked"));
+
+	const auto CheckFailure = [this, &ReadAlignment](const TCHAR* Field, const TCHAR* Pointer)
+	{
+		const auto Result = ReadAlignment(Field);
+		TestTrue(Pointer, Result.Status == EDnd5eJsonReadStatus::Failure &&
+			Result.Creature.AlignmentOptions.IsEmpty() && Result.Diagnostics.ContainsByPredicate(
+				[Pointer](const FDnd5eDiagnostic& Diagnostic) { return Diagnostic.JsonPointer == Pointer; }));
+	};
+	CheckFailure(TEXT(R"("alignment":["N",{"special":"as its host"}],)"), TEXT("/monster/1/alignment/1"));
+	CheckFailure(TEXT(R"("alignment":[{"alignment":["N"],"chance":101}],)"), TEXT("/monster/1/alignment/0/chance"));
+	CheckFailure(TEXT(R"("alignment":null,)"), TEXT("/monster/1/alignment"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

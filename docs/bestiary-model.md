@@ -7,7 +7,8 @@
 | Header | `FDnd5eRecordHeader` | Display name, record identity, and provenance. |
 | Sizes | `TArray<EDnd5eSize>` | Ordered size choices. |
 | CreatureType and CreatureSubtypes | `FGameplayTag`, `TArray<FString>` | Creature type and authored subtype terms. |
-| Alignment | `FGameplayTagContainer` | Alignment traits. |
+| Alignment | `FGameplayTagContainer` | Tags for an explicit simple alignment. |
+| bHasAlignment and AlignmentOptions | `bool`, `TArray<FDnd5eCreatureAlignmentOption>` | Authored field presence and ordered options. Each option retains its `TArray<FString> Codes`, optional chance, note, and special text. |
 | ArmorClasses | `TArray<FDnd5eCreatureArmorClass>` | Printed AC values and their source entries. Each entry holds an `int32 Value` and `TArray<FDnd5eContentBlock> Sources`. |
 | HitPoints | `FDnd5eCreatureHitPoints` | Printed `int32 Average` and `FDnd5eDiceExpression Formula`. |
 | WalkSpeed | `FDnd5eDistance` | Walking distance with its unit. |

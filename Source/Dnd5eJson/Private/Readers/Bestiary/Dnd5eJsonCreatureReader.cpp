@@ -145,6 +145,143 @@ namespace
 		return true;
 	}
 
+	const FGameplayTag* FindSimpleAlignmentTag(const FString& Code)
+	{
+		static const TMap<FString, FGameplayTag> Tags{
+			{TEXT("L"), Dnd5e::Alignment::Lawful},
+			{TEXT("C"), Dnd5e::Alignment::Chaotic},
+			{TEXT("N"), Dnd5e::Alignment::Neutral},
+			{TEXT("G"), Dnd5e::Alignment::Good},
+			{TEXT("E"), Dnd5e::Alignment::Evil},
+			{TEXT("U"), Dnd5e::Alignment::Unaligned},
+		};
+		return Tags.Find(Code);
+	}
+
+	bool ReadAlignmentCodes(const TArray<TSharedPtr<FJsonValue>>& Values, const FString& ArrayPointer,
+		TArray<FString>& Out, FReadState& State)
+	{
+		for (int32 Index = 0; Index < Values.Num(); ++Index)
+		{
+			const auto& Value = Values[Index];
+			const FString Pointer = AppendPointer(ArrayPointer, FString::FromInt(Index));
+			FString Code;
+			if (!Value.IsValid() || Value->Type != EJson::String || !Value->TryGetString(Code))
+			{
+				return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected an alignment code string."));
+			}
+			if (!FindSimpleAlignmentTag(Code) && Code != TEXT("A") && Code != TEXT("NX") && Code != TEXT("NY"))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, Pointer, TEXT("Unsupported alignment code."));
+			}
+			Out.Add(MoveTemp(Code));
+		}
+		return true;
+	}
+
+	void AddSimpleAlignmentTags(const TArray<FString>& Codes, FGameplayTagContainer& Tags)
+	{
+		if (Codes.Num() == 1 && (Codes[0] == TEXT("N") || Codes[0] == TEXT("U")))
+		{
+			Tags.AddTag(*FindSimpleAlignmentTag(Codes[0]));
+			return;
+		}
+		if (Codes.Num() != 2) { return; }
+
+		const auto IsLawAxis = [](const FString& Code)
+		{
+			return Code == TEXT("L") || Code == TEXT("C") || Code == TEXT("N");
+		};
+		const auto IsMoralAxis = [](const FString& Code)
+		{
+			return Code == TEXT("G") || Code == TEXT("E") || Code == TEXT("N");
+		};
+		if ((IsLawAxis(Codes[0]) && IsMoralAxis(Codes[1])) ||
+			(IsLawAxis(Codes[1]) && IsMoralAxis(Codes[0])))
+		{
+			Tags.AddTag(*FindSimpleAlignmentTag(Codes[0]));
+			Tags.AddTag(*FindSimpleAlignmentTag(Codes[1]));
+		}
+	}
+
+	bool ReadAlignmentOption(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreatureAlignmentOption& Out, FReadState& State)
+	{
+		if (!CheckAllowedKeys(Object, {TEXT("alignment"), TEXT("chance"), TEXT("note"), TEXT("special")},
+			Pointer, State))
+		{
+			return false;
+		}
+
+		const auto Alignment = FindExactField(Object, TEXT("alignment"));
+		const bool bHasSpecial = FindExactField(Object, TEXT("special")).IsValid();
+		if (!Alignment.IsValid() && !bHasSpecial)
+		{
+			return Fail(State, Codes::MissingRequiredField, Pointer, TEXT("Expected alignment codes or special text."));
+		}
+		if (Alignment.IsValid())
+		{
+			const FString CodesPointer = AppendPointer(Pointer, TEXT("alignment"));
+			const TArray<TSharedPtr<FJsonValue>>* Codes = nullptr;
+			if (!RequireArray(Alignment, CodesPointer, Codes, State) ||
+				!ReadAlignmentCodes(*Codes, CodesPointer, Out.Codes, State))
+			{
+				return false;
+			}
+		}
+		if (FindExactField(Object, TEXT("chance")).IsValid())
+		{
+			FString Literal;
+			if (!ReadRequiredInteger(Object, TEXT("chance"), Pointer, 0, 100, Out.ChancePercent, Literal, State))
+			{
+				return false;
+			}
+			Out.bHasChance = true;
+		}
+
+		return (!FindExactField(Object, TEXT("note")).IsValid() ||
+			ReadRequiredString(Object, TEXT("note"), Pointer, Out.Note, State)) &&
+			(!bHasSpecial || ReadRequiredString(Object, TEXT("special"), Pointer, Out.Special, State));
+	}
+
+	bool ReadCreatureAlignment(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("alignment"));
+		if (!Value.IsValid()) { return true; }
+
+		const FString AlignmentPointer = AppendPointer(Pointer, TEXT("alignment"));
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!RequireArray(Value, AlignmentPointer, Values, State)) { return false; }
+
+		Creature.bHasAlignment = true;
+		if (Values->IsEmpty()) { return true; }
+
+		const auto& First = (*Values)[0];
+		if (First.IsValid() && First->Type == EJson::String)
+		{
+			FDnd5eCreatureAlignmentOption Option;
+			if (!ReadAlignmentCodes(*Values, AlignmentPointer, Option.Codes, State)) { return false; }
+			AddSimpleAlignmentTags(Option.Codes, Creature.Alignment);
+			Creature.AlignmentOptions.Add(MoveTemp(Option));
+			return true;
+		}
+
+		for (int32 Index = 0; Index < Values->Num(); ++Index)
+		{
+			const FString OptionPointer = AppendPointer(AlignmentPointer, FString::FromInt(Index));
+			TSharedPtr<FJsonObject> Entry;
+			FDnd5eCreatureAlignmentOption Option;
+			if (!RequireObject((*Values)[Index], OptionPointer, Entry, State) ||
+				!ReadAlignmentOption(*Entry, OptionPointer, Option, State))
+			{
+				return false;
+			}
+			Creature.AlignmentOptions.Add(MoveTemp(Option));
+		}
+		return true;
+	}
+
 	bool ReadCreatureClassification(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -156,20 +293,9 @@ namespace
 			{TEXT("H"), EDnd5eSize::Huge},
 			{TEXT("G"), EDnd5eSize::Gargantuan},
 		};
-		const TMap<FString, FGameplayTag> AlignmentMap{
-			{TEXT("L"), Dnd5e::Alignment::Lawful},
-			{TEXT("C"), Dnd5e::Alignment::Chaotic},
-			{TEXT("N"), Dnd5e::Alignment::Neutral},
-			{TEXT("G"), Dnd5e::Alignment::Good},
-			{TEXT("E"), Dnd5e::Alignment::Evil},
-			{TEXT("U"), Dnd5e::Alignment::Unaligned},
-		};
-		TArray<FString> Sizes, Alignments;
-		if (!ReadStrings(Object, TEXT("size"), Pointer, Sizes, State, true) ||
-			!ReadStrings(Object, TEXT("alignment"), Pointer, Alignments, State, true))
-		{
-			return false;
-		}
+		TArray<FString> Sizes;
+		if (!ReadStrings(Object, TEXT("size"), Pointer, Sizes, State, true)) { return false; }
+
 		for (int32 Index = 0; Index < Sizes.Num(); ++Index)
 		{
 			const auto* Size = SizeMap.Find(Sizes[Index]);
@@ -180,16 +306,7 @@ namespace
 			}
 			Creature.Sizes.Add(*Size);
 		}
-		for (int32 Index = 0; Index < Alignments.Num(); ++Index)
-		{
-			const auto* Tag = AlignmentMap.Find(Alignments[Index]);
-			if (!Tag)
-			{
-				return Fail(State, Codes::UnsupportedRequiredValue,
-					AppendPointer(AppendPointer(Pointer, TEXT("alignment")), FString::FromInt(Index)), TEXT("Unsupported alignment."));
-			}
-			Creature.Alignment.AddTag(*Tag);
-		}
+		if (!ReadCreatureAlignment(Object, Pointer, Creature, State)) { return false; }
 
 		FString Type;
 		const FString TypePointer = AppendPointer(Pointer, TEXT("type"));
