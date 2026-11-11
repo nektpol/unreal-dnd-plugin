@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #pragma once
 
@@ -6,10 +6,12 @@
 #include "Browser/Dnd5eItemBrowserModel.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Browser/Dnd5eItemBrowserDetails.h"
 #include "Widgets/Views/SListView.h"
 
 class IDetailsView;
 class UDnd5eEditorItemDatasetSubsystem;
+class SScrollBox;
 
 class SDnd5eItemBrowser : public SCompoundWidget
 {
@@ -34,4 +36,11 @@ private:
 	TStrongObjectPtr<UObject> SelectedData;
 	TWeakObjectPtr<UDnd5eEditorItemDatasetSubsystem> DatasetSubsystem;
 	FDelegateHandle CatalogChangedHandle;
+
+	FText GetDetailTitle() const;
+	FText GetDetailFacts() const { return Overview.Facts; }
+	FText GetDetailDescription() const { return Overview.Description; }
+
+	FDnd5eItemBrowserDetails Overview;
+	TSharedPtr<SScrollBox> OverviewScroll;
 };

@@ -2,6 +2,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Browser/Dnd5eItemBrowserDetails.h"
 #include "Browser/Dnd5eItemBrowserSelection.h"
 #include "Browser/SDnd5eItemBrowser.h"
 #include "Browser/Dnd5eSpellBrowserModel.h"
@@ -17,6 +18,7 @@
 #include "Misc/Paths.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Readers/Items/Dnd5eJsonItemReader.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "ToolMenu.h"
@@ -367,8 +369,9 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 {
 	FBrowserFiles Files;
 	if (!TestTrue(TEXT("Write item and group fixture"), Files.Write(TEXT(R"({
-		"item":[{"name":"Invented Compass","source":"SYN","rarity":"rare","charges":2}],
-		"itemGroup":[{"name":"Invented Family","source":"SYN","rarity":"rare","items":["Invented Compass|SYN"]}]
+		"item":[{"name":"Invented Compass","source":"SYN","rarity":"rare","charges":2,"entries":["Compass overview text."]}],
+		"itemGroup":[{"name":"Invented Family","source":"SYN","rarity":"rare","items":["Invented Compass|SYN"],
+			"entries":["Family overview text."]}]
 	})")))) { return false; }
 	FDnd5eJsonItemCatalogLoadRequest Request;
 	Request.DatasetRoot = Files.Root;
@@ -408,6 +411,8 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Item selection uses typed wrapper"), ItemSelection)) { return false; }
 	TestTrue(TEXT("Exact selected item retains typed charges"), ItemSelection->Item.Header.RecordId == ItemId &&
 		ItemSelection->Item.ChargeData.Charges.Fixed == 2);
+	TestTrue(TEXT("Selected item populates the readable overview"),
+		FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid());
 	TestFalse(TEXT("Details editing is disabled"), Details->GetIsPropertyEditingEnabledDelegate().Execute());
 	TWeakObjectPtr<UDnd5eItemBrowserSelection> WeakItem = ItemSelection;
 	CollectGarbage(RF_NoFlags);
@@ -420,15 +425,19 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 
 	Search->SetText(FText::FromString(TEXT(" FAMILY ")));
 	if (!TestTrue(TEXT("Search selects the matching row set and clears stale details"),
-		List->GetItems().Num() == 1 && List->GetSelectedItems().IsEmpty() && Details->GetSelectedObjects().IsEmpty())) { return false; }
+		List->GetItems().Num() == 1 && List->GetSelectedItems().IsEmpty() && Details->GetSelectedObjects().IsEmpty() &&
+		!FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid())) { return false; }
 	List->SetSelection(List->GetItems()[0]);
 	if (!TestEqual(TEXT("Group selection installs one details object"), Details->GetSelectedObjects().Num(), 1)) { return false; }
 	const auto* Group = Cast<UDnd5eItemGroupBrowserSelection>(Details->GetSelectedObjects()[0].Get());
 	TestTrue(TEXT("Group selection exposes its authored members"), Group && Group->Group.Members.Num() == 1 &&
 		Group->Group.Details.Header.RecordId == List->GetItems()[0]->Id);
+	TestTrue(TEXT("Group selection builds the overview from common details"),
+		FindBrowserText(Browser.ToSharedRef(), TEXT("Family overview text.")).IsValid());
 	Session->OnCatalogChanged().Broadcast();
 	TestTrue(TEXT("Reload notification clears details and preserves active search"),
-		List->GetItems().Num() == 1 && Details->GetSelectedObjects().IsEmpty() && List->GetSelectedItems().IsEmpty());
+		List->GetItems().Num() == 1 && Details->GetSelectedObjects().IsEmpty() && List->GetSelectedItems().IsEmpty() &&
+		!FindBrowserText(Browser.ToSharedRef(), TEXT("Family overview text.")).IsValid());
 	TWeakPtr<SDnd5eItemBrowser> WeakBrowser = Browser;
 	List.Reset(); Search.Reset(); Details.Reset(); Browser.Reset();
 	TestFalse(TEXT("Releasing browser removes its shared callback"), WeakBrowser.IsValid());
@@ -469,6 +478,70 @@ bool FDnd5eSrdItemBrowserTest::RunTest(const FString& Parameters)
 	}));
 	Model.SetSearchText(TEXT(""));
 	TestEqual(TEXT("Clearing search restores all SRD rows"), Model.GetRows().Num(), 590);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemOverviewValuesTest, "Dnd5e.Editor.ItemBrowser.OverviewValues", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemOverviewValuesTest::RunTest(const FString& Parameters)
+{
+	FDnd5eItem Item;
+	Item.Header.DisplayName = TEXT("Invented Device");
+	Item.Header.Provenance.AddDefaulted_GetRef().SourceId = TEXT("SYN");
+	Item.Rarity = Dnd5e::Item::Rarity::VeryRare;
+	const auto Empty = Dnd5eItemBrowserDetails::Build(Item);
+	TestTrue(TEXT("Title, source and friendly rarity display without absent numeric rows"),
+		Empty.Title.ToString() == TEXT("Invented Device") && Empty.Facts.ToString().Contains(TEXT("Source: SYN")) &&
+		Empty.Facts.ToString().Contains(TEXT("Very rare")) && !Empty.Facts.ToString().Contains(TEXT("Price:")) &&
+		!Empty.Facts.ToString().Contains(TEXT("Weight:")) && !Empty.Facts.ToString().Contains(TEXT("Charges:")));
+	FDnd5eMoney Gold;
+	Gold.Currency = EDnd5eCurrency::Gold;
+	Gold.Amount.Kind = EDnd5eNumberKind::Integer;
+	Gold.Amount.Integer = 5;
+	FDnd5eMoney Copper = Gold;
+	Copper.Currency = EDnd5eCurrency::Copper;
+	Copper.Amount.Integer = 1;
+	Item.Price.CostPresence = EDnd5eValuePresence::Present;
+	Item.Price.Cost = {Gold, Copper};
+	Item.bHasWeight = true;
+	Item.Weight.Amount.Kind = EDnd5eNumberKind::Integer;
+	Item.Weight.Unit = EDnd5eMassUnit::Pounds;
+	Item.ChargeData.Charges.Kind = EDnd5eItemChargeAmountKind::Fixed;
+	const FString Fixed = Dnd5eItemBrowserDetails::Build(Item).Facts.ToString();
+	TestTrue(TEXT("Money order and zero values are preserved"),
+		Fixed.Contains(TEXT("Price: 5 gp, 1 cp")) && Fixed.Contains(TEXT("Weight: 0 lb")) && Fixed.Contains(TEXT("Charges: 0")));
+	Item.Price.CostPresence = EDnd5eValuePresence::ExplicitNull;
+	Item.ChargeData.Charges.Kind = EDnd5eItemChargeAmountKind::Dice;
+	Item.ChargeData.Charges.Dice.Expression = TEXT("1d4 + 1");
+	const FString Dice = Dnd5eItemBrowserDetails::Build(Item).Facts.ToString();
+	TestTrue(TEXT("Explicit null and dice use their own display"),
+		Dice.Contains(TEXT("No listed price")) && !Dice.Contains(TEXT("5 gp")) && Dice.Contains(TEXT("Charges: 1d4 + 1")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemOverviewContentTest, "Dnd5e.Editor.ItemBrowser.OverviewContent", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemOverviewContentTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonDocument Document;
+	Document.Context.DatasetNamespace = TEXT("overview-test");
+	Document.Context.RelativeFilePath = TEXT("preview.json");
+	Document.JsonText = TEXT(R"json({"item":[{"name":"Invented Device","source":"SYN","rarity":"rare","entries":[
+		{"type":"entries","name":"Setup","entries":["Use {@b the switch} and roll {@dice 1d4}.",
+			{"type":"list","items":["First step",{"type":"item","name":"Second step","entries":["Nested body"]}]}]},
+		{"type":"table","colLabels":["Column"],"rows":[["Cell"]]}]},
+		{"name":"Supplement Fixture","source":"SYN","rarity":"rare","entries":["Supplementary paragraph."]}]})json");
+	auto Main = FDnd5eJsonItemReader::ReadAtIndex(Document, 0);
+	auto Supplement = FDnd5eJsonItemReader::ReadAtIndex(Document, 1);
+	if (!TestTrue(TEXT("Nested source content converts"), Main.Status == EDnd5eJsonReadStatus::Success &&
+		Supplement.Status == EDnd5eJsonReadStatus::Success)) { return false; }
+	Main.Item.bHasSupplementaryContent = true;
+	Main.Item.SupplementaryContent.Entries = MoveTemp(Supplement.Item.Description);
+	const FString Description = Dnd5eItemBrowserDetails::Build(Main.Item).Description.ToString();
+	TestTrue(TEXT("Preview uses typed inline text and preserves block order"),
+		Description.StartsWith(TEXT("Setup\n")) && Description.Contains(TEXT("Use the switch and roll 1d4.")) &&
+		Description.Find(TEXT("First step")) != INDEX_NONE && Description.Find(TEXT("Second step")) > Description.Find(TEXT("First step")) &&
+		Description.Contains(TEXT("Nested body")) && !Description.Contains(TEXT("{@")));
+	TestTrue(TEXT("Unsupported preview blocks defer to typed details and supplementary entries follow"),
+		Description.Contains(TEXT("[See typed details for this block]")) && Description.EndsWith(TEXT("Supplementary paragraph.")));
 	return !HasAnyErrors();
 }
 

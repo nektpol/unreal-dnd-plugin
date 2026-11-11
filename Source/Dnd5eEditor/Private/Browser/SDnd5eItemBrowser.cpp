@@ -15,6 +15,9 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SExpandableArea.h"
+#include "Widgets/Layout/SScrollBox.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eItemBrowser"
 
@@ -61,7 +64,40 @@ void SDnd5eItemBrowser::Construct(const FArguments& InArgs)
 				]
 				+ SSplitter::Slot().Value(0.6f)
 				[
-					DetailsView.ToSharedRef()
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().FillHeight(1).Padding(8, 0, 0, 8)
+					[
+						SAssignNew(OverviewScroll, SScrollBox)
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						[
+							SNew(STextBlock).Text(this, &SDnd5eItemBrowser::GetDetailTitle).AutoWrapText(true)
+						]
+						+ SScrollBox::Slot().Padding(0, 0, 0, 12)
+						[
+							SNew(STextBlock).Text(this, &SDnd5eItemBrowser::GetDetailFacts).AutoWrapText(true)
+							.Visibility_Lambda([this]() { return Overview.Facts.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+						]
+						+ SScrollBox::Slot()
+						[
+							SNew(STextBlock).Text(this, &SDnd5eItemBrowser::GetDetailDescription).AutoWrapText(true)
+							.Visibility_Lambda([this]() { return Overview.Description.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+						]
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 0)
+					[
+						SNew(SExpandableArea).InitiallyCollapsed(true)
+						.HeaderContent()
+						[
+							SNew(STextBlock).Text(LOCTEXT("TypedDetails", "Typed details"))
+						]
+						.BodyContent()
+						[
+							SNew(SBox).MaxDesiredHeight(280)
+							[
+								DetailsView.ToSharedRef()
+							]
+						]
+					]
 				]
 			]
 		]
@@ -100,7 +136,7 @@ void SDnd5eItemBrowser::HandleSearchChanged(const FText& Text)
 TSharedRef<ITableRow> SDnd5eItemBrowser::GenerateRow(FDnd5eItemBrowserRowPtr Row, const TSharedRef<STableViewBase>& OwnerTable)
 {
 	const FText Source = Row->SourceId.IsEmpty() ? LOCTEXT("NoSource", "Source unspecified") : FText::FromString(Row->SourceId);
-	const FText Rarity = Row->Rarity.IsValid() ? FText::FromName(Row->Rarity.GetTagName()) : LOCTEXT("NoRarity", "Rarity unspecified");
+	const FText Rarity = Dnd5eItemBrowserDetails::FormatRarity(Row->Rarity);
 	const FText Kind = Row->Id.Category == Dnd5e::Category::ItemGroup.GetTag() ? LOCTEXT("Group", "Group") : LOCTEXT("Item", "Item");
 	const FText Label = FText::Format(LOCTEXT("Row", "{0} | {1} | {2} | {3}"), FText::FromString(Row->Name), Kind, Source, Rarity);
 	return SNew(STableRow<FDnd5eItemBrowserRowPtr>, OwnerTable).Padding(4)
@@ -121,6 +157,7 @@ void SDnd5eItemBrowser::HandleSelectionChanged(FDnd5eItemBrowserRowPtr Row, ESel
 		if (!Catalog->TryGetGroup(Row->Id, Group)) { return; }
 		auto* Selection = NewObject<UDnd5eItemGroupBrowserSelection>();
 		Selection->Group = MoveTemp(Group);
+		Overview = Dnd5eItemBrowserDetails::Build(Selection->Group.Details);
 		SelectedData.Reset(Selection);
 	}
 	else
@@ -129,6 +166,7 @@ void SDnd5eItemBrowser::HandleSelectionChanged(FDnd5eItemBrowserRowPtr Row, ESel
 		if (!Catalog->TryGetItem(Row->Id, Item)) { return; }
 		auto* Selection = NewObject<UDnd5eItemBrowserSelection>();
 		Selection->Item = MoveTemp(Item);
+		Overview = Dnd5eItemBrowserDetails::Build(Selection->Item);
 		SelectedData.Reset(Selection);
 	}
 	DetailsView->SetObject(SelectedData.Get());
@@ -138,6 +176,8 @@ void SDnd5eItemBrowser::ClearDetails()
 {
 	DetailsView->SetObject(nullptr);
 	SelectedData.Reset();
+	Overview = {};
+	if (OverviewScroll.IsValid()) { OverviewScroll->ScrollToStart(); }
 }
 
 FText SDnd5eItemBrowser::GetSummary() const
@@ -146,6 +186,11 @@ FText SDnd5eItemBrowser::GetSummary() const
 	if (Model.GetTotalCount() == 0) { return LOCTEXT("Empty", "No items loaded. Use Tools → Load Dnd5e Item Dataset."); }
 	return FText::Format(LOCTEXT("Count", "Showing {0} of {1} item and group records."),
 		FText::AsNumber(Model.GetRows().Num()), FText::AsNumber(Model.GetTotalCount()));
+}
+
+FText SDnd5eItemBrowser::GetDetailTitle() const
+{
+	return Overview.Title.IsEmpty() ? LOCTEXT("SelectItem", "Select an item or group.") : Overview.Title;
 }
 
 #undef LOCTEXT_NAMESPACE
