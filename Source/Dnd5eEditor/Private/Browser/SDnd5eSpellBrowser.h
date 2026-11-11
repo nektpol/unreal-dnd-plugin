@@ -11,6 +11,7 @@
 
 class IDetailsView;
 class UDnd5eEditorDatasetSubsystem;
+class SSearchBox;
 
 class SDnd5eSpellBrowser : public SCompoundWidget
 {
@@ -20,6 +21,8 @@ public:
 
 	void Construct(const FArguments& InArgs);
 	virtual ~SDnd5eSpellBrowser() override;
+
+	bool SelectSpellById(const FDnd5eRecordId& Id);
 
 private:
 	void RefreshCatalog();
@@ -37,4 +40,6 @@ private:
 	TWeakObjectPtr<UDnd5eEditorDatasetSubsystem> DatasetSubsystem;
 	FDelegateHandle CatalogChangedHandle;
 	FText ReferenceSummary;
+
+	TSharedPtr<SSearchBox> SearchBox;
 };

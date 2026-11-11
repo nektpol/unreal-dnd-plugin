@@ -2,7 +2,7 @@
 
 Runtime APIs and editor integration are tested by Dnd5eEditor under the Dnd5e automation prefix. The suite uses Unreal's C++ automation framework, editor context, product filter, and WITH_DEV_AUTOMATION_TESTS guard. Tests are not part of the packaged runtime module. Runtime models/helpers are exercised across the module boundary; editor settings/session behavior has separate cases.
 
-Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **886 cases**; the standard and explicitly supplied-data checks pass **922 cases**. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
+Verification on 2026-11-11, Unreal Engine 5.8.4 on Windows: the Development Editor target builds. The standard suite contains **887 cases**; the standard and explicitly supplied-data checks pass **923 cases**. Frozen schema/default/copy/serialization expectations cover **104 structs (91 Core, 13 JSON), 504 fields, 31 enums, 178 native tags and 25 Content extraction helpers**. Dedicated validation results are BlueprintReadOnly; their access flags and actual reflected invocation are tested. The item definition catalog and its Blueprint wrapper share one lookup contract.
 
 ## Coverage
 
@@ -391,3 +391,7 @@ The synthetic widget case drives the production item and group selection, read-o
 ### Readable item details
 
 Two formatter cases cover mixed currency order, absent and explicit-null prices, zero weight and charges, dice charges, nested sections and lists, inline display text, supplementary order, and a placeholder for a table in the plain-text preview. The production widget case additionally checks item and group overviews and their removal on search and refresh. The combined report is under Saved/Automation/Dnd5eItemOverview.
+
+### Item Browser reference navigation
+
+The reference status case covers missing publications, ambiguous matches, and absent targets. The production widget case clicks a group member hidden by search, opens a definition preview, and checks that a spell reload enables a link on the selected item. It then clicks that link and verifies exact-ID selection in the visible Spell Browser, including a same-name spell fixture and a search that originally hid the intended target. The report is under Saved/Automation/Dnd5eItemNavigation.

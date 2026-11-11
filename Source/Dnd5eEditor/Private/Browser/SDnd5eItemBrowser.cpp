@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #include "Browser/SDnd5eItemBrowser.h"
 #include "Browser/Dnd5eItemBrowserSelection.h"
@@ -18,6 +18,9 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Dnd5eEditor.h"
+#include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
+#include "Widgets/Input/SButton.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eItemBrowser"
 
@@ -50,7 +53,7 @@ void SDnd5eItemBrowser::Construct(const FArguments& InArgs)
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 8, 8)
 					[
-						SNew(SSearchBox).HintText(LOCTEXT("Search", "Search item and group names"))
+						SAssignNew(SearchBox, SSearchBox).HintText(LOCTEXT("Search", "Search item and group names"))
 						.OnTextChanged(this, &SDnd5eItemBrowser::HandleSearchChanged)
 					]
 					+ SVerticalBox::Slot().FillHeight(1).Padding(0, 0, 8, 0)
@@ -82,6 +85,17 @@ void SDnd5eItemBrowser::Construct(const FArguments& InArgs)
 							SNew(STextBlock).Text(this, &SDnd5eItemBrowser::GetDetailDescription).AutoWrapText(true)
 							.Visibility_Lambda([this]() { return Overview.Description.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 						]
+						+ SScrollBox::Slot().Padding(0, 12, 0, 0)
+						[
+							SAssignNew(ReferenceBox, SVerticalBox)
+						]
+						+ SScrollBox::Slot().Padding(0, 8, 0, 0)
+						[
+							SNew(STextBlock)
+							.Text_Lambda([this]() { return ReferencePreview; })
+							.AutoWrapText(true)
+							.Visibility_Lambda([this]() { return ReferencePreview.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+						]
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 0)
 					[
@@ -108,12 +122,18 @@ void SDnd5eItemBrowser::Construct(const FArguments& InArgs)
 	{
 		CatalogChangedHandle = Subsystem->OnCatalogChanged().AddSP(this, &SDnd5eItemBrowser::RefreshCatalog);
 	}
+	SpellDatasetSubsystem = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorDatasetSubsystem>() : nullptr;
+	if (auto* Spells = SpellDatasetSubsystem.Get())
+	{
+		SpellCatalogChangedHandle = Spells->OnCatalogChanged().AddSP(this, &SDnd5eItemBrowser::RebuildReferences);
+	}
 	RefreshCatalog();
 }
 
 SDnd5eItemBrowser::~SDnd5eItemBrowser()
 {
 	if (auto* Subsystem = DatasetSubsystem.Get()) { Subsystem->OnCatalogChanged().Remove(CatalogChangedHandle); }
+	if (auto* Spells = SpellDatasetSubsystem.Get()) { Spells->OnCatalogChanged().Remove(SpellCatalogChangedHandle); }
 }
 
 void SDnd5eItemBrowser::RefreshCatalog()
@@ -170,12 +190,15 @@ void SDnd5eItemBrowser::HandleSelectionChanged(FDnd5eItemBrowserRowPtr Row, ESel
 		SelectedData.Reset(Selection);
 	}
 	DetailsView->SetObject(SelectedData.Get());
+	RebuildReferences();
 }
 
 void SDnd5eItemBrowser::ClearDetails()
 {
 	DetailsView->SetObject(nullptr);
 	SelectedData.Reset();
+	ReferencePreview = FText::GetEmpty();
+	if (ReferenceBox.IsValid()) { ReferenceBox->ClearChildren(); }
 	Overview = {};
 	if (OverviewScroll.IsValid()) { OverviewScroll->ScrollToStart(); }
 }
@@ -191,6 +214,91 @@ FText SDnd5eItemBrowser::GetSummary() const
 FText SDnd5eItemBrowser::GetDetailTitle() const
 {
 	return Overview.Title.IsEmpty() ? LOCTEXT("SelectItem", "Select an item or group.") : Overview.Title;
+}
+
+void SDnd5eItemBrowser::RebuildReferences()
+{
+	if (!ReferenceBox.IsValid()) { return; }
+	ReferenceBox->ClearChildren();
+	ReferencePreview = FText::GetEmpty();
+	const auto* Group = Cast<UDnd5eItemGroupBrowserSelection>(SelectedData.Get());
+	const auto* Item = Cast<UDnd5eItemBrowserSelection>(SelectedData.Get());
+	const FDnd5eItem* Record = Group ? &Group->Group.Details : (Item ? &Item->Item : nullptr);
+	if (!Record) { return; }
+
+	const auto* ItemSession = DatasetSubsystem.Get();
+	const auto* SpellSession = SpellDatasetSubsystem.Get();
+	const auto Links = Dnd5eItemBrowserLinks::Build(*Record, Group ? &Group->Group : nullptr,
+		ItemSession ? ItemSession->GetItemCatalog() : nullptr,
+		ItemSession ? ItemSession->GetDefinitionCatalog() : nullptr,
+		SpellSession ? SpellSession->GetCatalog() : nullptr);
+	for (const auto& Link : Links)
+	{
+		const FText Caption = FText::Format(LOCTEXT("LinkCaption", "{0} — {1}"), Link.Label, Link.Status);
+		ReferenceBox->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+		[
+			SNew(SButton)
+			.IsEnabled(Link.Target.IsSet())
+			.OnClicked(this, &SDnd5eItemBrowser::FollowReference, Link)
+			[
+				SNew(STextBlock).Text(Caption).AutoWrapText(true)
+			]
+		];
+	}
+}
+
+FReply SDnd5eItemBrowser::FollowReference(FDnd5eItemBrowserLink Link)
+{
+	if (!Link.Target.IsSet()) { return FReply::Handled(); }
+	const FDnd5eRecordId Id = Link.Target.GetValue();
+	switch (Link.Kind)
+	{
+	case EDnd5eItemBrowserLinkKind::Member:
+		if (SelectItemById(Id)) { return FReply::Handled(); }
+		break;
+	case EDnd5eItemBrowserLinkKind::Spell:
+		if (FModuleManager::GetModuleChecked<FDnd5eEditorModule>("Dnd5eEditor").OpenSpellById(Id))
+		{
+			return FReply::Handled();
+		}
+		break;
+	case EDnd5eItemBrowserLinkKind::Definition:
+		if (const auto* Session = DatasetSubsystem.Get())
+		{
+			if (const auto* Catalog = Session->GetDefinitionCatalog())
+			{
+				FText Title, Description;
+				if (Dnd5eItemBrowserLinks::ReadDefinition(*Catalog, Id, Title, Description))
+				{
+					ReferencePreview = FText::Format(LOCTEXT("DefinitionPreview", "{0}\n{1}"), Title, Description);
+					return FReply::Handled();
+				}
+			}
+		}
+		break;
+	}
+	ReferencePreview = LOCTEXT("ReferenceUnavailable", "The target is no longer available in the active catalog.");
+	return FReply::Handled();
+}
+
+bool SDnd5eItemBrowser::SelectItemById(const FDnd5eRecordId& Id)
+{
+	const auto* Session = DatasetSubsystem.Get();
+	const auto* Catalog = Session ? Session->GetItemCatalog() : nullptr;
+	FDnd5eItem Record;
+	if (!Catalog || !Catalog->TryGetItem(Id, Record)) { return false; }
+	auto FindRow = [&]() { return Model.GetRows().FindByPredicate([&Id](const auto& Row) { return Row->Id == Id; }); };
+	const auto* Found = FindRow();
+	if (!Found)
+	{
+		SearchBox->SetText(FText::GetEmpty());
+		Found = FindRow();
+	}
+	if (!Found) { return false; }
+	const FDnd5eItemBrowserRowPtr Row = *Found;
+	ListView->SetSelection(Row);
+	ListView->RequestScrollIntoView(Row);
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -18,6 +18,7 @@
 #include "Settings/Dnd5eEditorItemDatasetSettings.h"
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "Browser/SDnd5eItemBrowser.h"
+#include "Catalog/Dnd5eSpellCatalogObject.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eEditor"
 
@@ -81,6 +82,7 @@ void FDnd5eEditorModule::ShutdownModule()
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ItemBrowserTabName);
     }
     SpellBrowserTab.Reset();
+    SpellBrowserWidget.Reset();
     if (FModuleManager::Get().IsModuleLoaded("ToolMenus"))
     {
         UToolMenus::UnRegisterStartupCallback(this);
@@ -201,13 +203,27 @@ void FDnd5eEditorModule::OpenSpellBrowser()
     FGlobalTabmanager::Get()->TryInvokeTab(SpellBrowserTabName);
 }
 
+bool FDnd5eEditorModule::OpenSpellById(const FDnd5eRecordId& Id)
+{
+    const auto* Session = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorDatasetSubsystem>() : nullptr;
+    const auto* Catalog = Session ? Session->GetCatalog() : nullptr;
+    FDnd5eSpell Record;
+    if (!Catalog || !Catalog->TryGetSpell(Id, Record)) { return false; }
+    if (!FGlobalTabmanager::Get()->TryInvokeTab(SpellBrowserTabName)) { return false; }
+    const auto Browser = SpellBrowserWidget.Pin();
+    return Browser.IsValid() && Browser->SelectSpellById(Id);
+}
+
 TSharedRef<SDockTab> FDnd5eEditorModule::SpawnSpellBrowser(const FSpawnTabArgs& Args)
 {
+    const auto Browser = SNew(SDnd5eSpellBrowser);
+
     TSharedRef<SDockTab> Tab = SNew(SDockTab).TabRole(ETabRole::NomadTab)
     [
-        SNew(SDnd5eSpellBrowser)
+        Browser
     ];
     SpellBrowserTab = Tab;
+    SpellBrowserWidget = Browser;
     return Tab;
 }
 

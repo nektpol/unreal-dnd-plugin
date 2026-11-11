@@ -4,12 +4,15 @@
 
 class FSpawnTabArgs;
 class SDockTab;
+struct FDnd5eRecordId;
+class SDnd5eSpellBrowser;
 
 class FDnd5eEditorModule : public IModuleInterface
 {
 public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
+	bool OpenSpellById(const FDnd5eRecordId& Id);
 
 private:
 	void RegisterMenus();
@@ -20,6 +23,7 @@ private:
 	void OpenSpellBrowser();
 	TSharedRef<SDockTab> SpawnSpellBrowser(const FSpawnTabArgs& Args);
 	TWeakPtr<SDockTab> SpellBrowserTab;
+	TWeakPtr<SDnd5eSpellBrowser> SpellBrowserWidget;
 	void OpenItemBrowser();
 	TSharedRef<SDockTab> SpawnItemBrowser(const FSpawnTabArgs& Args);
 	TWeakPtr<SDockTab> ItemBrowserTab;

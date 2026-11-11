@@ -7,11 +7,16 @@
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Browser/Dnd5eItemBrowserDetails.h"
+#include "Browser/Dnd5eItemBrowserLinks.h"
 #include "Widgets/Views/SListView.h"
 
 class IDetailsView;
 class UDnd5eEditorItemDatasetSubsystem;
 class SScrollBox;
+class SSearchBox;
+class SVerticalBox;
+class SSearchBox;
+class UDnd5eEditorDatasetSubsystem;
 
 class SDnd5eItemBrowser : public SCompoundWidget
 {
@@ -43,4 +48,15 @@ private:
 
 	FDnd5eItemBrowserDetails Overview;
 	TSharedPtr<SScrollBox> OverviewScroll;
+
+	void RebuildReferences();
+	FReply FollowReference(FDnd5eItemBrowserLink Link);
+	bool SelectItemById(const FDnd5eRecordId& Id);
+
+	TSharedPtr<SSearchBox> SearchBox;
+	TSharedPtr<SVerticalBox> ReferenceBox;
+	FText ReferencePreview;
+	TWeakObjectPtr<UDnd5eEditorDatasetSubsystem> SpellDatasetSubsystem;
+	FDelegateHandle SpellCatalogChangedHandle;
+
 };

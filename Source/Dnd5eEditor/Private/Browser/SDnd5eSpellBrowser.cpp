@@ -73,7 +73,7 @@ void SDnd5eSpellBrowser::Construct(const FArguments& InArgs)
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 8, 8)
 					[
-						SNew(SSearchBox)
+						SAssignNew(SearchBox, SSearchBox)
 						.HintText(LOCTEXT("SearchHint", "Search spell names"))
 						.OnTextChanged(this, &SDnd5eSpellBrowser::HandleSearchChanged)
 					]
@@ -180,6 +180,26 @@ FText SDnd5eSpellBrowser::GetSummary() const
 FText SDnd5eSpellBrowser::GetReferenceSummary() const
 {
 	return ReferenceSummary;
+}
+
+bool SDnd5eSpellBrowser::SelectSpellById(const FDnd5eRecordId& Id)
+{
+	const auto* Session = DatasetSubsystem.Get();
+	const auto* Catalog = Session ? Session->GetCatalog() : nullptr;
+	FDnd5eSpell Record;
+	if (!Catalog || !Catalog->TryGetSpell(Id, Record)) { return false; }
+	auto FindRow = [&]() { return Model.GetRows().FindByPredicate([&Id](const auto& Row) { return Row->Id == Id; }); };
+	const auto* Found = FindRow();
+	if (!Found)
+	{
+		SearchBox->SetText(FText::GetEmpty());
+		Found = FindRow();
+	}
+	if (!Found) { return false; }
+	const FDnd5eSpellBrowserRowPtr Row = *Found;
+	ListView->SetSelection(Row);
+	ListView->RequestScrollIntoView(Row);
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

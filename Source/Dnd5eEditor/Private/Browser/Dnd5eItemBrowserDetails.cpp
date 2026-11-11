@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #include "Browser/Dnd5eItemBrowserDetails.h"
 #include "Content/Dnd5eContentLibrary.h"
@@ -207,6 +207,14 @@ namespace
 		}
 	}
 
+	FText FinishPreview(FString Description)
+	{
+		const bool bAtLimit = Description.Len() >= MaxPreviewChars;
+		Description.TrimStartAndEndInline();
+		if (bAtLimit) { Description += LOCTEXT("Truncated", "\n[Preview shortened. See typed details.]").ToString(); }
+		return Description.IsEmpty() ? LOCTEXT("NoDescription", "No description supplied.") : FText::FromString(Description);
+	}
+
 	void AddFact(TArray<FString>& Facts, const FText& Pattern, const FString& Value)
 	{
 		if (!Value.IsEmpty()) { Facts.Add(FText::Format(Pattern, FText::FromString(Value)).ToString()); }
@@ -251,11 +259,15 @@ FDnd5eItemBrowserDetails Dnd5eItemBrowserDetails::Build(const FDnd5eItem& Item)
 		if (!Description.IsEmpty()) { AppendPreview(Description, TEXT("\n")); }
 		AppendBlocks(Item.SupplementaryContent.Entries, Description, 0);
 	}
-	const bool bAtLimit = Description.Len() >= MaxPreviewChars;
-	Description.TrimStartAndEndInline();
-	if (bAtLimit) { Description += LOCTEXT("Truncated", "\n[Preview shortened. See typed details.]").ToString(); }
-	Result.Description = Description.IsEmpty() ? LOCTEXT("NoDescription", "No description supplied.") : FText::FromString(Description);
+	Result.Description = FinishPreview(MoveTemp(Description));
 	return Result;
+}
+
+FText Dnd5eItemBrowserDetails::FormatDescription(const TArray<FDnd5eContentBlock>& Blocks)
+{
+	FString Description;
+	AppendBlocks(Blocks, Description, 0);
+	return FinishPreview(MoveTemp(Description));
 }
 
 #undef LOCTEXT_NAMESPACE

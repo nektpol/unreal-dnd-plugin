@@ -3,6 +3,7 @@
 
 #include "Dnd5eTestSupport.h"
 #include "Browser/Dnd5eItemBrowserDetails.h"
+#include "Browser/Dnd5eItemBrowserLinks.h"
 #include "Browser/Dnd5eItemBrowserSelection.h"
 #include "Browser/SDnd5eItemBrowser.h"
 #include "Browser/Dnd5eSpellBrowserModel.h"
@@ -18,6 +19,7 @@
 #include "Misc/Paths.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Misc/ScopeExit.h"
 #include "Readers/Items/Dnd5eJsonItemReader.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
@@ -27,6 +29,8 @@
 #include "UObject/GarbageCollection.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -104,6 +108,20 @@ namespace
 		for (int32 Index = 0; Index < Children->Num(); ++Index)
 		{
 			if (auto Found = FindBrowserText(Children->GetChildAt(Index), Prefix)) { return Found; }
+		}
+		return nullptr;
+	}
+
+	TSharedPtr<SButton> FindButtonWithCaption(const TSharedRef<SWidget>& Root, const FString& Prefix)
+	{
+		if (Root->GetType() == FName(TEXT("SButton")) && FindBrowserText(Root, Prefix))
+		{
+			return StaticCastSharedRef<SButton>(Root);
+		}
+		auto* Children = Root->GetChildren();
+		for (int32 Index = 0; Index < Children->Num(); ++Index)
+		{
+			if (auto Found = FindButtonWithCaption(Children->GetChildAt(Index), Prefix)) { return Found; }
 		}
 		return nullptr;
 	}
@@ -369,14 +387,17 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 {
 	FBrowserFiles Files;
 	if (!TestTrue(TEXT("Write item and group fixture"), Files.Write(TEXT(R"({
-		"item":[{"name":"Invented Compass","source":"SYN","rarity":"rare","charges":2,"entries":["Compass overview text."]}],
+		"item":[{"name":"Invented Compass","source":"SYN","rarity":"rare","charges":2,"type":"M|SYN",
+			"attachedSpells":["Invented Ember|SYN-FIRST"],"entries":["Compass overview text."]}],
 		"itemGroup":[{"name":"Invented Family","source":"SYN","rarity":"rare","items":["Invented Compass|SYN"],
-			"entries":["Family overview text."]}]
+			"entries":["Family overview text."]}],
+		"itemType":[{"name":"Invented Definition","abbreviation":"M","source":"SYN","entries":["Definition overview text."]}]
 	})")))) { return false; }
 	FDnd5eJsonItemCatalogLoadRequest Request;
 	Request.DatasetRoot = Files.Root;
 	Request.DatasetNamespace = TEXT("item-browser");
 	Request.ItemFiles = {TEXT("synthetic.json")};
+	Request.DefinitionFiles = Request.ItemFiles;
 	const auto Loaded = UDnd5eJsonItemCatalogLoader::LoadItemCatalog(Request);
 	if (!TestTrue(TEXT("Load browser fixture"), Loaded.Status == EDnd5eJsonReadStatus::Success && Loaded.ItemCatalog)) { return false; }
 
@@ -384,6 +405,8 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("Actual editor item subsystem exists"), Session)) { return false; }
 	auto* Property = FindFProperty<FObjectPropertyBase>(Session->GetClass(), TEXT("ItemCatalog"));
 	if (!TestNotNull(TEXT("Transient catalog fixture can be installed"), Property)) { return false; }
+	auto* DefinitionsProperty = FindFProperty<FObjectPropertyBase>(Session->GetClass(), TEXT("DefinitionCatalog"));
+	if (!TestNotNull(TEXT("Definition fixture can be installed"), DefinitionsProperty)) { return false; }
 	struct FRestore
 	{
 		UDnd5eEditorItemDatasetSubsystem& Session;
@@ -396,7 +419,10 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 		}
 	};
 	FRestore Restore{*Session, *Property, TStrongObjectPtr<UDnd5eItemCatalogObject>(Session->GetItemCatalog())};
+	TStrongObjectPtr<UDnd5eItemDefinitionCatalogObject> OriginalDefinitions(Session->GetDefinitionCatalog());
 	Property->SetObjectPropertyValue_InContainer(Session, Loaded.ItemCatalog.Get());
+	DefinitionsProperty->SetObjectPropertyValue_InContainer(Session, Loaded.DefinitionCatalog.Get());
+	ON_SCOPE_EXIT { DefinitionsProperty->SetObjectPropertyValue_InContainer(Session, OriginalDefinitions.Get()); };
 	TSharedPtr<SDnd5eItemBrowser> Browser = SNew(SDnd5eItemBrowser);
 	auto List = StaticCastSharedPtr<SListView<FDnd5eItemBrowserRowPtr>>(FindWidget(Browser.ToSharedRef(), TEXT("SListView<FDnd5eItemBrowserRowPtr>")));
 	auto Search = StaticCastSharedPtr<SSearchBox>(FindWidget(Browser.ToSharedRef(), TEXT("SSearchBox")));
@@ -413,6 +439,46 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 		ItemSelection->Item.ChargeData.Charges.Fixed == 2);
 	TestTrue(TEXT("Selected item populates the readable overview"),
 		FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid());
+	auto DefinitionButton = FindButtonWithCaption(Browser.ToSharedRef(), TEXT("Type: M | SYN"));
+	if (!TestTrue(TEXT("Matched definition can be followed"), DefinitionButton && DefinitionButton->IsEnabled())) { return false; }
+	DefinitionButton->SimulateClick();
+	TestTrue(TEXT("Definition click shows the typed description preview"),
+		FindBrowserText(Browser.ToSharedRef(), TEXT("Invented Definition\nDefinition overview text.")).IsValid());
+	DefinitionButton.Reset();
+
+	{
+		auto* SpellSession = GEditor->GetEditorSubsystem<UDnd5eEditorDatasetSubsystem>();
+		if (!TestNotNull(TEXT("Spell session exists"), SpellSession)) { return false; }
+		auto* SpellProperty = FindFProperty<FObjectPropertyBase>(SpellSession->GetClass(), TEXT("Catalog"));
+		if (!TestNotNull(TEXT("Spell fixture can be installed"), SpellProperty)) { return false; }
+		TStrongObjectPtr<UDnd5eSpellCatalogObject> SpellFixture(NewObject<UDnd5eSpellCatalogObject>());
+		auto Records = BrowserRecords();
+		for (auto& Spell : Records) { Spell.Header.RecordId.DatasetNamespace = Request.DatasetNamespace; }
+		if (!Install(*this, *SpellFixture, Records)) { return false; }
+		FScopedBrowserCatalog RestoreSpell(*SpellSession, *SpellProperty, nullptr);
+		SpellSession->OnCatalogChanged().Broadcast();
+		auto SpellButton = FindButtonWithCaption(Browser.ToSharedRef(), TEXT("Spell: Invented Ember"));
+		if (!TestTrue(TEXT("Unavailable spells remain visible and disabled"), SpellButton && !SpellButton->IsEnabled())) { return false; }
+		SpellProperty->SetObjectPropertyValue_InContainer(SpellSession, SpellFixture.Get());
+		SpellSession->OnCatalogChanged().Broadcast();
+		SpellButton = FindButtonWithCaption(Browser.ToSharedRef(), TEXT("Spell: Invented Ember"));
+		if (!TestTrue(TEXT("Spell reload enables the link without reselecting the item"), SpellButton && SpellButton->IsEnabled())) { return false; }
+
+		const FTabId SpellTabId(TEXT("Dnd5eSpellBrowser"));
+		const bool bHadTab = FGlobalTabmanager::Get()->FindExistingLiveTab(SpellTabId).IsValid();
+		auto Tab = FGlobalTabmanager::Get()->TryInvokeTab(SpellTabId);
+		if (!TestTrue(TEXT("Production spell tab opens"), Tab.IsValid())) { return false; }
+		ON_SCOPE_EXIT { if (!bHadTab) { Tab->RequestCloseTab(); } };
+		auto SpellSearch = StaticCastSharedPtr<SSearchBox>(FindWidget(Tab->GetContent(), TEXT("SSearchBox")));
+		auto SpellDetails = StaticCastSharedPtr<IDetailsView>(FindWidget(Tab->GetContent(), TEXT("SDetailsView")));
+		if (!TestTrue(TEXT("Spell tab has search and details"), SpellSearch && SpellDetails)) { return false; }
+		SpellSearch->SetText(FText::FromString(TEXT("Frost")));
+		SpellButton->SimulateClick();
+		const auto& Selected = SpellDetails->GetSelectedObjects();
+		const auto* Spell = Selected.Num() == 1 ? Cast<UDnd5eSpellBrowserSelection>(Selected[0].Get()) : nullptr;
+		TestTrue(TEXT("Link reveals and selects the exact spell in the visible tab"),
+			SpellSearch->GetText().IsEmpty() && Spell && Spell->Spell.Header.RecordId == Records[0].Header.RecordId);
+	}
 	TestFalse(TEXT("Details editing is disabled"), Details->GetIsPropertyEditingEnabledDelegate().Execute());
 	TWeakObjectPtr<UDnd5eItemBrowserSelection> WeakItem = ItemSelection;
 	CollectGarbage(RF_NoFlags);
@@ -426,7 +492,8 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 	Search->SetText(FText::FromString(TEXT(" FAMILY ")));
 	if (!TestTrue(TEXT("Search selects the matching row set and clears stale details"),
 		List->GetItems().Num() == 1 && List->GetSelectedItems().IsEmpty() && Details->GetSelectedObjects().IsEmpty() &&
-		!FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid())) { return false; }
+		!FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid() &&
+		!FindBrowserText(Browser.ToSharedRef(), TEXT("Invented Definition\n")).IsValid())) { return false; }
 	List->SetSelection(List->GetItems()[0]);
 	if (!TestEqual(TEXT("Group selection installs one details object"), Details->GetSelectedObjects().Num(), 1)) { return false; }
 	const auto* Group = Cast<UDnd5eItemGroupBrowserSelection>(Details->GetSelectedObjects()[0].Get());
@@ -434,6 +501,16 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 		Group->Group.Details.Header.RecordId == List->GetItems()[0]->Id);
 	TestTrue(TEXT("Group selection builds the overview from common details"),
 		FindBrowserText(Browser.ToSharedRef(), TEXT("Family overview text.")).IsValid());
+	auto MemberButton = FindButtonWithCaption(Browser.ToSharedRef(), TEXT("Member: Invented Compass"));
+	if (!TestTrue(TEXT("The matched member has an enabled button"), MemberButton && MemberButton->IsEnabled())) { return false; }
+	MemberButton->SimulateClick();
+	TestTrue(TEXT("Following a member clears an excluding search and selects the exact item"),
+		Search->GetText().IsEmpty() && List->GetSelectedItems().Num() == 1 && List->GetSelectedItems()[0]->Id == ItemId &&
+		FindBrowserText(Browser.ToSharedRef(), TEXT("Compass overview text.")).IsValid());
+	MemberButton.Reset();
+	Search->SetText(FText::FromString(TEXT(" FAMILY ")));
+	if (!TestEqual(TEXT("Group remains searchable after navigation"), List->GetItems().Num(), 1)) { return false; }
+	List->SetSelection(List->GetItems()[0]);
 	Session->OnCatalogChanged().Broadcast();
 	TestTrue(TEXT("Reload notification clears details and preserves active search"),
 		List->GetItems().Num() == 1 && Details->GetSelectedObjects().IsEmpty() && List->GetSelectedItems().IsEmpty() &&
@@ -542,6 +619,42 @@ bool FDnd5eItemOverviewContentTest::RunTest(const FString& Parameters)
 		Description.Contains(TEXT("Nested body")) && !Description.Contains(TEXT("{@")));
 	TestTrue(TEXT("Unsupported preview blocks defer to typed details and supplementary entries follow"),
 		Description.Contains(TEXT("[See typed details for this block]")) && Description.EndsWith(TEXT("Supplementary paragraph.")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eItemBrowserLinkStatusTest, "Dnd5e.Editor.ItemBrowser.ReferenceStatuses", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eItemBrowserLinkStatusTest::RunTest(const FString& Parameters)
+{
+	FDnd5eItem First;
+	First.Header.RecordId.DatasetNamespace = TEXT("links");
+	First.Header.RecordId.Category = Dnd5e::Category::Item;
+	First.Header.RecordId.SourceKey = TEXT("first");
+	First.Header.DisplayName = TEXT("Invented Blade");
+	First.Header.Provenance.AddDefaulted_GetRef().SourceId = TEXT("SYN");
+	FDnd5eItem Second = First;
+	Second.Header.RecordId.SourceKey = TEXT("second");
+	TStrongObjectPtr<UDnd5eItemCatalogObject> Catalog(NewObject<UDnd5eItemCatalogObject>());
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	if (!TestTrue(TEXT("Install two records with the same authored identity"),
+		Catalog->ReplaceRecords({First, Second}, {}, Diagnostics))) { return false; }
+	FDnd5eItemGroup Group;
+	Group.Details = First;
+	auto& Missing = Group.Members.AddDefaulted_GetRef();
+	Missing.Name = First.Header.DisplayName;
+	auto& Ambiguous = Group.Members.AddDefaulted_GetRef();
+	Ambiguous.Name = First.Header.DisplayName;
+	Ambiguous.bHasSource = true;
+	Ambiguous.SourceId = TEXT("SYN");
+	auto& Absent = Group.Members.AddDefaulted_GetRef();
+	Absent.Name = TEXT("Unloaded Item");
+	Absent.bHasSource = true;
+	Absent.SourceId = TEXT("SYN");
+
+	const auto Links = Dnd5eItemBrowserLinks::Build(Group.Details, &Group, Catalog.Get(), nullptr, nullptr);
+	if (!TestEqual(TEXT("All authored members stay visible"), Links.Num(), 3)) { return false; }
+	TestTrue(TEXT("Omitted source never authorizes a target"), !Links[0].Target.IsSet() && Links[0].Status.ToString() == TEXT("Source omitted"));
+	TestTrue(TEXT("Ambiguity never picks a candidate"), !Links[1].Target.IsSet() && Links[1].Status.ToString() == TEXT("Multiple item matches"));
+	TestTrue(TEXT("Absent target stays visible"), !Links[2].Target.IsSet() && Links[2].Status.ToString() == TEXT("Target unavailable"));
 	return !HasAnyErrors();
 }
 
