@@ -2,6 +2,7 @@
 
 #include "Readers/Bestiary/Dnd5eJsonCreatureReader.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
+#include "Readers/Bestiary/Dnd5eJsonCreatureCopyResolver.h"
 #include "Algo/Find.h"
 #include "Dnd5eTags.h"
 
@@ -1021,6 +1022,49 @@ namespace
 			ReadCreatureEntries(Object, TEXT("action"), Pointer, Creature.Actions, State) &&
 			ReadCreatureEntries(Object, TEXT("bonus"), Pointer, Creature.BonusActions, State);
 	}
+
+	void AuditCreatureRows(const FDnd5eJsonDocument& Document,
+		const TArray<TSharedPtr<FJsonValue>>& Rows, const FDnd5eCreatureCopyIndex* CopyIndex,
+		FDnd5eCreatureDocumentAudit& Report)
+	{
+		Report.Rows.Reserve(Rows.Num());
+		for (int32 Index = 0; Index < Rows.Num(); ++Index)
+		{
+			auto& Row = Report.Rows.AddDefaulted_GetRef();
+			Row.Status = EDnd5eJsonReadStatus::Failure;
+			Row.JsonPointer = AppendPointer(TEXT("/monster"), FString::FromInt(Index));
+
+			FReadState RowState{Document.Context, Document.JsonText, Row.Diagnostics};
+			TSharedPtr<FJsonObject> Object;
+			if (!RequireObject(Rows[Index], Row.JsonPointer, Object, RowState)) { continue; }
+
+			if (const auto Name = FindExactField(*Object, TEXT("name")); Name.IsValid() && Name->Type == EJson::String)
+			{
+				Row.Name = Name->AsString();
+			}
+			if (const auto Source = FindExactField(*Object, TEXT("source")); Source.IsValid() && Source->Type == EJson::String)
+			{
+				Row.SourceId = Source->AsString();
+			}
+			Row.bIsCopy = FindExactField(*Object, TEXT("_copy")).IsValid();
+			InventoryCreatureFields(*Object, Row.JsonPointer, Row.FieldShapes);
+
+			TSharedPtr<FJsonObject> Assembled = Object;
+			TArray<FDnd5eCreatureCopyRow> Ancestors;
+			if (CopyIndex && Row.bIsCopy &&
+				!ResolveCreatureCopy(*CopyIndex, {Object, Document.Context.RelativeFilePath, Row.JsonPointer},
+					Assembled, Ancestors, RowState))
+			{
+				continue;
+			}
+
+			FDnd5eCreature Candidate;
+			if (ReadCreatureRow(*Assembled, Row.JsonPointer, Candidate, RowState))
+			{
+				Row.Status = EDnd5eJsonReadStatus::Success;
+			}
+		}
+	}
 }
 
 FDnd5eJsonCreatureReadResult FDnd5eJsonCreatureReader::ReadCreature(const FDnd5eJsonDocument& Document,
@@ -1067,35 +1111,61 @@ FDnd5eCreatureDocumentAudit FDnd5eJsonCreatureReader::AuditDocument(const FDnd5e
 	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
 	if (!ReadCreatureDocument(Root, Rows, DocumentState)) { return Report; }
 
-	Report.Rows.Reserve(Rows->Num());
-	for (int32 Index = 0; Index < Rows->Num(); ++Index)
-	{
-		auto& Row = Report.Rows.AddDefaulted_GetRef();
-		Row.Status = EDnd5eJsonReadStatus::Failure;
-		Row.JsonPointer = AppendPointer(TEXT("/monster"), FString::FromInt(Index));
-
-		FReadState RowState{Document.Context, Document.JsonText, Row.Diagnostics};
-		TSharedPtr<FJsonObject> Object;
-		if (!RequireObject((*Rows)[Index], Row.JsonPointer, Object, RowState)) { continue; }
-
-		if (const auto Name = FindExactField(*Object, TEXT("name")); Name.IsValid() && Name->Type == EJson::String)
-		{
-			Row.Name = Name->AsString();
-		}
-		if (const auto Source = FindExactField(*Object, TEXT("source")); Source.IsValid() && Source->Type == EJson::String)
-		{
-			Row.SourceId = Source->AsString();
-		}
-		Row.bIsCopy = FindExactField(*Object, TEXT("_copy")).IsValid();
-		InventoryCreatureFields(*Object, Row.JsonPointer, Row.FieldShapes);
-
-		FDnd5eCreature Candidate;
-		if (ReadCreatureRow(*Object, Row.JsonPointer, Candidate, RowState))
-		{
-			Row.Status = EDnd5eJsonReadStatus::Success;
-		}
-	}
+	AuditCreatureRows(Document, *Rows, nullptr, Report);
 
 	Report.Status = EDnd5eJsonReadStatus::Success;
 	return Report;
+}
+
+TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
+	TArrayView<const FDnd5eJsonDocument> Documents)
+{
+	using namespace Dnd5eJsonReader;
+	using FCreatureRows = TArray<TSharedPtr<FJsonValue>>;
+
+	TArray<FDnd5eCreatureDocumentAudit> Reports;
+	Reports.SetNum(Documents.Num());
+	TArray<TSharedPtr<FJsonObject>> Roots;
+	Roots.SetNum(Documents.Num());
+	TArray<const FCreatureRows*> RowsByDocument;
+	RowsByDocument.SetNumZeroed(Documents.Num());
+	FDnd5eCreatureCopyIndex CopyIndex;
+
+	for (int32 DocumentIndex = 0; DocumentIndex < Documents.Num(); ++DocumentIndex)
+	{
+		const auto& Document = Documents[DocumentIndex];
+		auto& Report = Reports[DocumentIndex];
+		Report.Status = EDnd5eJsonReadStatus::Failure;
+		FReadState State{Document.Context, Document.JsonText, Report.Diagnostics};
+		if (!Document.Context.DatasetNamespace.Equals(Documents[0].Context.DatasetNamespace, ESearchCase::CaseSensitive))
+		{
+			Fail(State, Codes::InvalidFieldValue, TEXT(""), TEXT("Expected one dataset namespace per creature audit batch."));
+			continue;
+		}
+
+		const FCreatureRows* Rows = nullptr;
+		if (!ReadCreatureDocument(Roots[DocumentIndex], Rows, State)) { continue; }
+		RowsByDocument[DocumentIndex] = Rows;
+		for (int32 RowIndex = 0; RowIndex < Rows->Num(); ++RowIndex)
+		{
+			const auto& Value = (*Rows)[RowIndex];
+			const TSharedPtr<FJsonObject>* Object = nullptr;
+			if (Value.IsValid() && Value->Type == EJson::Object && Value->TryGetObject(Object) && Object)
+			{
+				IndexCreatureCopyRow(CopyIndex, {*Object, Document.Context.RelativeFilePath,
+					AppendPointer(TEXT("/monster"), FString::FromInt(RowIndex))});
+			}
+		}
+	}
+
+	for (int32 DocumentIndex = 0; DocumentIndex < Documents.Num(); ++DocumentIndex)
+	{
+		if (const FCreatureRows* Rows = RowsByDocument[DocumentIndex])
+		{
+			auto& Report = Reports[DocumentIndex];
+			AuditCreatureRows(Documents[DocumentIndex], *Rows, &CopyIndex, Report);
+			Report.Status = EDnd5eJsonReadStatus::Success;
+		}
+	}
+	return Reports;
 }

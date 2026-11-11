@@ -610,6 +610,58 @@ bool FDnd5eCreatureScorePresenceTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyAuditTest, "Dnd5e.Bestiary.Reader.CopyAudit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureCopyAuditTest::RunTest(const FString& Parameters)
+{
+	auto Children = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Child","source":"C","_copy":{"name":"middle","source":"m"}},
+		{"name":"Missing","source":"C","_copy":{"name":"Absent","source":"M"}},
+		{"name":"Cycle","source":"C","_copy":{"name":"cycle","source":"c"}},
+		{"name":"Deferred child","source":"C","_copy":{"name":"Deferred","source":"M"}},
+		{"name":"Preserves page","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_preserve":{"page":true}}},
+		{"name":"Clears page","source":"C","page":null,"_copy":{"name":"Lantern Scout","source":"SYN-B","_preserve":{"*":true}}},
+		{"name":"Ambiguous parent","source":"C","_copy":{"name":"Duplicate","source":"M"}}
+	]})json"));
+	Children.Context.RelativeFilePath = TEXT("children.json");
+	auto Middle = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Middle","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B"}},
+		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{}}},
+		{"name":"Duplicate","source":"M"},
+		{"name":"duplicate","source":"m"}
+	]})json"));
+	Middle.Context.RelativeFilePath = TEXT("middle.json");
+	const auto Root = MakeDocument(FString(StatBlock).Replace(TEXT("\"page\":4"), TEXT("\"page\":false")));
+	const TArray<FDnd5eJsonDocument> Documents{Children, Middle, Root};
+	const auto Reports = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	if (!TestTrue(TEXT("Reports and rows preserve input order"), Reports.Num() == 3 && Reports[0].Rows.Num() == 7 &&
+		Reports[1].Rows.Num() == 4 && Reports[2].Rows.Num() == 2)) { return false; }
+
+	const auto& Rows = Reports[0].Rows;
+	TestTrue(TEXT("Reversed chain converts and the child identity survives"),
+		Rows[0].Status == EDnd5eJsonReadStatus::Success && Rows[0].bIsCopy &&
+		Rows[0].Name == TEXT("Child") && Rows[0].SourceId == TEXT("C") &&
+		Reports[1].Rows[0].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("Explicit null clears a preserved parent field"), Rows[5].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("The original parent retains its invalid page"), Reports[2].Rows[1].Status == EDnd5eJsonReadStatus::Failure);
+
+	const auto CheckFailure = [this, &Rows](int32 Index, const TCHAR* File, const TCHAR* Pointer, const TCHAR* Message)
+	{
+		TestTrue(Message, Rows[Index].Status == EDnd5eJsonReadStatus::Failure &&
+			Rows[Index].Diagnostics.ContainsByPredicate([File, Pointer, Message](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.RelativeFilePath == File && Diagnostic.JsonPointer == Pointer &&
+					Diagnostic.Message.Contains(Message, ESearchCase::IgnoreCase);
+			}));
+	};
+	CheckFailure(1, TEXT("children.json"), TEXT("/monster/1/_copy"), TEXT("was not found"));
+	CheckFailure(2, TEXT("children.json"), TEXT("/monster/2/_copy"), TEXT("cycle"));
+	CheckFailure(3, TEXT("middle.json"), TEXT("/monster/1/_copy/_mod"), TEXT("deferred"));
+	CheckFailure(4, TEXT("children.json"), TEXT("/monster/4/page"), TEXT("page"));
+	CheckFailure(6, TEXT("children.json"), TEXT("/monster/6/_copy"), TEXT("ambiguous"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

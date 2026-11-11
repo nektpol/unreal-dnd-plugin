@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Dom/JsonObject.h"
@@ -113,11 +113,14 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	int32 ConvertedWithWarnings = 0;
 	int32 Failed = 0;
 	int32 Copies = 0;
+	int32 ConvertedCopies = 0;
+	int32 DeferredCopies = 0;
 	TArray<FString> Unreadable;
 	TMap<FString, FBestiaryAuditSample> Shapes;
 	TMap<FString, FBestiaryAuditSample> CopyShapes;
 	TMap<FString, FBestiaryAuditSample> Diagnostics;
 
+	TArray<FDnd5eJsonDocument> Documents;
 	for (const FString& File : Files)
 	{
 		FDnd5eJsonDocument Document;
@@ -130,12 +133,19 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 		}
 		++FilesOpened;
 
-		const auto Audit = FDnd5eJsonCreatureReader::AuditDocument(Document);
+		Documents.Add(MoveTemp(Document));
+	}
+
+	const auto Audits = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	for (int32 Index = 0; Index < Audits.Num(); ++Index)
+	{
+		const FString& File = Documents[Index].Context.RelativeFilePath;
+		const auto& Audit = Audits[Index];
 		if (Audit.Status != EDnd5eJsonReadStatus::Success) { ++BadDocuments; }
 		for (const auto& Diagnostic : Audit.Diagnostics)
 		{
 			const FString Key = Diagnostic.Code.ToString() + TEXT(" ") + NormalizeAuditPointer(Diagnostic.JsonPointer);
-			AddSample(Diagnostics, Key, File, Diagnostic.JsonPointer);
+			AddSample(Diagnostics, Key, Diagnostic.RelativeFilePath.IsEmpty() ? File : Diagnostic.RelativeFilePath, Diagnostic.JsonPointer);
 		}
 
 		for (const auto& Row : Audit.Rows)
@@ -145,6 +155,7 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 			if (Row.Status == EDnd5eJsonReadStatus::Success)
 			{
 				++Converted;
+				if (Row.bIsCopy) { ++ConvertedCopies; }
 				if (Row.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
 				{
 					return Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning;
@@ -156,6 +167,15 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 			else
 			{
 				++Failed;
+				if (Row.bIsCopy && Row.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+				{
+					return Diagnostic.Code == FName(TEXT("Dnd5e.Json.UnsupportedRequiredValue")) &&
+						(Diagnostic.JsonPointer.EndsWith(TEXT("/_copy/_mod")) ||
+							Diagnostic.JsonPointer.EndsWith(TEXT("/_copy/_templates")));
+				}))
+				{
+					++DeferredCopies;
+				}
 			}
 
 			auto& ShapeGroups = Row.bIsCopy ? CopyShapes : Shapes;
@@ -166,7 +186,7 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 			for (const auto& Diagnostic : Row.Diagnostics)
 			{
 				const FString Key = Diagnostic.Code.ToString() + TEXT(" ") + NormalizeAuditPointer(Diagnostic.JsonPointer);
-				AddSample(Diagnostics, Key, File, Diagnostic.JsonPointer);
+				AddSample(Diagnostics, Key, Diagnostic.RelativeFilePath.IsEmpty() ? File : Diagnostic.RelativeFilePath, Diagnostic.JsonPointer);
 			}
 		}
 	}
@@ -175,6 +195,8 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 		TEXT("Indexed files: %d\nFiles opened: %d\nInvalid envelopes: %d\nRows visited: %d\n")
 		TEXT("Converted: %d\nConverted with warnings: %d\nFailed conversion: %d\nCopy rows: %d\n"),
 		Files.Num(), FilesOpened, BadDocuments, RowsVisited, Converted, ConvertedWithWarnings, Failed, Copies);
+	Report += FString::Printf(TEXT("Converted direct rows: %d\nConverted copies: %d\nDeferred copies: %d\nOther copy failures: %d\n"),
+		Converted - ConvertedCopies, ConvertedCopies, DeferredCopies, Copies - ConvertedCopies - DeferredCopies);
 	for (const FString& File : Unreadable) { Report += TEXT("Unreadable file: ") + File + TEXT("\n"); }
 	AppendGroups(TEXT("Direct row field shapes"), Shapes, Report);
 	AppendGroups(TEXT("Copy row field shapes"), CopyShapes, Report);

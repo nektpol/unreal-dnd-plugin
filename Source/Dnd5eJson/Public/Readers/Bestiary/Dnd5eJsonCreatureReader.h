@@ -54,4 +54,5 @@ class DND5EJSON_API FDnd5eJsonCreatureReader
 public:
 	static FDnd5eJsonCreatureReadResult ReadCreature(const FDnd5eJsonDocument& Document, const FString& Name, const FString& SourceId);
 	static FDnd5eCreatureDocumentAudit AuditDocument(const FDnd5eJsonDocument& Document);
+	static TArray<FDnd5eCreatureDocumentAudit> AuditDocuments(TArrayView<const FDnd5eJsonDocument> Documents);
 };
