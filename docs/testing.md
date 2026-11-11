@@ -371,3 +371,11 @@ Three synthetic automation cases exercise multi-document definition replacement 
 ### Offline item catalog loading
 
 Two synthetic tests exercise the public file loader with temporary local files. They cover a combined base and definition file, explicit variant selection, supplementary attachment, relative provenance, a second namespace with an empty definition catalog, and separate object lifetimes. Duplicate, traversal, missing-file and malformed-item requests check that both result objects stay null and previously returned catalogs remain available. The spell loader suite continues to exercise the shared file checks. The combined report under Saved/Automation/Dnd5eOfflineItemLoader contains 909 clean passes and six passes with editor HTTP warnings. No cases failed or were skipped.
+
+### Full offline item import audit
+
+Pass `-Dnd5eJsonItemAuditRoot="<absolute-local-dataset-data-directory>"` and run `Dnd5e.Items.Loader.External.CompleteImport`. The opt-in case expects items-base.json, items.json, magicvariants.json, fluff-items.json and spells/spells-xphb.json under the selected directory. It compares the public loader's item, group and definition counts with the raw arrays. It also checks supplementary attachment, definition and member selectors, representative attached-spell matches, and generated variants selected under both policies. Reported locations and diagnostic counts omit source passages.
+
+The two edition checks load the same mixed input under separate namespaces and apply different variant policies. This verifies namespace isolation and variant eligibility. Edition-specific record coverage depends on the selected files.
+
+The inspected snapshot passed the opt-in audit with 2,861 primary records and 102 definitions. Supplementary content attached to 875 items and 46 groups. The audit matched 452 group member declarations and retrieved 350 attached-spell targets from the selected spell file. PreferClassic produced 2,873 eligible pairs, including zero copied pairs. SourceDefault produced 3,513 eligible pairs, including five copied pairs. The audit loaded one or two selected generated records respectively. The report is under Saved/Automation/Dnd5eItemImportAudit/Complete.
