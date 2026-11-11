@@ -364,6 +364,52 @@ bool FDnd5eCreatureSubtypeTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureHitPointsTest, "Dnd5e.Bestiary.Reader.HitPoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureHitPointsTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Field)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT(R"("hp":{"average":9,"formula":"2d8"},)"),
+			Field, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Missing = Read(TEXT(""));
+	const auto Null = Read(TEXT(R"("hp":null,)"));
+	TestTrue(TEXT("Omitted and null HP have distinct presence"),
+		Missing.Status == EDnd5eJsonReadStatus::Success && Missing.Creature.HitPoints.Presence == EDnd5eValuePresence::Unspecified &&
+		Null.Status == EDnd5eJsonReadStatus::Success && Null.Creature.HitPoints.Presence == EDnd5eValuePresence::ExplicitNull &&
+		!Missing.Creature.HitPoints.bHasAverage && !Null.Creature.HitPoints.bHasAverage);
+
+	const auto Printed = Read(TEXT(R"("hp":{"average":0,"formula":"1d4 - 4"},)"));
+	const auto& Hp = Printed.Creature.HitPoints;
+	TestTrue(TEXT("Authored zero and formula are retained"), Printed.Status == EDnd5eJsonReadStatus::Success &&
+		Hp.Presence == EDnd5eValuePresence::Present && Hp.bHasAverage && Hp.Average == 0 &&
+		Hp.Formula.Expression == TEXT("1d4 - 4") && Hp.Formula.Syntax == TEXT("5etools") && Hp.Special.IsEmpty());
+
+	const auto Special = Read(TEXT(R"("hp":{"special":"Varies with {@spell Invented Ward|SYN-B}"},)"));
+	TestTrue(TEXT("Special HP retains inline references"), Special.Status == EDnd5eJsonReadStatus::Success &&
+		Special.Creature.HitPoints.Presence == EDnd5eValuePresence::Present && !Special.Creature.HitPoints.bHasAverage &&
+		Special.Creature.HitPoints.Special.ContainsByPredicate(
+			[](const FDnd5eInlineContent& Inline) { return Inline.Payload.GetPtr<FDnd5eReferenceContent>() != nullptr; }));
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Input, const TCHAR* Pointer)
+	{
+		const auto Failed = Read(Input);
+		TestTrue(Pointer, Failed.Status == EDnd5eJsonReadStatus::Failure &&
+			Failed.Creature.HitPoints.Presence == EDnd5eValuePresence::Unspecified &&
+			Failed.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"("hp":{"average":7},)"), TEXT("/monster/1/hp/formula"));
+	CheckFailure(TEXT(R"("hp":{"special":12},)"), TEXT("/monster/1/hp/special"));
+	CheckFailure(TEXT(R"("hp":{"average":7,"special":"varies"},)"), TEXT("/monster/1/hp/average"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

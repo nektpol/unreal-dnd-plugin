@@ -432,15 +432,41 @@ namespace
 	bool ReadHitPoints(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreatureHitPoints& Out, FReadState& State)
 	{
-		TSharedPtr<FJsonObject> Hp;
-		const FString HpPointer = AppendPointer(Pointer, TEXT("hp"));
-		if (!ReadRequiredObject(Object, TEXT("hp"), Pointer, Hp, State) ||
-			!ReadStatInteger(*Hp, TEXT("average"), HpPointer, Out.Average, State) ||
-			!ReadRequiredString(*Hp, TEXT("formula"), HpPointer, Out.Formula.Expression, State))
+		const auto Value = FindExactField(Object, TEXT("hp"));
+		if (!Value.IsValid()) { return true; }
+		if (Value->Type == EJson::Null)
 		{
-			return false;
+			Out.Presence = EDnd5eValuePresence::ExplicitNull;
+			return true;
 		}
-		Out.Formula.Syntax = TEXT("5etools");
+
+		const FString HpPointer = AppendPointer(Pointer, TEXT("hp"));
+		TSharedPtr<FJsonObject> Hp;
+		if (!RequireObject(Value, HpPointer, Hp, State)) { return false; }
+
+		if (FindExactField(*Hp, TEXT("special")).IsValid())
+		{
+			FString Text;
+			if (!CheckAllowedKeys(*Hp, {TEXT("special")}, HpPointer, State) ||
+				!ReadRequiredString(*Hp, TEXT("special"), HpPointer, Text, State) ||
+				!ReadInlines(Text, AppendPointer(HpPointer, TEXT("special")), Out.Special, State))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			if (!CheckAllowedKeys(*Hp, {TEXT("average"), TEXT("formula")}, HpPointer, State) ||
+				!ReadStatInteger(*Hp, TEXT("average"), HpPointer, Out.Average, State) ||
+				!ReadRequiredString(*Hp, TEXT("formula"), HpPointer, Out.Formula.Expression, State))
+			{
+				return false;
+			}
+			Out.bHasAverage = true;
+			Out.Formula.Syntax = TEXT("5etools");
+		}
+
+		Out.Presence = EDnd5eValuePresence::Present;
 		return true;
 	}
 
