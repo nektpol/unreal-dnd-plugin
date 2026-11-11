@@ -12,10 +12,15 @@
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SExpandableArea.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
+#include "Styling/CoreStyle.h"
 #include "Readers/Spells/Dnd5eJsonSpellReferenceReporter.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eSpellBrowser"
@@ -89,19 +94,51 @@ void SDnd5eSpellBrowser::Construct(const FArguments& InArgs)
 				+ SSplitter::Slot().Value(0.65f)
 				[
 					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 8)
+					+ SVerticalBox::Slot().FillHeight(1).Padding(8, 0, 0, 8)
 					[
-						SNew(STextBlock).Text(LOCTEXT("DetailsHint", "Read-only spell details — select a row to inspect."))
+						SAssignNew(OverviewScroll, SScrollBox)
+						+ SScrollBox::Slot().Padding(0, 0, 0, 4)
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 12, 0)
+							[
+								SNew(STextBlock).Text(this, &SDnd5eSpellBrowser::GetDetailTitle)
+								.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 18)).AutoWrapText(true)
+							]
+							+ SHorizontalBox::Slot().AutoWidth()
+							[
+								SNew(STextBlock).Text(this, &SDnd5eSpellBrowser::GetDetailSource)
+							]
+						]
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						[
+							SNew(STextBlock).Text(this, &SDnd5eSpellBrowser::GetDetailClassification).AutoWrapText(true)
+						]
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						[
+							SNew(STextBlock).Text(this, &SDnd5eSpellBrowser::GetDetailMechanics).AutoWrapText(true)
+						]
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						[
+							SNew(SSeparator).Visibility_Lambda([this]()
+							{
+								return Overview.Title.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+							})
+						]
+						+ SScrollBox::Slot()
+						[
+							SNew(STextBlock).Text(this, &SDnd5eSpellBrowser::GetDetailDescription).AutoWrapText(true)
+						]
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 8)
 					[
-						SNew(STextBlock)
-						.Text(this, &SDnd5eSpellBrowser::GetReferenceSummary)
-						.AutoWrapText(true)
+						SNew(STextBlock).Text(this, &SDnd5eSpellBrowser::GetReferenceSummary).AutoWrapText(true)
 					]
-					+ SVerticalBox::Slot().FillHeight(1)
+					+ SVerticalBox::Slot().AutoHeight().Padding(8, 0, 0, 0)
 					[
-						DetailsView.ToSharedRef()
+						SNew(SExpandableArea).InitiallyCollapsed(true)
+						.HeaderContent()[SNew(STextBlock).Text(LOCTEXT("TypedDetails", "Typed details"))]
+						.BodyContent()[SNew(SBox).MaxDesiredHeight(280)[DetailsView.ToSharedRef()]]
 					]
 				]
 			]
@@ -158,6 +195,7 @@ void SDnd5eSpellBrowser::HandleSelectionChanged(FDnd5eSpellBrowserRowPtr Item, E
 	if (!Catalog->TryGetSpell(Item->Id, Spell)) { return; }
 	SelectedData.Reset(NewObject<UDnd5eSpellBrowserSelection>());
 	SelectedData->Spell = MoveTemp(Spell);
+	Overview = Dnd5eSpellBrowserDetails::Build(SelectedData->Spell);
 	SelectedData->ReferenceReport = FDnd5eJsonSpellReferenceReporter::BuildReport(Catalog->GetMutableCatalog(), SelectedData->Spell);
 	ReferenceSummary = MakeReferenceSummary(SelectedData->ReferenceReport);
 	DetailsView->SetObject(SelectedData.Get());
@@ -167,7 +205,14 @@ void SDnd5eSpellBrowser::ClearDetails()
 {
 	DetailsView->SetObject(nullptr);
 	SelectedData.Reset();
+	Overview = {};
+	if (OverviewScroll.IsValid()) { OverviewScroll->ScrollToStart(); }
 	ReferenceSummary = LOCTEXT("NoReferenceSelection", "Select a spell to inspect its reference report.");
+}
+
+FText SDnd5eSpellBrowser::GetDetailTitle() const
+{
+	return Overview.Title.IsEmpty() ? LOCTEXT("SelectSpell", "Select a spell.") : Overview.Title;
 }
 
 FText SDnd5eSpellBrowser::GetSummary() const

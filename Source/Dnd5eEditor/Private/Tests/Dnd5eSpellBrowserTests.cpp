@@ -3,6 +3,7 @@
 
 #include "Dnd5eTestSupport.h"
 #include "Browser/Dnd5eItemBrowserDetails.h"
+#include "Browser/Dnd5eSpellBrowserDetails.h"
 #include "Browser/Dnd5eItemBrowserLinks.h"
 #include "Browser/Dnd5eItemBrowserSelection.h"
 #include "Browser/SDnd5eItemBrowser.h"
@@ -22,6 +23,7 @@
 #include "Misc/ScopeExit.h"
 #include "Readers/Items/Dnd5eJsonItemReader.h"
 #include "Readers/Items/Dnd5eJsonItemDefinitionCatalogLibrary.h"
+#include "Readers/Spells/Dnd5eJsonSpellReader.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "ToolMenu.h"
@@ -479,6 +481,13 @@ bool FDnd5eItemBrowserWidgetTest::RunTest(const FString& Parameters)
 		const auto* Spell = Selected.Num() == 1 ? Cast<UDnd5eSpellBrowserSelection>(Selected[0].Get()) : nullptr;
 		TestTrue(TEXT("Link reveals and selects the exact spell in the visible tab"),
 			SpellSearch->GetText().IsEmpty() && Spell && Spell->Spell.Header.RecordId == Records[0].Header.RecordId);
+		TestTrue(TEXT("Navigation also updates the visible spell card"),
+			FindBrowserText(Tab->GetContent(), TEXT("Invented Ember")).IsValid() &&
+			!FindBrowserText(Tab->GetContent(), TEXT("Select a spell.")).IsValid());
+		SpellSearch->SetText(FText::FromString(TEXT("Frost")));
+		TestTrue(TEXT("Spell search clears the previous card"),
+			FindBrowserText(Tab->GetContent(), TEXT("Select a spell.")).IsValid() &&
+			SpellDetails->GetSelectedObjects().IsEmpty());
 	}
 	TestFalse(TEXT("Details editing is disabled"), Details->GetIsPropertyEditingEnabledDelegate().Execute());
 	TWeakObjectPtr<UDnd5eItemBrowserSelection> WeakItem = ItemSelection;
@@ -758,6 +767,40 @@ bool FDnd5eItemDefinitionPreviewTest::RunTest(const FString& Parameters)
 	const FString Isolated = Dnd5eItemBrowserDetails::Build(Item, Definitions.Get()).Description.ToString();
 	TestEqual(TEXT("An unrelated namespace cannot contribute definition text"), Isolated,
 		FString(TEXT("Direct rules.\n\nSupplement rules.")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eSpellCardTest, "Dnd5e.Editor.SpellBrowser.StatCard", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eSpellCardTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonSpellReadRequest Request;
+	Request.Context.DatasetNamespace = TEXT("spell-card");
+	Request.Context.RelativeFilePath = TEXT("spells.json");
+	Request.SpellIndex = 0;
+	Request.JsonText = TEXT(R"json({"spell":[{"name":"Invented Beacon","source":"SYN","page":12,"level":1,"school":"V",
+		"time":[{"number":1,"unit":"action"},{"number":1,"unit":"reaction","condition":"when the lamp dims"}],
+		"range":{"type":"cone","distance":{"type":"feet","amount":15}},
+		"components":{"v":true,"s":true,"m":{"text":"a crystal","cost":100,"consume":true}},
+		"duration":[{"type":"timed","duration":{"type":"minute","amount":1,"upTo":true},"concentration":true},{"type":"instant"}],
+		"entries":["The beacon deals {@damage 1d6} radiant damage."],
+		"entriesHigherLevel":[{"type":"entries","name":"At Higher Levels","entries":["The light grows brighter."]}]}]})json");
+	const auto Read = FDnd5eJsonSpellReader::ReadSpell(Request);
+	if (!TestTrue(TEXT("Read fixture through production parser"), Read.Status == EDnd5eJsonReadStatus::Success)) { return false; }
+	const auto Card = Dnd5eSpellBrowserDetails::Build(Read.Spell);
+	const FString Mechanics = Card.Mechanics.ToString();
+	TestTrue(TEXT("Header shows authored source and spell classification"), Card.Source.ToString() == TEXT("SYN p. 12") &&
+		Card.Classification.ToString() == TEXT("Level 1 Evocation"));
+	TestTrue(TEXT("Casting options and a self-origin area are readable"),
+		Mechanics.Contains(TEXT("1 action / 1 reaction")) && Mechanics.Contains(TEXT("when the lamp dims")) &&
+		Mechanics.Contains(TEXT("Self (15 ft cone)")));
+	TestTrue(TEXT("Materials keep their typed cost and consumption"),
+		Mechanics.Contains(TEXT("V, S, M (a crystal | Cost: 100 cp | consumed)")));
+	TestTrue(TEXT("Concentration applies only to its own duration option"),
+		Mechanics.Contains(TEXT("Concentration, up to 1 minute / Instantaneous")));
+	const FString Rules = Card.Description.ToString();
+	TestTrue(TEXT("Damage displays in context and higher-level rules follow"),
+		Rules.StartsWith(TEXT("The beacon deals 1d6 radiant damage.")) && Rules.Contains(TEXT("At Higher Levels")) &&
+		Rules.EndsWith(TEXT("The light grows brighter.")));
 	return !HasAnyErrors();
 }
 

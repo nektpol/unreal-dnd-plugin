@@ -8,10 +8,12 @@
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
+#include "Browser/Dnd5eSpellBrowserDetails.h"
 
 class IDetailsView;
 class UDnd5eEditorDatasetSubsystem;
 class SSearchBox;
+class SScrollBox;
 
 class SDnd5eSpellBrowser : public SCompoundWidget
 {
@@ -40,6 +42,13 @@ private:
 	TWeakObjectPtr<UDnd5eEditorDatasetSubsystem> DatasetSubsystem;
 	FDelegateHandle CatalogChangedHandle;
 	FText ReferenceSummary;
+	FDnd5eSpellBrowserDetails Overview;
+	TSharedPtr<SScrollBox> OverviewScroll;
+	FText GetDetailTitle() const;
+	FText GetDetailSource() const { return Overview.Source; }
+	FText GetDetailClassification() const { return Overview.Classification; }
+	FText GetDetailMechanics() const { return Overview.Mechanics; }
+	FText GetDetailDescription() const { return Overview.Description; }
 
 	TSharedPtr<SSearchBox> SearchBox;
 };

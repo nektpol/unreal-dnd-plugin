@@ -50,6 +50,8 @@ This editor catalog is independent of Actor/GameInstance-owned Blueprint catalog
 
 Open **Tools → Dnd5e Spell Browser**. The dockable tab reads the existing editor catalog; opening it does not select files or load a dataset. Before an explicit load, it shows an empty list and a loading instruction. The summary reports visible rows out of total loaded records.
 
+The selected spell's stat card shows its source and page, school and level, casting options, range, components, duration, and rules text. Higher-level entries follow the main rules. Concentration is shown on the applicable duration option. The reference report remains below the card, and **Typed details** expands the read-only inspector. Search and successful reload clear the card with the selection.
+
 The left search box matches case-insensitive substrings of display names, ignoring leading/trailing search whitespace. Empty search shows all records in catalog order. Source labels and other fields are not included in this search. Runtime catalog exact-name queries retain their existing contract.
 
 Each row shows display name, level, and primary publication/source ID. Level 0 represents a cantrip. Missing provenance displays Source unspecified; no source or edition is inferred. Records with matching names remain distinct rows selected by their exact record IDs.

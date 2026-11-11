@@ -403,3 +403,7 @@ The Item Browser run under Saved/Automation/Dnd5eItemStatCardVerified checks the
 ### Item description composition
 
 The formatter case verifies direct, definition and supplementary text order, duplicate property suppression, explicit-source precedence and namespace isolation. The production widget case confirms a loaded definition contributes to its visible overview. For the opt-in SRD browser audit, `-Dnd5eJsonSrdCardDefinitionFile` optionally specifies a relative definition filename containing the two local summaries. The audit confirms the item and definition counts and checks the Longsword and Cobbler's Tools previews. The focused report is under Saved/Automation/Dnd5eItemDescriptionVerified.
+
+### Spell stat cards
+
+The focused editor run under Saved/Automation/Dnd5eSpellStatCard checks the shared item and spell preview behavior. The spell formatter case reads a synthetic spell through the production parser and verifies source and page, classification, casting options, a self-origin area, typed material cost and consumption, duration-specific concentration, and higher-level text. The browser tests exercise the visible card through exact-ID navigation and clear it on search.
