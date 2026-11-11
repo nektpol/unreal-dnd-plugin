@@ -407,3 +407,9 @@ The formatter case verifies direct, definition and supplementary text order, dup
 ### Spell stat cards
 
 The focused editor run under Saved/Automation/Dnd5eSpellStatCard checks the shared item and spell preview behavior. The spell formatter case reads a synthetic spell through the production parser and verifies source and page, classification, casting options, a self-origin area, typed material cost and consumption, duration-specific concentration, and higher-level text. The browser tests exercise the visible card through exact-ID navigation and clear it on search.
+
+## Bestiary reader
+
+Run the `Dnd5e.Bestiary.Reader` automation filter for the synthetic conversion and failure tests. They exercise numeric and sourced AC, signed skills, record identity, grouped Content, and precise failures for invalid, duplicate, missing, and copy rows.
+
+Run `Dnd5e.Bestiary.Local.GoblinSmoke` with `-Dnd5eBestiaryRoot="<absolute path to the supplied data/bestiary folder>"` to include the optional local check. The check uses the supplied MM and XMM documents. The plugin repository contains only synthetic fixtures.
