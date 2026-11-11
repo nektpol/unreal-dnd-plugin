@@ -704,13 +704,29 @@ namespace
 	{
 		if (!ReadCreatureMovement(Object, Pointer, Creature, State)) { return false; }
 
+		if (!FindExactField(Object, TEXT("str")).IsValid() &&
+			!FindExactField(Object, TEXT("dex")).IsValid() &&
+			!FindExactField(Object, TEXT("con")).IsValid() &&
+			!FindExactField(Object, TEXT("int")).IsValid() &&
+			!FindExactField(Object, TEXT("wis")).IsValid() &&
+			!FindExactField(Object, TEXT("cha")).IsValid())
+		{
+			return true;
+		}
+
 		auto& Scores = Creature.AbilityScores;
-		return ReadStatInteger(Object, TEXT("str"), Pointer, Scores.Strength, State) &&
-			ReadStatInteger(Object, TEXT("dex"), Pointer, Scores.Dexterity, State) &&
-			ReadStatInteger(Object, TEXT("con"), Pointer, Scores.Constitution, State) &&
-			ReadStatInteger(Object, TEXT("int"), Pointer, Scores.Intelligence, State) &&
-			ReadStatInteger(Object, TEXT("wis"), Pointer, Scores.Wisdom, State) &&
-			ReadStatInteger(Object, TEXT("cha"), Pointer, Scores.Charisma, State);
+		if (!ReadStatInteger(Object, TEXT("str"), Pointer, Scores.Strength, State) ||
+			!ReadStatInteger(Object, TEXT("dex"), Pointer, Scores.Dexterity, State) ||
+			!ReadStatInteger(Object, TEXT("con"), Pointer, Scores.Constitution, State) ||
+			!ReadStatInteger(Object, TEXT("int"), Pointer, Scores.Intelligence, State) ||
+			!ReadStatInteger(Object, TEXT("wis"), Pointer, Scores.Wisdom, State) ||
+			!ReadStatInteger(Object, TEXT("cha"), Pointer, Scores.Charisma, State))
+		{
+			return false;
+		}
+
+		Scores.bHasScores = true;
+		return true;
 	}
 
 	bool ReadCreatureSkillBonus(const FString& Name, const TSharedPtr<FJsonValue>& Value,

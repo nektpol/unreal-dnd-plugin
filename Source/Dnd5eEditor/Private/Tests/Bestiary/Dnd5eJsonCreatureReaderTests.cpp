@@ -575,6 +575,41 @@ bool FDnd5eCreatureSkillsAndPageTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureScorePresenceTest, "Dnd5e.Bestiary.Reader.AbilityScorePresence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureScorePresenceTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Scores)
+	{
+		const FString Json = FString(StatBlock).Replace(
+			TEXT(R"("str":7,"dex":13,"con":11,"int":12,"wis":9,"cha":8,)"), Scores, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Missing = Read(TEXT(""));
+	TestTrue(TEXT("All scores may be omitted without dropping movement"),
+		Missing.Status == EDnd5eJsonReadStatus::Success && !Missing.Creature.AbilityScores.bHasScores &&
+		Missing.Creature.WalkSpeed.Amount.Integer == 25);
+
+	const auto Zero = Read(TEXT(R"("str":0,"dex":13,"con":11,"int":12,"wis":9,"cha":8,)"));
+	TestTrue(TEXT("A complete set with authored zero is present"),
+		Zero.Status == EDnd5eJsonReadStatus::Success && Zero.Creature.AbilityScores.bHasScores &&
+		Zero.Creature.AbilityScores.Strength == 0 && Zero.Creature.AbilityScores.Dexterity == 13);
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Scores, const TCHAR* Pointer)
+	{
+		const auto Result = Read(Scores);
+		TestTrue(Pointer, Result.Status == EDnd5eJsonReadStatus::Failure && !Result.Creature.AbilityScores.bHasScores &&
+			Result.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"("dex":13,"con":11,"int":12,"wis":9,"cha":8,)"), TEXT("/monster/1/str"));
+	CheckFailure(TEXT(R"("str":7,"dex":13,"con":11,"int":12,"wis":null,"cha":8,)"), TEXT("/monster/1/wis"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

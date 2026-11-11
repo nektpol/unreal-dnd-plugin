@@ -15,7 +15,7 @@
 | HitPoints | `FDnd5eCreatureHitPoints` | Field presence, printed average and dice formula, or special text in `TArray<FDnd5eInlineContent> Special`. Check `bHasAverage` before reading the numeric value. |
 | WalkSpeed | `FDnd5eDistance` | Convenience projection of the top-level walking distance, including authored zero. |
 | Movement | `FDnd5eCreatureMovement` | Presence, standard and alternate speeds with conditions, hover, and ordered choice modes with a shared distance and note. |
-| AbilityScores | `FDnd5eCreatureAbilityScores` | Six named `int32` ability scores. |
+| AbilityScores | `FDnd5eCreatureAbilityScores` | Six named `int32` ability scores. Check `bHasScores` before using them. All six keys may be omitted. If any key is supplied, the reader requires the complete set. |
 | Skills | `TArray<FDnd5eCreatureSkillBonus>` | Skill name and either a signed integer with `bHasNumericBonus` or authored text in `BonusExpression`. |
 | SkillChoices | `TArray<FDnd5eCreatureSkillChoice>` | Ordered choice groups. Each contains one-of options in `TArray<FDnd5eCreatureSkillBonus>`. |
 | Senses and Languages | `TArray<FString>` each | Authored senses and languages. |
