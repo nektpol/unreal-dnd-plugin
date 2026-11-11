@@ -48,6 +48,13 @@ namespace
 		{
 			for (const FDnd5eMoney& Money : Price.Cost)
 			{
+				if (Price.Cost.Num() == 1 && Money.Currency == EDnd5eCurrency::Copper &&
+					Money.Amount.Kind == EDnd5eNumberKind::Integer && Money.Amount.Integer > 0 &&
+					Money.Amount.Integer % 100 == 0)
+				{
+					Parts.Add(FText::AsNumber(Money.Amount.Integer / 100).ToString() + TEXT(" gp"));
+					continue;
+				}
 				FString Amount = FormatNumber(Money.Amount);
 				if (Amount.IsEmpty()) { continue; }
 				const FString Unit = FormatCurrency(Money.Currency);
@@ -219,6 +226,157 @@ namespace
 	{
 		if (!Value.IsEmpty()) { Facts.Add(FText::Format(Pattern, FText::FromString(Value)).ToString()); }
 	}
+
+	FText FormatSource(const FDnd5eRecordHeader& Header)
+	{
+		if (Header.Provenance.IsEmpty()) { return FText::GetEmpty(); }
+		const auto& Origin = Header.Provenance[0];
+		const FText Source = FText::FromString(Origin.SourceId);
+		FText Page;
+		switch (Origin.Page.Kind)
+		{
+		case EDnd5ePageReferenceKind::Number: Page = FText::AsNumber(Origin.Page.Number); break;
+		case EDnd5ePageReferenceKind::Text: Page = FText::FromString(Origin.Page.Text); break;
+		default: break;
+		}
+		if (Page.IsEmpty()) { return Source; }
+		if (Source.IsEmpty()) { return FText::Format(LOCTEXT("PageOnly", "p. {0}"), Page); }
+		return FText::Format(LOCTEXT("SourcePage", "{0} p. {1}"), Source, Page);
+	}
+
+	FText FormatClassification(const FDnd5eItem& Item)
+	{
+		if (Item.Header.RecordId.Category == Dnd5e::Category::ItemGroup.GetTag())
+		{
+			return LOCTEXT("GroupClassification", "Item group");
+		}
+		const FString Type = Item.bHasType ? Item.Type.Abbreviation : FString();
+		if (Item.bHasWeaponData && (Type == TEXT("M") || Type == TEXT("R")))
+		{
+			const bool bMelee = Type == TEXT("M");
+			switch (Item.WeaponData.Category)
+			{
+			case EDnd5eWeaponCategory::Martial:
+				return bMelee ? LOCTEXT("MartialMelee", "Martial melee weapon") : LOCTEXT("MartialRanged", "Martial ranged weapon");
+			case EDnd5eWeaponCategory::Simple:
+				return bMelee ? LOCTEXT("SimpleMelee", "Simple melee weapon") : LOCTEXT("SimpleRanged", "Simple ranged weapon");
+			default:
+				return bMelee ? LOCTEXT("Melee", "Melee weapon") : LOCTEXT("Ranged", "Ranged weapon");
+			}
+		}
+		if (Type == TEXT("LA")) { return LOCTEXT("LightArmor", "Light armor"); }
+		if (Type == TEXT("MA")) { return LOCTEXT("MediumArmor", "Medium armor"); }
+		if (Type == TEXT("HA")) { return LOCTEXT("HeavyArmor", "Heavy armor"); }
+		if (Type == TEXT("S")) { return LOCTEXT("Shield", "Shield"); }
+		if (Item.bHasWeaponData) { return LOCTEXT("Weapon", "Weapon"); }
+		if (Item.bHasArmorData) { return LOCTEXT("Armor", "Armor"); }
+		return FText::GetEmpty();
+	}
+
+	FString FormatDamage(const FDnd5eDamageExpression& Damage)
+	{
+		if (Damage.Amount.Expression.IsEmpty()) { return {}; }
+		if (!Damage.Type.IsValid()) { return Damage.Amount.Expression; }
+
+		FString TypeName = Damage.Type.ToString();
+		int32 Separator;
+		if (TypeName.FindLastChar(TEXT('.'), Separator)) { TypeName = TypeName.Mid(Separator + 1); }
+		return Damage.Amount.Expression + TEXT(" ") + TypeName.ToLower();
+	}
+
+	bool HasVersatileProperty(const FDnd5eItem& Item)
+	{
+		return Item.Properties.ContainsByPredicate([](const FDnd5eItemDefinitionSelector& Property)
+		{
+			return Property.Abbreviation.Equals(TEXT("V"), ESearchCase::IgnoreCase) &&
+				(!Property.bHasSource || Property.SourceId.Equals(TEXT("PHB"), ESearchCase::IgnoreCase) ||
+					Property.SourceId.Equals(TEXT("XPHB"), ESearchCase::IgnoreCase));
+		});
+	}
+
+	FString FormatDistance(const FDnd5eDistance& Distance)
+	{
+		const FString Amount = FormatNumber(Distance.Amount);
+		if (Amount.IsEmpty()) { return {}; }
+		switch (Distance.Unit)
+		{
+		case EDnd5eDistanceUnit::Inches: return Amount + TEXT(" in");
+		case EDnd5eDistanceUnit::Feet: return Amount + TEXT(" ft");
+		case EDnd5eDistanceUnit::Yards: return Amount + TEXT(" yd");
+		case EDnd5eDistanceUnit::Miles: return Amount + TEXT(" mi");
+		default: return Amount;
+		}
+	}
+
+	void AddWeaponFacts(TArray<FString>& Facts, const FDnd5eItem& Item)
+	{
+		if (!Item.bHasWeaponData) { return; }
+		const auto& Weapon = Item.WeaponData;
+		if (Weapon.bHasPrimaryDamage)
+		{
+			AddFact(Facts, LOCTEXT("PrimaryDamage", "{0}"), FormatDamage(Weapon.PrimaryDamage));
+		}
+		if (Weapon.bHasAlternateDamage)
+		{
+			const FString Alternate = FormatDamage(Weapon.AlternateDamage);
+			if (!Alternate.IsEmpty())
+			{
+				const bool bVersatile = HasVersatileProperty(Item);
+				const bool bSameType = Weapon.bHasPrimaryDamage && Weapon.PrimaryDamage.Type == Weapon.AlternateDamage.Type;
+				AddFact(Facts, bVersatile ? LOCTEXT("Versatile", "Versatile ({0})") : LOCTEXT("AlternateDamage", "Alternate damage: {0}"),
+					bVersatile && bSameType ? Weapon.AlternateDamage.Amount.Expression : Alternate);
+			}
+		}
+		if (Weapon.bHasRange)
+		{
+			FString Range = FormatDistance(Weapon.Range.Normal);
+			if (Weapon.Range.bHasLong)
+			{
+				const FString Long = FormatDistance(Weapon.Range.Long);
+				if (!Long.IsEmpty()) { Range = Range.IsEmpty() ? Long : Range + TEXT(" / ") + Long; }
+			}
+			AddFact(Facts, LOCTEXT("WeaponRange", "Range: {0}"), Range);
+		}
+	}
+
+	FString FormatArmorClass(const FDnd5eArmorClassDefinition& ArmorClass)
+	{
+		const FString Value = FormatNumber(ArmorClass.Value);
+		if (Value.IsEmpty()) { return {}; }
+		const FText DisplayValue = FText::FromString(Value);
+		if (ArmorClass.Kind == EDnd5eArmorClassValueKind::Bonus)
+		{
+			return FText::Format(LOCTEXT("ACBonus", "{0} bonus"), DisplayValue).ToString();
+		}
+		switch (ArmorClass.DexterityMode)
+		{
+		case EDnd5eArmorClassDexterityMode::Uncapped:
+			return FText::Format(LOCTEXT("ACDex", "{0} + Dex modifier"), DisplayValue).ToString();
+		case EDnd5eArmorClassDexterityMode::Capped:
+			return FText::Format(LOCTEXT("ACDexCapped", "{0} + Dex modifier (max {1})"), DisplayValue,
+				FText::AsNumber(ArmorClass.DexterityModifierMaximum)).ToString();
+		default:
+			return Value;
+		}
+	}
+
+	void AddArmorFacts(TArray<FString>& Facts, const FDnd5eItem& Item)
+	{
+		if (!Item.bHasArmorData) { return; }
+		const auto& Armor = Item.ArmorData;
+		if (Armor.bHasArmorClass)
+		{
+			AddFact(Facts, LOCTEXT("ArmorClass", "AC: {0}"), FormatArmorClass(Armor.ArmorClass));
+		}
+		if (Armor.StrengthPresence == EDnd5eValuePresence::Present)
+		{
+			AddFact(Facts, LOCTEXT("ArmorStrength", "Strength: {0}"), FText::AsNumber(Armor.StrengthMinimum.Minimum).ToString());
+		}
+		if (Armor.bHasStealthDisadvantage && Armor.bStealthDisadvantage)
+		{
+			Facts.Add(LOCTEXT("ArmorStealth", "Stealth disadvantage").ToString());
+		}
+	}
 }
 
 FText Dnd5eItemBrowserDetails::FormatRarity(const FGameplayTag& Rarity)
@@ -241,16 +399,23 @@ FDnd5eItemBrowserDetails Dnd5eItemBrowserDetails::Build(const FDnd5eItem& Item)
 {
 	FDnd5eItemBrowserDetails Result;
 	Result.Title = FText::FromString(Item.Header.DisplayName);
+	Result.Source = FormatSource(Item.Header);
+	Result.Classification = FormatClassification(Item);
+
 	TArray<FString> Facts;
-	if (!Item.Header.Provenance.IsEmpty())
+	if (Item.Rarity.IsValid() && Item.Rarity != Dnd5e::Item::Rarity::None.GetTag())
 	{
-		AddFact(Facts, LOCTEXT("Source", "Source: {0}"), Item.Header.Provenance[0].SourceId);
+		Facts.Add(FormatRarity(Item.Rarity).ToString());
 	}
-	Facts.Add(FormatRarity(Item.Rarity).ToString());
 	AddFact(Facts, LOCTEXT("Price", "Price: {0}"), FormatPrice(Item.Price));
 	if (Item.bHasWeight) { AddFact(Facts, LOCTEXT("Weight", "Weight: {0}"), FormatWeight(Item.Weight)); }
 	AddFact(Facts, LOCTEXT("Charges", "Charges: {0}"), FormatCharges(Item.ChargeData.Charges));
 	Result.Facts = FText::FromString(FString::Join(Facts, TEXT("\n")));
+
+	TArray<FString> Equipment;
+	AddWeaponFacts(Equipment, Item);
+	AddArmorFacts(Equipment, Item);
+	Result.Equipment = FText::FromString(FString::Join(Equipment, TEXT("\n")));
 
 	FString Description;
 	AppendBlocks(Item.Description, Description, 0);

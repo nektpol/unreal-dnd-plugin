@@ -21,6 +21,8 @@
 #include "Dnd5eEditor.h"
 #include "Subsystems/Dnd5eEditorDatasetSubsystem.h"
 #include "Widgets/Input/SButton.h"
+#include "Styling/CoreStyle.h"
+#include "Widgets/Layout/SSeparator.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eItemBrowser"
 
@@ -72,13 +74,55 @@ void SDnd5eItemBrowser::Construct(const FArguments& InArgs)
 					[
 						SAssignNew(OverviewScroll, SScrollBox)
 						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						+ SScrollBox::Slot().Padding(0, 0, 0, 4)
 						[
-							SNew(STextBlock).Text(this, &SDnd5eItemBrowser::GetDetailTitle).AutoWrapText(true)
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 12, 0)
+							[
+								SNew(STextBlock)
+								.Text(this, &SDnd5eItemBrowser::GetDetailTitle)
+								.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), 18))
+								.AutoWrapText(true)
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(STextBlock)
+								.Text(this, &SDnd5eItemBrowser::GetDetailSource)
+								.Visibility_Lambda([this]() { return Overview.Source.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+							]
 						]
-						+ SScrollBox::Slot().Padding(0, 0, 0, 12)
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
 						[
-							SNew(STextBlock).Text(this, &SDnd5eItemBrowser::GetDetailFacts).AutoWrapText(true)
-							.Visibility_Lambda([this]() { return Overview.Facts.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+							SNew(STextBlock)
+							.Text(this, &SDnd5eItemBrowser::GetDetailClassification)
+							.AutoWrapText(true)
+							.Visibility_Lambda([this]() { return Overview.Classification.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+						]
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						[
+							SNew(SHorizontalBox)
+							.Visibility_Lambda([this]()
+							{
+								return Overview.Facts.IsEmpty() && Overview.Equipment.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
+							})
+							+ SHorizontalBox::Slot().FillWidth(1).Padding(0, 0, 12, 0)
+							[
+								SNew(STextBlock)
+								.Text(this, &SDnd5eItemBrowser::GetDetailFacts)
+								.AutoWrapText(true)
+							]
+							+ SHorizontalBox::Slot().FillWidth(1)
+							[
+								SNew(STextBlock)
+								.Text(this, &SDnd5eItemBrowser::GetDetailEquipment)
+								.Justification(ETextJustify::Right)
+								.AutoWrapText(true)
+							]
+						]
+						+ SScrollBox::Slot().Padding(0, 0, 0, 8)
+						[
+							SNew(SSeparator)
+							.Visibility_Lambda([this]() { return Overview.Title.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 						]
 						+ SScrollBox::Slot()
 						[

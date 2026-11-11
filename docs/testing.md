@@ -395,3 +395,7 @@ Two formatter cases cover mixed currency order, absent and explicit-null prices,
 ### Item Browser reference navigation
 
 The reference status case covers missing publications, ambiguous matches, and absent targets. The production widget case clicks a group member hidden by search, opens a definition preview, and checks that a spell reload enables a link on the selected item. It then clicks that link and verifies exact-ID selection in the visible Spell Browser, including a same-name spell fixture and a search that originally hid the intended target. The report is under Saved/Automation/Dnd5eItemNavigation.
+
+### Item stat cards
+
+The Item Browser run under Saved/Automation/Dnd5eItemStatCardVerified checks the prepared SRD 5.1 cards for Longsword, Longbow, Leather Armor, and Chain Mail. It verifies source and page, price conversion and weight, primary and versatile damage, both ranges, armor formulas, and the direct Leather Armor description. The synthetic widget and formatter cases continue to cover selection, navigation, and clearing.

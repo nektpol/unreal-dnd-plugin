@@ -555,6 +555,40 @@ bool FDnd5eSrdItemBrowserTest::RunTest(const FString& Parameters)
 	}));
 	Model.SetSearchText(TEXT(""));
 	TestEqual(TEXT("Clearing search restores all SRD rows"), Model.GetRows().Num(), 590);
+	int32 VerifiedEquipmentCards = 0;
+	for (const auto& Row : Model.GetRows())
+	{
+		if (Row->SourceId != TEXT("PHB") || (Row->Name != TEXT("Longsword") && Row->Name != TEXT("Longbow") &&
+			Row->Name != TEXT("Leather Armor") && Row->Name != TEXT("Chain Mail"))) { continue; }
+		FDnd5eItem Item;
+		if (!TestTrue(TEXT("Retrieve SRD card item"), Session->GetItemCatalog()->TryGetItem(Row->Id, Item))) { return false; }
+		++VerifiedEquipmentCards;
+		const auto Card = Dnd5eItemBrowserDetails::Build(Item);
+		const FString Equipment = Card.Equipment.ToString();
+		if (Row->Name == TEXT("Longsword"))
+		{
+			TestTrue(TEXT("Longsword card exposes source, price, weight and both damage expressions"),
+				Card.Source.ToString() == TEXT("PHB p. 149") && Card.Facts.ToString().Contains(TEXT("15 gp")) &&
+				Card.Facts.ToString().Contains(TEXT("3 lb")) && Equipment == TEXT("1d8 slashing\nVersatile (1d10)"));
+		}
+		else if (Row->Name == TEXT("Longbow"))
+		{
+			TestTrue(TEXT("Longbow card shows piercing damage and both ranges"),
+				Equipment.Contains(TEXT("1d8 piercing")) && Equipment.Contains(TEXT("150 ft / 600 ft")));
+		}
+		else if (Row->Name == TEXT("Leather Armor"))
+		{
+			TestTrue(TEXT("Leather armor shows uncapped Dexterity and its own description"),
+				Equipment.Contains(TEXT("11 + Dex modifier")) && Card.Description.ToString().Contains(TEXT("breastplate")));
+		}
+		else
+		{
+			TestTrue(TEXT("Chain Mail shows base AC, Strength and stealth"),
+				Equipment.Contains(TEXT("AC: 16")) && Equipment.Contains(TEXT("Strength: 13")) &&
+				Equipment.Contains(TEXT("Stealth disadvantage")));
+		}
+	}
+	TestEqual(TEXT("All four PHB equipment examples were checked"), VerifiedEquipmentCards, 4);
 	return !HasAnyErrors();
 }
 
@@ -567,7 +601,7 @@ bool FDnd5eItemOverviewValuesTest::RunTest(const FString& Parameters)
 	Item.Rarity = Dnd5e::Item::Rarity::VeryRare;
 	const auto Empty = Dnd5eItemBrowserDetails::Build(Item);
 	TestTrue(TEXT("Title, source and friendly rarity display without absent numeric rows"),
-		Empty.Title.ToString() == TEXT("Invented Device") && Empty.Facts.ToString().Contains(TEXT("Source: SYN")) &&
+		Empty.Title.ToString() == TEXT("Invented Device") && Empty.Source.ToString() == TEXT("SYN") &&
 		Empty.Facts.ToString().Contains(TEXT("Very rare")) && !Empty.Facts.ToString().Contains(TEXT("Price:")) &&
 		!Empty.Facts.ToString().Contains(TEXT("Weight:")) && !Empty.Facts.ToString().Contains(TEXT("Charges:")));
 	FDnd5eMoney Gold;

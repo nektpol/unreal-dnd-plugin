@@ -11,7 +11,10 @@ struct FDnd5eContentBlock;
 struct FDnd5eItemBrowserDetails
 {
 	FText Title;
+	FText Source;
+	FText Classification;
 	FText Facts;
+	FText Equipment;
 	FText Description;
 };
 

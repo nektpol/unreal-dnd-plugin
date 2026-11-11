@@ -100,7 +100,7 @@ Open **Tools → Dnd5e Item Browser**. The separate dockable tab reads the curre
 
 Selecting a row retrieves the exact record by ID. Item details show a detached typed item. Group details include the group's common item values and authored member selectors. The property inspector is read-only. Search and successful reloads clear the previous selection. The active search is reapplied after a reload. Failed loads leave the current catalog and selection available.
 
-The selected item or group's overview shows its name, primary source, rarity, supplied price denominations, weight, and charge capacity. Zero amounts remain visible. The text preview follows the order of supported description and supplementary blocks, with bounded depth and length. Expand **Typed details** to inspect the structured record, including block types that use a preview placeholder. Search changes and successful reloads clear the overview together with the typed selection.
+The selected item or group's stat card shows its name and primary source with page, plus equipment classification, rarity, price, weight, and charge capacity. Weapon damage, alternate damage, range, and armor statistics align to the right. A single positive whole copper amount divisible by 100 displays in gold. Mixed denominations retain their order and units. Zero amounts remain visible. The text preview follows the order of supported description and supplementary blocks, with bounded depth and length. Expand **Typed details** to inspect the structured record, including block types that use a preview placeholder. Search changes and successful reloads clear the overview together with the typed selection.
 
 ### Follow item references
 

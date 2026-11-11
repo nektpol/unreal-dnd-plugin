@@ -43,6 +43,9 @@ private:
 	FDelegateHandle CatalogChangedHandle;
 
 	FText GetDetailTitle() const;
+	FText GetDetailSource() const { return Overview.Source; }
+	FText GetDetailClassification() const { return Overview.Classification; }
+	FText GetDetailEquipment() const { return Overview.Equipment; }
 	FText GetDetailFacts() const { return Overview.Facts; }
 	FText GetDetailDescription() const { return Overview.Description; }
 
