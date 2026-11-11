@@ -127,6 +127,61 @@ bool FDnd5eCreatureAuditTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureTypeTest, "Dnd5e.Bestiary.Reader.CreatureTypes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureTypeTest::RunTest(const FString& Parameters)
+{
+	const TPair<const TCHAR*, FGameplayTag> Types[] = {
+		{TEXT("aberration"), Dnd5e::Creature::Type::Aberration},
+		{TEXT("beast"), Dnd5e::Creature::Type::Beast},
+		{TEXT("celestial"), Dnd5e::Creature::Type::Celestial},
+		{TEXT("construct"), Dnd5e::Creature::Type::Construct},
+		{TEXT("dragon"), Dnd5e::Creature::Type::Dragon},
+		{TEXT("elemental"), Dnd5e::Creature::Type::Elemental},
+		{TEXT("fey"), Dnd5e::Creature::Type::Fey},
+		{TEXT("fiend"), Dnd5e::Creature::Type::Fiend},
+		{TEXT("giant"), Dnd5e::Creature::Type::Giant},
+		{TEXT("humanoid"), Dnd5e::Creature::Type::Humanoid},
+		{TEXT("monstrosity"), Dnd5e::Creature::Type::Monstrosity},
+		{TEXT("ooze"), Dnd5e::Creature::Type::Ooze},
+		{TEXT("plant"), Dnd5e::Creature::Type::Plant},
+		{TEXT("undead"), Dnd5e::Creature::Type::Undead},
+	};
+
+	const auto ReadType = [](const FString& TypeJson)
+	{
+		const FString Json = FString(StatBlock).Replace(
+			TEXT(R"({"type":"fey","tags":["lantern folk"]})"), *TypeJson, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	for (const auto& Type : Types)
+	{
+		const FString Plain = FString::Printf(TEXT(R"("%s")"), Type.Key);
+		const FString Nested = FString::Printf(TEXT(R"({"type":"%s","tags":["invented subtype"]})"), Type.Key);
+		const auto PlainResult = ReadType(Plain);
+		const auto NestedResult = ReadType(Nested);
+		TestTrue(FString::Printf(TEXT("%s maps in both forms"), Type.Key),
+			PlainResult.Status == EDnd5eJsonReadStatus::Success && PlainResult.Creature.CreatureType == Type.Value &&
+			NestedResult.Status == EDnd5eJsonReadStatus::Success && NestedResult.Creature.CreatureType == Type.Value &&
+			NestedResult.Creature.CreatureSubtypes == TArray<FString>{TEXT("invented subtype")});
+	}
+
+	const auto CheckUnsupported = [this, &ReadType](const TCHAR* TypeJson, const TCHAR* Pointer)
+	{
+		const auto Result = ReadType(TypeJson);
+		TestTrue(Pointer, Result.Status == EDnd5eJsonReadStatus::Failure &&
+			Result.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer &&
+					Diagnostic.Code == FName(TEXT("Dnd5e.Json.UnsupportedRequiredValue"));
+			}));
+	};
+	CheckUnsupported(TEXT(R"("invented type")"), TEXT("/monster/1/type"));
+	CheckUnsupported(TEXT(R"({"type":"invented type"})"), TEXT("/monster/1/type/type"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

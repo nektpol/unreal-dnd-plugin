@@ -18,7 +18,7 @@
 | ChallengeRating | `FString` | Authored challenge rating text, including fractions. |
 | Traits, Actions, BonusActions | `TArray<FDnd5eCreatureEntry>` each | Ordered named entries. Each entry holds a name and `TArray<FDnd5eContentBlock> Entries`. |
 
-Integer members default to zero. Arrays, strings, and tag containers default to empty. The model currently provides the initial stat-block representation. The native `FDnd5eJsonCreatureReader::ReadCreature` reads a selected direct row from a supplied `monster` document by exact authored name and source. It supports the initial Humanoid and Fey stat blocks, both numeric and sourced AC entries, signed skill bonuses, and separate trait, action, and bonus action groups. Failure returns diagnostics and an empty creature. Selected copy rows require a future assembly step. Catalog lookup, supplementary lore and media, and editor browsing are pending.
+Integer members default to zero. Arrays, strings, and tag containers default to empty. The model currently provides the initial stat-block representation. The native `FDnd5eJsonCreatureReader::ReadCreature` reads a selected direct row from a supplied `monster` document by exact authored name and source. It maps all 14 native creature types from a string or an object with a string type and optional string subtypes. The initial stat-block conversion supports numeric and sourced AC entries, signed skill bonuses, and separate trait, action, and bonus action groups. Failure returns diagnostics and an empty creature. Selected copy rows require a future assembly step. Catalog lookup, supplementary lore and media, and editor browsing are pending.
 
 See [Shared models](shared-models.md) for record, measurement, dice, and Content definitions.
 

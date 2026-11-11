@@ -116,6 +116,35 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureTypeTag(const FString& Value, const FString& Pointer,
+		FGameplayTag& Out, FReadState& State)
+	{
+		static const TMap<FString, FGameplayTag> Types{
+			{TEXT("aberration"), Dnd5e::Creature::Type::Aberration},
+			{TEXT("beast"), Dnd5e::Creature::Type::Beast},
+			{TEXT("celestial"), Dnd5e::Creature::Type::Celestial},
+			{TEXT("construct"), Dnd5e::Creature::Type::Construct},
+			{TEXT("dragon"), Dnd5e::Creature::Type::Dragon},
+			{TEXT("elemental"), Dnd5e::Creature::Type::Elemental},
+			{TEXT("fey"), Dnd5e::Creature::Type::Fey},
+			{TEXT("fiend"), Dnd5e::Creature::Type::Fiend},
+			{TEXT("giant"), Dnd5e::Creature::Type::Giant},
+			{TEXT("humanoid"), Dnd5e::Creature::Type::Humanoid},
+			{TEXT("monstrosity"), Dnd5e::Creature::Type::Monstrosity},
+			{TEXT("ooze"), Dnd5e::Creature::Type::Ooze},
+			{TEXT("plant"), Dnd5e::Creature::Type::Plant},
+			{TEXT("undead"), Dnd5e::Creature::Type::Undead},
+		};
+
+		const FGameplayTag* Tag = Types.Find(Value);
+		if (!Tag)
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, Pointer, TEXT("Unsupported creature type."));
+		}
+		Out = *Tag;
+		return true;
+	}
+
 	bool ReadCreatureClassification(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -169,20 +198,15 @@ namespace
 		{
 			const auto TypeObject = TypeValue->AsObject();
 			if (!ReadRequiredString(*TypeObject, TEXT("type"), TypePointer, Type, State) ||
-				!ReadStrings(*TypeObject, TEXT("tags"), TypePointer, Creature.CreatureSubtypes, State))
+				!ReadCreatureTypeTag(Type, AppendPointer(TypePointer, TEXT("type")), Creature.CreatureType, State))
 			{
 				return false;
 			}
-		}
-		else if (!ReadRequiredString(Object, TEXT("type"), Pointer, Type, State))
-		{
-			return false;
+			return ReadStrings(*TypeObject, TEXT("tags"), TypePointer, Creature.CreatureSubtypes, State);
 		}
 
-		if (Type == TEXT("humanoid")) { Creature.CreatureType = Dnd5e::Creature::Type::Humanoid; }
-		else if (Type == TEXT("fey")) { Creature.CreatureType = Dnd5e::Creature::Type::Fey; }
-		else { return Fail(State, Codes::UnsupportedRequiredValue, TypePointer, TEXT("Creature type outside the first reader slice.")); }
-		return true;
+		return ReadRequiredString(Object, TEXT("type"), Pointer, Type, State) &&
+			ReadCreatureTypeTag(Type, TypePointer, Creature.CreatureType, State);
 	}
 
 	bool ReadArmorClasses(const FJsonObject& Object, const FString& Pointer,
