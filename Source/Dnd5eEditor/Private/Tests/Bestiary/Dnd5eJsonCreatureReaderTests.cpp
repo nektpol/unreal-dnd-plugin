@@ -283,6 +283,47 @@ bool FDnd5eCreatureChallengeRatingTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureArmorClassTest, "Dnd5e.Bestiary.Reader.ArmorClass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureArmorClassTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Armor)
+	{
+		const FString Json = FString(StatBlock).Replace(
+			TEXT(R"([12,{"ac":14,"from":["Invented shell","{@item Glass Plate|SYN-B}"]}])"), Armor, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Result = Read(TEXT(R"json([0,{"ac":16,"condition":"with {@spell Invented Ward|SYN-B}","braces":true},
+		{"ac":14,"from":["invented shell"],"condition":"while braced","braces":false},{"special":"12 + its proficiency bonus"}])json"));
+	const auto& Armor = Result.Creature.ArmorClasses;
+	if (!TestTrue(TEXT("All four entries convert in order"), Result.Status == EDnd5eJsonReadStatus::Success && Armor.Num() == 4))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Authored zero is numeric"), Armor[0].bHasValue && Armor[0].Value == 0);
+	TestTrue(TEXT("Condition retains its spell reference and parentheses hint"), Armor[1].bHasValue &&
+		Armor[1].Value == 16 && Armor[1].bWrapInParentheses && Armor[1].Condition.ContainsByPredicate(
+			[](const FDnd5eInlineContent& Inline) { return Inline.Payload.GetPtr<FDnd5eReferenceContent>() != nullptr; }));
+	TestTrue(TEXT("Sources and condition coexist"), Armor[2].bHasValue && Armor[2].Value == 14 &&
+		Armor[2].Sources.Num() == 1 && !Armor[2].Condition.IsEmpty() && !Armor[2].bWrapInParentheses);
+	TestTrue(TEXT("Special formula has inline content and no numeric value"), !Armor[3].bHasValue && !Armor[3].Special.IsEmpty());
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Input, const TCHAR* Pointer)
+	{
+		const auto Failed = Read(Input);
+		TestTrue(Pointer, Failed.Status == EDnd5eJsonReadStatus::Failure && Failed.Creature.ArmorClasses.IsEmpty() &&
+			Failed.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"([12,{"ac":16,"braces":"yes"}])"), TEXT("/monster/1/ac/1/braces"));
+	CheckFailure(TEXT(R"([12,{"special":"varies","ac":16}])"), TEXT("/monster/1/ac/1/ac"));
+	CheckFailure(TEXT(R"([12,{"ac":16,"condition":false}])"), TEXT("/monster/1/ac/1/condition"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

@@ -326,6 +326,40 @@ namespace
 			ReadCreatureTypeTag(Type, TypePointer, Creature.CreatureType, State);
 	}
 
+	bool ReadOptionalArmorInlines(const FJsonObject& Object, const TCHAR* Key, const FString& Pointer,
+		TArray<FDnd5eInlineContent>& Out, FReadState& State)
+	{
+		if (!FindExactField(Object, Key).IsValid()) { return true; }
+
+		FString Text;
+		return ReadRequiredString(Object, Key, Pointer, Text, State) &&
+			ReadInlines(Text, AppendPointer(Pointer, Key), Out, State);
+	}
+
+	bool ReadCreatureArmorObject(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreatureArmorClass& Out, FReadState& State)
+	{
+		if (FindExactField(Object, TEXT("special")).IsValid())
+		{
+			return CheckAllowedKeys(Object, {TEXT("special")}, Pointer, State) &&
+				ReadOptionalArmorInlines(Object, TEXT("special"), Pointer, Out.Special, State);
+		}
+
+		if (!CheckAllowedKeys(Object, {TEXT("ac"), TEXT("from"), TEXT("condition"), TEXT("braces")}, Pointer, State) ||
+			!ReadStatInteger(Object, TEXT("ac"), Pointer, Out.Value, State))
+		{
+			return false;
+		}
+		Out.bHasValue = true;
+
+		if (const auto From = FindExactField(Object, TEXT("from")))
+		{
+			if (!ReadBlocks(From, AppendPointer(Pointer, TEXT("from")), Out.Sources, State)) { return false; }
+		}
+		return ReadOptionalArmorInlines(Object, TEXT("condition"), Pointer, Out.Condition, State) &&
+			ReadOptionalBool(Object, TEXT("braces"), Pointer, Out.bWrapInParentheses, State);
+	}
+
 	bool ReadArmorClasses(const FJsonObject& Object, const FString& Pointer,
 		TArray<FDnd5eCreatureArmorClass>& Out, FReadState& State)
 	{
@@ -343,19 +377,15 @@ namespace
 				{
 					return Fail(State, Codes::InvalidFieldValue, RowPointer, TEXT("Expected integer armor class."));
 				}
+				Armor.bHasValue = true;
 			}
 			else
 			{
 				TSharedPtr<FJsonObject> Entry;
 				if (!RequireObject(Row, RowPointer, Entry, State) ||
-					!CheckAllowedKeys(*Entry, {TEXT("ac"), TEXT("from")}, RowPointer, State) ||
-					!ReadStatInteger(*Entry, TEXT("ac"), RowPointer, Armor.Value, State))
+					!ReadCreatureArmorObject(*Entry, RowPointer, Armor, State))
 				{
 					return false;
-				}
-				if (const auto From = FindExactField(*Entry, TEXT("from")))
-				{
-					if (!ReadBlocks(From, AppendPointer(RowPointer, TEXT("from")), Armor.Sources, State)) { return false; }
 				}
 			}
 			Out.Add(MoveTemp(Armor));
