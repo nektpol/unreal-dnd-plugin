@@ -7,6 +7,7 @@
 #include "Values/Dnd5eDistance.h"
 #include "Values/Dnd5eSize.h"
 #include "Bestiary/Dnd5eCreatureTypes.h"
+#include "Values/Dnd5eValuePresence.h"
 #include "Dnd5eCreature.generated.h"
 
 USTRUCT(BlueprintType)
@@ -24,6 +25,9 @@ struct DND5E_API FDnd5eCreature
 	FGameplayTag CreatureType;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FGameplayTag> CreatureTypeChoices;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eCreatureSubtype> CreatureSubtypes;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
@@ -37,6 +41,9 @@ struct DND5E_API FDnd5eCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eCreatureArmorClass> ArmorClasses;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence ArmorClassPresence = EDnd5eValuePresence::Unspecified;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	FDnd5eCreatureHitPoints HitPoints;
@@ -58,6 +65,12 @@ struct DND5E_API FDnd5eCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	int32 PassivePerception = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence PassivePerceptionPresence = EDnd5eValuePresence::Unspecified;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString PassivePerceptionFormula;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FString> Languages;

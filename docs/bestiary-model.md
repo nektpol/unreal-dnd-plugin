@@ -6,17 +6,20 @@
 | --- | --- | --- |
 | Header | `FDnd5eRecordHeader` | Display name, record identity, and provenance. |
 | Sizes | `TArray<EDnd5eSize>` | Ordered size choices. |
-| CreatureType and CreatureSubtypes | `FGameplayTag`, `TArray<FDnd5eCreatureSubtype>` | Creature type and ordered subtype values with name, optional prefix, and a hidden-prefix flag. Read `Name` for the original subtype term. |
+| CreatureType and CreatureSubtypes | `FGameplayTag`, `TArray<FDnd5eCreatureSubtype>` | Single creature type and ordered subtype values with name, optional prefix, and a hidden-prefix flag. Read `Name` for the original subtype term. |
+| CreatureTypeChoices | `TArray<FGameplayTag>` | Ordered alternatives. The single type is unset for a choice. |
 | Alignment | `FGameplayTagContainer` | Tags for an explicit simple alignment. |
 | bHasAlignment and AlignmentOptions | `bool`, `TArray<FDnd5eCreatureAlignmentOption>` | Authored field presence and ordered options. Each option retains its `TArray<FString> Codes`, optional chance, note, and special text. |
 | ArmorClasses | `TArray<FDnd5eCreatureArmorClass>` | Ordered numeric or special AC entries. Each holds `bool bHasValue`, `int32 Value`, `TArray<FDnd5eContentBlock> Sources`, `TArray<FDnd5eInlineContent>` for each of `Condition` and `Special`, and `bool bWrapInParentheses`. |
+| ArmorClassPresence | `EDnd5eValuePresence` | Distinguishes omitted, null, and present AC arrays. |
 | HitPoints | `FDnd5eCreatureHitPoints` | Field presence, printed average and dice formula, or special text in `TArray<FDnd5eInlineContent> Special`. Check `bHasAverage` before reading the numeric value. |
 | WalkSpeed | `FDnd5eDistance` | Convenience projection of the top-level walking distance, including authored zero. |
 | Movement | `FDnd5eCreatureMovement` | Presence, standard and alternate speeds with conditions, hover, and ordered choice modes with a shared distance and note. |
 | AbilityScores | `FDnd5eCreatureAbilityScores` | Six named `int32` ability scores. |
 | Skills | `TArray<FDnd5eCreatureSkillBonus>` | Skill name and signed integer bonus. |
 | Senses and Languages | `TArray<FString>` each | Authored senses and languages. |
-| PassivePerception | `int32` | Printed passive Perception. |
+| PassivePerception | `int32` | Printed numeric passive Perception. |
+| PassivePerceptionPresence and PassivePerceptionFormula | `EDnd5eValuePresence`, `FString` | Distinguish omitted, null, numeric, and authored formula values. |
 | ChallengeRating | `FDnd5eCreatureChallengeRating` | Presence, authored base, lair and coven CR strings, and optional base and lair XP overrides. Use `ChallengeRating.Base` to read the base string. |
 | Traits, Actions, BonusActions | `TArray<FDnd5eCreatureEntry>` each | Ordered named entries. Each entry holds a name and `TArray<FDnd5eContentBlock> Entries`. |
 

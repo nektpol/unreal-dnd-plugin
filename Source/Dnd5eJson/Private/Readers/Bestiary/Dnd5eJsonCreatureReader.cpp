@@ -319,6 +319,35 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureTypeChoices(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		TArray<FGameplayTag>& Out, FReadState& State)
+	{
+		TSharedPtr<FJsonObject> Object;
+		TArray<FString> Choices;
+		if (!RequireObject(Value, Pointer, Object, State) ||
+			!CheckAllowedKeys(*Object, {TEXT("choose")}, Pointer, State) ||
+			!ReadStrings(*Object, TEXT("choose"), Pointer, Choices, State, true))
+		{
+			return false;
+		}
+
+		const FString ChoicePointer = AppendPointer(Pointer, TEXT("choose"));
+		if (Choices.IsEmpty())
+		{
+			return Fail(State, Codes::InvalidFieldValue, ChoicePointer, TEXT("Expected at least one creature type choice."));
+		}
+		for (int32 Index = 0; Index < Choices.Num(); ++Index)
+		{
+			FGameplayTag Tag;
+			if (!ReadCreatureTypeTag(Choices[Index], AppendPointer(ChoicePointer, FString::FromInt(Index)), Tag, State))
+			{
+				return false;
+			}
+			Out.Add(Tag);
+		}
+		return true;
+	}
+
 	bool ReadCreatureClassification(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -351,8 +380,14 @@ namespace
 		if (TypeValue.IsValid() && TypeValue->Type == EJson::Object)
 		{
 			const auto TypeObject = TypeValue->AsObject();
-			if (!ReadRequiredString(*TypeObject, TEXT("type"), TypePointer, Type, State) ||
-				!ReadCreatureTypeTag(Type, AppendPointer(TypePointer, TEXT("type")), Creature.CreatureType, State))
+			const auto InnerType = FindExactField(*TypeObject, TEXT("type"));
+			const FString InnerPointer = AppendPointer(TypePointer, TEXT("type"));
+			if (InnerType.IsValid() && InnerType->Type == EJson::Object)
+			{
+				if (!ReadCreatureTypeChoices(InnerType, InnerPointer, Creature.CreatureTypeChoices, State)) { return false; }
+			}
+			else if (!ReadRequiredString(*TypeObject, TEXT("type"), TypePointer, Type, State) ||
+				!ReadCreatureTypeTag(Type, InnerPointer, Creature.CreatureType, State))
 			{
 				return false;
 			}
@@ -398,10 +433,18 @@ namespace
 	}
 
 	bool ReadArmorClasses(const FJsonObject& Object, const FString& Pointer,
-		TArray<FDnd5eCreatureArmorClass>& Out, FReadState& State)
+		TArray<FDnd5eCreatureArmorClass>& Out, EDnd5eValuePresence& Presence, FReadState& State)
 	{
+		const auto Value = FindExactField(Object, TEXT("ac"));
+		if (!Value.IsValid()) { return true; }
+		if (Value->Type == EJson::Null)
+		{
+			Presence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+
 		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
-		if (!ReadRequiredArray(Object, TEXT("ac"), Pointer, Rows, State)) { return false; }
+		if (!RequireArray(Value, AppendPointer(Pointer, TEXT("ac")), Rows, State)) { return false; }
 		for (int32 Index = 0; Index < Rows->Num(); ++Index)
 		{
 			const auto& Row = (*Rows)[Index];
@@ -427,6 +470,7 @@ namespace
 			}
 			Out.Add(MoveTemp(Armor));
 		}
+		Presence = EDnd5eValuePresence::Present;
 		return true;
 	}
 
@@ -754,13 +798,44 @@ namespace
 		return true;
 	}
 
+	bool ReadCreaturePassivePerception(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("passive"));
+		if (!Value.IsValid()) { return true; }
+		if (Value->Type == EJson::Null)
+		{
+			Creature.PassivePerceptionPresence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+		if (Value->Type == EJson::String)
+		{
+			if (!ReadRequiredString(Object, TEXT("passive"), Pointer, Creature.PassivePerceptionFormula, State))
+			{
+				return false;
+			}
+			if (Creature.PassivePerceptionFormula.TrimStartAndEnd().IsEmpty())
+			{
+				return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("passive")),
+					TEXT("Expected a nonempty passive Perception formula."));
+			}
+		}
+		else if (!ReadStatInteger(Object, TEXT("passive"), Pointer, Creature.PassivePerception, State))
+		{
+			return false;
+		}
+
+		Creature.PassivePerceptionPresence = EDnd5eValuePresence::Present;
+		return true;
+	}
+
 	bool ReadCreatureObservations(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
 		return ReadSkills(Object, Pointer, Creature.Skills, State) &&
 			ReadStrings(Object, TEXT("senses"), Pointer, Creature.Senses, State) &&
 			ReadStrings(Object, TEXT("languages"), Pointer, Creature.Languages, State) &&
-			ReadStatInteger(Object, TEXT("passive"), Pointer, Creature.PassivePerception, State) &&
+			ReadCreaturePassivePerception(Object, Pointer, Creature, State) &&
 			ReadCreatureChallengeRating(Object, Pointer, Creature.ChallengeRating, State);
 	}
 
@@ -854,7 +929,7 @@ namespace
 		}
 
 		return ReadCreatureClassification(Object, Pointer, Creature, State) &&
-			ReadArmorClasses(Object, Pointer, Creature.ArmorClasses, State) &&
+			ReadArmorClasses(Object, Pointer, Creature.ArmorClasses, Creature.ArmorClassPresence, State) &&
 			ReadHitPoints(Object, Pointer, Creature.HitPoints, State) &&
 			ReadMovementAndScores(Object, Pointer, Creature, State) &&
 			ReadCreatureObservations(Object, Pointer, Creature, State) &&

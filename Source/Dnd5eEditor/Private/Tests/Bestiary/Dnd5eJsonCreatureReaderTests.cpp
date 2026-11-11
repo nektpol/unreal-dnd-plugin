@@ -465,6 +465,65 @@ bool FDnd5eCreatureMovementTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureDirectRecordTest, "Dnd5e.Bestiary.Reader.DirectRecordForms",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureDirectRecordTest::RunTest(const FString& Parameters)
+{
+	using FPresence = EDnd5eValuePresence;
+	const auto Read = [](const TCHAR* Original, const TCHAR* Replacement)
+	{
+		return FDnd5eJsonCreatureReader::ReadCreature(
+			MakeDocument(FString(StatBlock).Replace(Original, Replacement, ESearchCase::CaseSensitive)),
+			TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const TCHAR* PassiveField = TEXT(R"("passive":9,)");
+	const auto Omitted = Read(PassiveField, TEXT(""));
+	const auto Null = Read(PassiveField, TEXT(R"("passive":null,)"));
+	const auto Zero = Read(PassiveField, TEXT(R"("passive":0,)"));
+	const auto Formula = Read(PassiveField, TEXT(R"("passive":"10 + PB",)"));
+	TestTrue(TEXT("Passive Perception retains omitted, null, zero and formula forms"),
+		Omitted.Status == EDnd5eJsonReadStatus::Success && Omitted.Creature.PassivePerceptionPresence == FPresence::Unspecified &&
+		Null.Status == EDnd5eJsonReadStatus::Success && Null.Creature.PassivePerceptionPresence == FPresence::ExplicitNull &&
+		Zero.Status == EDnd5eJsonReadStatus::Success && Zero.Creature.PassivePerceptionPresence == FPresence::Present &&
+		Zero.Creature.PassivePerception == 0 && Zero.Creature.PassivePerceptionFormula.IsEmpty() &&
+		Formula.Status == EDnd5eJsonReadStatus::Success && Formula.Creature.PassivePerceptionPresence == FPresence::Present &&
+		Formula.Creature.PassivePerceptionFormula == TEXT("10 + PB"));
+
+	const TCHAR* ArmorField = TEXT(R"("ac":[12,{"ac":14,"from":["Invented shell","{@item Glass Plate|SYN-B}"]}],)");
+	const auto OmittedArmor = Read(ArmorField, TEXT(""));
+	const auto NullArmor = Read(ArmorField, TEXT(R"("ac":null,)"));
+	const auto EmptyArmor = Read(ArmorField, TEXT(R"("ac":[],)"));
+	TestTrue(TEXT("AC retains omitted, null and present-empty states"),
+		OmittedArmor.Status == EDnd5eJsonReadStatus::Success && OmittedArmor.Creature.ArmorClassPresence == FPresence::Unspecified &&
+		NullArmor.Status == EDnd5eJsonReadStatus::Success && NullArmor.Creature.ArmorClassPresence == FPresence::ExplicitNull &&
+		EmptyArmor.Status == EDnd5eJsonReadStatus::Success && EmptyArmor.Creature.ArmorClassPresence == FPresence::Present &&
+		EmptyArmor.Creature.ArmorClasses.IsEmpty());
+
+	const TCHAR* TypeField = TEXT(R"({"type":"fey","tags":["lantern folk"]})");
+	const auto Choice = Read(TypeField, TEXT(R"({"type":{"choose":["fiend","fey"]},"tags":["invented"]})"));
+	TestTrue(TEXT("Type choices keep order and outer subtypes without selecting a type"),
+		Choice.Status == EDnd5eJsonReadStatus::Success && !Choice.Creature.CreatureType.IsValid() &&
+		Choice.Creature.CreatureTypeChoices == TArray<FGameplayTag>{Dnd5e::Creature::Type::Fiend, Dnd5e::Creature::Type::Fey} &&
+		Choice.Creature.CreatureSubtypes.Num() == 1 && Choice.Creature.CreatureSubtypes[0].Name == TEXT("invented"));
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Original, const TCHAR* Replacement, const TCHAR* Pointer)
+	{
+		const auto Result = Read(Original, Replacement);
+		TestTrue(Pointer, Result.Status == EDnd5eJsonReadStatus::Failure &&
+			Result.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(PassiveField, TEXT(R"("passive":false,)"), TEXT("/monster/1/passive"));
+	CheckFailure(PassiveField, TEXT(R"("passive":"   ",)"), TEXT("/monster/1/passive"));
+	CheckFailure(ArmorField, TEXT(R"("ac":false,)"), TEXT("/monster/1/ac"));
+	CheckFailure(TypeField, TEXT(R"({"type":{"choose":[]}})"), TEXT("/monster/1/type/type/choose"));
+	CheckFailure(TypeField, TEXT(R"({"type":{"choose":["fey","unknown"]}})"), TEXT("/monster/1/type/type/choose/1"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)
