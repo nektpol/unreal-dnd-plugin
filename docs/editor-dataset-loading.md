@@ -113,3 +113,9 @@ A member opens the exact item in the Item Browser. A definition opens a preview 
 ### Item description composition
 
 The card shows direct item text, loaded type and property descriptions, then attached supplementary entries. It uses exact definition IDs within the selected item's dataset namespace. Explicit sources take precedence. For preview text on PHB items, the omitted Artisan's Tools type and Versatile property selectors can use their matching loaded PHB definitions. The original selectors and navigation statuses remain as authored. Retained source metadata is available in Typed details.
+
+## Use both browsers together
+
+Load the item and spell datasets through their respective Tools actions. Use the same dataset namespace for related records so an attached-spell selector can match within the loaded spell catalog. The two browsers can remain open together. Expand **Typed details** to inspect the underlying values for the selected card.
+
+A card can show equipment statistics even when the item has no description entries. Load the relevant item definition files to make supported type and property descriptions available. An attached spell with an omitted source stays visible as a disabled reference even when a spell with the same name is loaded.
