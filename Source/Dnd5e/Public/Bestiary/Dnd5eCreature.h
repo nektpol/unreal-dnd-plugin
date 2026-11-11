@@ -61,6 +61,9 @@ struct DND5E_API FDnd5eCreature
 	TArray<FDnd5eCreatureSkillBonus> Skills;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureSkillChoice> SkillChoices;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FString> Senses;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")

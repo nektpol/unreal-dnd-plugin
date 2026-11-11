@@ -111,7 +111,12 @@ namespace
 		Origin.JsonPointer = Pointer;
 		if (const auto Page = FindExactField(Object, TEXT("page")))
 		{
-			if (!ReadPage(Page, AppendPointer(Pointer, TEXT("page")), Origin.Page, State)) { return false; }
+			FString Literal;
+			const bool bPageZero = Page->Type == EJson::Number && Page->TryGetString(Literal) && Literal == TEXT("0");
+			if (!bPageZero && !ReadPage(Page, AppendPointer(Pointer, TEXT("page")), Origin.Page, State))
+			{
+				return false;
+			}
 		}
 		Header.Provenance.Add(MoveTemp(Origin));
 		return true;
@@ -708,8 +713,82 @@ namespace
 			ReadStatInteger(Object, TEXT("cha"), Pointer, Scores.Charisma, State);
 	}
 
+	bool ReadCreatureSkillBonus(const FString& Name, const TSharedPtr<FJsonValue>& Value,
+		const FString& Pointer, FDnd5eCreatureSkillBonus& Out, FReadState& State)
+	{
+		FString Token;
+		if (!Value.IsValid() || Value->Type != EJson::String || !Value->TryGetString(Token) ||
+			Token.TrimStartAndEnd().IsEmpty())
+		{
+			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected a nonempty skill bonus string."));
+		}
+
+		Out.Skill = Name;
+		const bool bNegative = Token.StartsWith(TEXT("-"));
+		const FString Digits = bNegative || Token.StartsWith(TEXT("+")) ? Token.Mid(1) : Token;
+		bool bAllDigits = !Digits.IsEmpty();
+		for (const TCHAR Character : Digits)
+		{
+			bAllDigits = bAllDigits && Character >= TEXT('0') && Character <= TEXT('9');
+		}
+
+		if (!bAllDigits)
+		{
+			Out.BonusExpression = MoveTemp(Token);
+			return true;
+		}
+
+		int32 Magnitude = 0;
+		if (!TryParseBoundedIntegerToken(Digits, 0, MAX_int32, Magnitude))
+		{
+			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Skill bonus is outside the supported integer format."));
+		}
+		Out.bHasNumericBonus = true;
+		Out.Bonus = bNegative ? -Magnitude : Magnitude;
+		return true;
+	}
+
+	bool ReadCreatureSkillChoices(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		TArray<FDnd5eCreatureSkillChoice>& Out, FReadState& State)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+		if (!RequireArray(Value, Pointer, Rows, State)) { return false; }
+
+		for (int32 Index = 0; Index < Rows->Num(); ++Index)
+		{
+			const FString GroupPointer = AppendPointer(Pointer, FString::FromInt(Index));
+			const FString ChoicePointer = AppendPointer(GroupPointer, TEXT("oneOf"));
+			TSharedPtr<FJsonObject> Group;
+			TSharedPtr<FJsonObject> Options;
+			if (!RequireObject((*Rows)[Index], GroupPointer, Group, State) ||
+				!CheckAllowedKeys(*Group, {TEXT("oneOf")}, GroupPointer, State) ||
+				!ReadRequiredObject(*Group, TEXT("oneOf"), GroupPointer, Options, State))
+			{
+				return false;
+			}
+			if (Options->Values.IsEmpty())
+			{
+				return Fail(State, Codes::InvalidFieldValue, ChoicePointer, TEXT("Expected at least one skill option."));
+			}
+
+			FDnd5eCreatureSkillChoice Choice;
+			for (const auto& Pair : Options->Values)
+			{
+				const FString Name(Pair.Key.Len(), *Pair.Key);
+				FDnd5eCreatureSkillBonus Bonus;
+				if (!ReadCreatureSkillBonus(Name, Pair.Value, AppendPointer(ChoicePointer, Name), Bonus, State))
+				{
+					return false;
+				}
+				Choice.Options.Add(MoveTemp(Bonus));
+			}
+			Out.Add(MoveTemp(Choice));
+		}
+		return true;
+	}
+
 	bool ReadSkills(const FJsonObject& Object, const FString& Pointer,
-		TArray<FDnd5eCreatureSkillBonus>& Out, FReadState& State)
+		FDnd5eCreature& Creature, FReadState& State)
 	{
 		const auto Value = FindExactField(Object, TEXT("skill"));
 		if (!Value.IsValid()) { return true; }
@@ -720,28 +799,17 @@ namespace
 
 		for (const auto& Pair : Skills->Values)
 		{
-			const FString SkillName(Pair.Key.Len(), *Pair.Key);
-			FString Token;
-			int32 Magnitude = 0;
-			if (!Pair.Value.IsValid() || Pair.Value->Type != EJson::String || !Pair.Value->TryGetString(Token))
+			const FString Name(Pair.Key.Len(), *Pair.Key);
+			const FString SkillPointer = AppendPointer(SkillsPointer, Name);
+			if (Name.Equals(TEXT("other"), ESearchCase::CaseSensitive))
 			{
-				return Fail(State, Codes::InvalidFieldValue,
-					AppendPointer(SkillsPointer, SkillName), TEXT("Expected a skill bonus string."));
+				if (!ReadCreatureSkillChoices(Pair.Value, SkillPointer, Creature.SkillChoices, State)) { return false; }
+				continue;
 			}
 
-			const bool bNegative = Token.StartsWith(TEXT("-"));
-			const bool bHasSign = bNegative || Token.StartsWith(TEXT("+"));
-			const FString Digits = bHasSign ? Token.Mid(1) : Token;
-			if (!TryParseBoundedIntegerToken(Digits, 0, MAX_int32, Magnitude))
-			{
-				return Fail(State, Codes::InvalidFieldValue,
-					AppendPointer(SkillsPointer, SkillName), TEXT("Expected an integer skill bonus."));
-			}
-
-			FDnd5eCreatureSkillBonus Skill;
-			Skill.Skill = SkillName;
-			Skill.Bonus = bNegative ? -Magnitude : Magnitude;
-			Out.Add(MoveTemp(Skill));
+			FDnd5eCreatureSkillBonus Bonus;
+			if (!ReadCreatureSkillBonus(Name, Pair.Value, SkillPointer, Bonus, State)) { return false; }
+			Creature.Skills.Add(MoveTemp(Bonus));
 		}
 		return true;
 	}
@@ -832,7 +900,7 @@ namespace
 	bool ReadCreatureObservations(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
-		return ReadSkills(Object, Pointer, Creature.Skills, State) &&
+		return ReadSkills(Object, Pointer, Creature, State) &&
 			ReadStrings(Object, TEXT("senses"), Pointer, Creature.Senses, State) &&
 			ReadStrings(Object, TEXT("languages"), Pointer, Creature.Languages, State) &&
 			ReadCreaturePassivePerception(Object, Pointer, Creature, State) &&

@@ -524,6 +524,57 @@ bool FDnd5eCreatureDirectRecordTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureSkillsAndPageTest, "Dnd5e.Bestiary.Reader.SkillsAndPage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureSkillsAndPageTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Skills, const TCHAR* Page)
+	{
+		const FString Json = FString(StatBlock)
+			.Replace(TEXT(R"({"stealth":"+6","arcana":"-2"})"), Skills, ESearchCase::CaseSensitive)
+			.Replace(TEXT(R"("page":4)"), Page, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Result = Read(TEXT(R"json({"stealth":"+0","arcana":"-2","athletics":"+2 plus PB",
+		"other":[{"oneOf":{"history":"+7","nature":"+6"}},{"oneOf":{"religion":"+3"}}]})json"), TEXT(R"("page":0)"));
+	if (!TestTrue(TEXT("Skill forms and page zero convert"), Result.Status == EDnd5eJsonReadStatus::Success)) { return false; }
+	const auto& Creature = Result.Creature;
+	TestTrue(TEXT("Signed values and formula remain distinct"), Creature.Skills.Num() == 3 &&
+		Creature.Skills.ContainsByPredicate([](const auto& Skill) { return Skill.Skill == TEXT("stealth") && Skill.bHasNumericBonus && Skill.Bonus == 0; }) &&
+		Creature.Skills.ContainsByPredicate([](const auto& Skill) { return Skill.Skill == TEXT("arcana") && Skill.bHasNumericBonus && Skill.Bonus == -2; }) &&
+		Creature.Skills.ContainsByPredicate([](const auto& Skill) { return Skill.Skill == TEXT("athletics") && !Skill.bHasNumericBonus && Skill.BonusExpression == TEXT("+2 plus PB"); }));
+	TestTrue(TEXT("Choice groups stay ordered and separate from fixed skills"), Creature.SkillChoices.Num() == 2 &&
+		Creature.SkillChoices[0].Options.Num() == 2 &&
+		Creature.SkillChoices[0].Options.ContainsByPredicate([](const auto& Option)
+		{
+			return Option.Skill == TEXT("history") && Option.bHasNumericBonus && Option.Bonus == 7;
+		}) &&
+		Creature.SkillChoices[1].Options.Num() == 1 && Creature.SkillChoices[1].Options[0].Skill == TEXT("religion"));
+	TestTrue(TEXT("Numeric page zero is unspecified"), Creature.Header.Provenance.Num() == 1 &&
+		Creature.Header.Provenance[0].Page.Kind == EDnd5ePageReferenceKind::Unspecified);
+
+	const auto TextPage = Read(TEXT("{}"), TEXT(R"("page":"0")"));
+	TestTrue(TEXT("Text page zero is preserved"), TextPage.Status == EDnd5eJsonReadStatus::Success &&
+		TextPage.Creature.Header.Provenance.Num() == 1 &&
+		TextPage.Creature.Header.Provenance[0].Page.Kind == EDnd5ePageReferenceKind::Text &&
+		TextPage.Creature.Header.Provenance[0].Page.Text == TEXT("0"));
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Skills, const TCHAR* Page, const TCHAR* Pointer)
+	{
+		const auto Failed = Read(Skills, Page);
+		TestTrue(Pointer, Failed.Status == EDnd5eJsonReadStatus::Failure && Failed.Creature.SkillChoices.IsEmpty() &&
+			Failed.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"({"other":[{"oneOf":{"arcana":false}}]})"), TEXT(R"("page":4)"), TEXT("/monster/1/skill/other/0/oneOf/arcana"));
+	CheckFailure(TEXT(R"({"stealth":"+2147483648"})"), TEXT(R"("page":4)"), TEXT("/monster/1/skill/stealth"));
+	CheckFailure(TEXT("{}"), TEXT(R"("page":-1)"), TEXT("/monster/1/page"));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

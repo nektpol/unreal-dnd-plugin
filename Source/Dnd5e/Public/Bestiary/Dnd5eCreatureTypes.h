@@ -97,6 +97,21 @@ struct DND5E_API FDnd5eCreatureSkillBonus
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	int32 Bonus = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bHasNumericBonus = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString BonusExpression;
+};
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureSkillChoice
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureSkillBonus> Options;
 };
 
 USTRUCT(BlueprintType)
