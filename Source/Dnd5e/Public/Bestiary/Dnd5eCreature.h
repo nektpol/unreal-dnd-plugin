@@ -24,7 +24,7 @@ struct DND5E_API FDnd5eCreature
 	FGameplayTag CreatureType;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
-	TArray<FString> CreatureSubtypes;
+	TArray<FDnd5eCreatureSubtype> CreatureSubtypes;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	FGameplayTagContainer Alignment;

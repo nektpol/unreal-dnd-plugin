@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Header | `FDnd5eRecordHeader` | Display name, record identity, and provenance. |
 | Sizes | `TArray<EDnd5eSize>` | Ordered size choices. |
-| CreatureType and CreatureSubtypes | `FGameplayTag`, `TArray<FString>` | Creature type and authored subtype terms. |
+| CreatureType and CreatureSubtypes | `FGameplayTag`, `TArray<FDnd5eCreatureSubtype>` | Creature type and ordered subtype values with name, optional prefix, and a hidden-prefix flag. Read `Name` for the original subtype term. |
 | Alignment | `FGameplayTagContainer` | Tags for an explicit simple alignment. |
 | bHasAlignment and AlignmentOptions | `bool`, `TArray<FDnd5eCreatureAlignmentOption>` | Authored field presence and ordered options. Each option retains its `TArray<FString> Codes`, optional chance, note, and special text. |
 | ArmorClasses | `TArray<FDnd5eCreatureArmorClass>` | Ordered numeric or special AC entries. Each holds `bool bHasValue`, `int32 Value`, `TArray<FDnd5eContentBlock> Sources`, `TArray<FDnd5eInlineContent>` for each of `Condition` and `Special`, and `bool bWrapInParentheses`. |
@@ -19,7 +19,7 @@
 | ChallengeRating | `FDnd5eCreatureChallengeRating` | Presence, authored base, lair and coven CR strings, and optional base and lair XP overrides. Use `ChallengeRating.Base` to read the base string. |
 | Traits, Actions, BonusActions | `TArray<FDnd5eCreatureEntry>` each | Ordered named entries. Each entry holds a name and `TArray<FDnd5eContentBlock> Entries`. |
 
-Integer members default to zero. Arrays, strings, and tag containers default to empty. The model currently provides the initial stat-block representation. The native `FDnd5eJsonCreatureReader::ReadCreature` reads a selected direct row from a supplied `monster` document by exact authored name and source. It maps all 14 native creature types from a string or an object with a string type and optional string subtypes. The initial stat-block conversion supports numeric, sourced, conditional, and special AC entries, signed skill bonuses, and separate trait, action, and bonus action groups. Failure returns diagnostics and an empty creature. Selected copy rows require a future assembly step. Catalog lookup, supplementary lore and media, and editor browsing are pending.
+Integer members default to zero. Arrays, strings, and tag containers default to empty. The model currently provides the initial stat-block representation. The native `FDnd5eJsonCreatureReader::ReadCreature` reads a selected direct row from a supplied `monster` document by exact authored name and source. It maps all 14 native creature types from a string or an object with a string type and optional plain or prefixed subtypes. The initial stat-block conversion supports numeric, sourced, conditional, and special AC entries, signed skill bonuses, and separate trait, action, and bonus action groups. Failure returns diagnostics and an empty creature. Selected copy rows require a future assembly step. Catalog lookup, supplementary lore and media, and editor browsing are pending.
 
 See [Shared models](shared-models.md) for record, measurement, dice, and Content definitions.
 

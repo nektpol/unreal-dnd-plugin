@@ -46,7 +46,7 @@ bool FDnd5eCreatureConversionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Classification"), Creature.CreatureType == Dnd5e::Creature::Type::Fey &&
 		Creature.Alignment.HasTagExact(Dnd5e::Alignment::Chaotic) && Creature.Alignment.HasTagExact(Dnd5e::Alignment::Neutral) &&
 		Creature.Sizes.Num() == 1 && Creature.Sizes[0] == EDnd5eSize::Small &&
-		Creature.CreatureSubtypes == TArray<FString>{TEXT("lantern folk")});
+		Creature.CreatureSubtypes.Num() == 1 && Creature.CreatureSubtypes[0].Name == TEXT("lantern folk"));
 	TestTrue(TEXT("Both AC forms retain sources in their own entry"), Creature.ArmorClasses.Num() == 2 &&
 		Creature.ArmorClasses[0].Value == 12 && Creature.ArmorClasses[0].Sources.IsEmpty() &&
 		Creature.ArmorClasses[1].Value == 14 && Creature.ArmorClasses[1].Sources.Num() == 2);
@@ -164,7 +164,8 @@ bool FDnd5eCreatureTypeTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s maps in both forms"), Type.Key),
 			PlainResult.Status == EDnd5eJsonReadStatus::Success && PlainResult.Creature.CreatureType == Type.Value &&
 			NestedResult.Status == EDnd5eJsonReadStatus::Success && NestedResult.Creature.CreatureType == Type.Value &&
-			NestedResult.Creature.CreatureSubtypes == TArray<FString>{TEXT("invented subtype")});
+			NestedResult.Creature.CreatureSubtypes.Num() == 1 &&
+			NestedResult.Creature.CreatureSubtypes[0].Name == TEXT("invented subtype"));
 	}
 
 	const auto CheckUnsupported = [this, &ReadType](const TCHAR* TypeJson, const TCHAR* Pointer)
@@ -321,6 +322,45 @@ bool FDnd5eCreatureArmorClassTest::RunTest(const FString& Parameters)
 	CheckFailure(TEXT(R"([12,{"ac":16,"braces":"yes"}])"), TEXT("/monster/1/ac/1/braces"));
 	CheckFailure(TEXT(R"([12,{"special":"varies","ac":16}])"), TEXT("/monster/1/ac/1/ac"));
 	CheckFailure(TEXT(R"([12,{"ac":16,"condition":false}])"), TEXT("/monster/1/ac/1/condition"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureSubtypeTest, "Dnd5e.Bestiary.Reader.CreatureSubtypes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureSubtypeTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Subtypes)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT(R"(["lantern folk"])"), Subtypes, ESearchCase::CaseSensitive);
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+
+	const auto Result = Read(TEXT(R"(["plain",{"tag":"visible","prefix":"River"},{"tag":"hidden","prefix":"Night","prefixHidden":true}])"));
+	const auto& Subtypes = Result.Creature.CreatureSubtypes;
+	if (!TestTrue(TEXT("Mixed subtype forms convert in order"), Result.Status == EDnd5eJsonReadStatus::Success && Subtypes.Num() == 3))
+	{
+		return false;
+	}
+	TestTrue(TEXT("String has an empty visible prefix"), Subtypes[0].Name == TEXT("plain") &&
+		Subtypes[0].Prefix.IsEmpty() && !Subtypes[0].bPrefixHidden);
+	TestTrue(TEXT("Visible prefix is independent of subtype name"), Subtypes[1].Name == TEXT("visible") &&
+		Subtypes[1].Prefix == TEXT("River") && !Subtypes[1].bPrefixHidden);
+	TestTrue(TEXT("Hidden prefix remains available"), Subtypes[2].Name == TEXT("hidden") &&
+		Subtypes[2].Prefix == TEXT("Night") && Subtypes[2].bPrefixHidden);
+
+	const auto CheckFailure = [this, &Read](const TCHAR* Input, const TCHAR* Pointer)
+	{
+		const auto Failed = Read(Input);
+		TestTrue(Pointer, Failed.Status == EDnd5eJsonReadStatus::Failure && Failed.Creature.CreatureSubtypes.IsEmpty() &&
+			Failed.Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(TEXT(R"(["plain",{"tag":"hidden","prefix":"Night","prefixHidden":"yes"}])"), TEXT("/monster/1/type/tags/1/prefixHidden"));
+	CheckFailure(TEXT(R"([{"tag":"incomplete"}])"), TEXT("/monster/1/type/tags/0/prefix"));
+	CheckFailure(TEXT(R"([false])"), TEXT("/monster/1/type/tags/0"));
+	CheckFailure(TEXT("false"), TEXT("/monster/1/type/tags"));
 	return !HasAnyErrors();
 }
 

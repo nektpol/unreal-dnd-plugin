@@ -141,3 +141,18 @@ struct DND5E_API FDnd5eCreatureChallengeRating
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	int32 LairXp = 0;
 };
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureSubtype
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString Prefix;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bPrefixHidden = false;
+};

@@ -282,6 +282,42 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureSubtypes(const FJsonObject& TypeObject, const FString& TypePointer,
+		TArray<FDnd5eCreatureSubtype>& Out, FReadState& State)
+	{
+		const auto Value = FindExactField(TypeObject, TEXT("tags"));
+		if (!Value.IsValid()) { return true; }
+
+		const FString TagsPointer = AppendPointer(TypePointer, TEXT("tags"));
+		const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+		if (!RequireArray(Value, TagsPointer, Rows, State)) { return false; }
+
+		for (int32 Index = 0; Index < Rows->Num(); ++Index)
+		{
+			const auto& Row = (*Rows)[Index];
+			const FString RowPointer = AppendPointer(TagsPointer, FString::FromInt(Index));
+			FDnd5eCreatureSubtype Subtype;
+			if (Row.IsValid() && Row->Type == EJson::String)
+			{
+				Subtype.Name = Row->AsString();
+			}
+			else
+			{
+				TSharedPtr<FJsonObject> Entry;
+				if (!RequireObject(Row, RowPointer, Entry, State) ||
+					!CheckAllowedKeys(*Entry, {TEXT("tag"), TEXT("prefix"), TEXT("prefixHidden")}, RowPointer, State) ||
+					!ReadRequiredString(*Entry, TEXT("tag"), RowPointer, Subtype.Name, State) ||
+					!ReadRequiredString(*Entry, TEXT("prefix"), RowPointer, Subtype.Prefix, State) ||
+					!ReadOptionalBool(*Entry, TEXT("prefixHidden"), RowPointer, Subtype.bPrefixHidden, State))
+				{
+					return false;
+				}
+			}
+			Out.Add(MoveTemp(Subtype));
+		}
+		return true;
+	}
+
 	bool ReadCreatureClassification(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -319,7 +355,7 @@ namespace
 			{
 				return false;
 			}
-			return ReadStrings(*TypeObject, TEXT("tags"), TypePointer, Creature.CreatureSubtypes, State);
+			return ReadCreatureSubtypes(*TypeObject, TypePointer, Creature.CreatureSubtypes, State);
 		}
 
 		return ReadRequiredString(Object, TEXT("type"), Pointer, Type, State) &&
