@@ -747,6 +747,63 @@ bool FDnd5eCreatureCopyReplaceRemoveTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+#if UE_ENABLE_ICU
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyTextTest, "Dnd5e.Bestiary.Reader.CopyText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureCopyTextTest::RunTest(const FString& Parameters)
+{
+	const auto Children = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Capture","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"*":{
+			"mode":"replaceTxt","replace":"\\b(soft)\\b","with":"{@syntheticUnknown $1}","flags":"i"}}}},
+		{"name":"Protected","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"*":{
+			"mode":"replaceTxt","replace":"dice","with":"syntheticUnknown"}}}},
+		{"name":"Unprotected","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"*":{
+			"mode":"replaceTxt","replace":"dice","with":"syntheticUnknown","tagInsensitive":true}}}},
+		{"name":"Renamed","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{
+			"*":{"mode":"replaceTxt","replace":"(Glow)","with":"New $1","props":["name"]},
+			"trait":{"mode":"replaceArr","replace":"Glow","items":{"name":"Glow","entries":["New trait."]}}}}},
+		{"name":"Uses renamed trait","source":"C","_copy":{"name":"Renamed","source":"C","_mod":{
+			"trait":{"mode":"removeArr","names":"New Glow"}}}},
+		{"name":"Invalid pattern","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"*":{
+			"mode":"replaceTxt","replace":"[","with":"x"}}}}
+	]})json"));
+	const FString Parent = FString(StatBlock).Replace(TEXT("A soft glow."), TEXT("SOFT soft softwood {@dice 1d6}."));
+	const TArray<FDnd5eJsonDocument> Documents{Children, MakeDocument(Parent)};
+	const auto Reports = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	if (!TestTrue(TEXT("Text fixtures were audited"), Reports.Num() == 2 && Reports[0].Rows.Num() == 6 &&
+		Reports[1].Rows.Num() == 2)) { return false; }
+
+	const auto& Rows = Reports[0].Rows;
+	const auto CountInlineWarnings = [](const FDnd5eCreatureAuditRow& Row)
+	{
+		int32 Count = 0;
+		for (const auto& Diagnostic : Row.Diagnostics)
+		{
+			if (Diagnostic.JsonPointer.EndsWith(TEXT("/trait/0/entries/0")) &&
+				Diagnostic.Code == FName(TEXT("Dnd5e.Json.PreservedUnsupportedContent")))
+			{
+				++Count;
+			}
+		}
+		return Count;
+	};
+	TestTrue(TEXT("Global case-insensitive boundary matches expand the capture replacement twice"),
+		Rows[0].Status == EDnd5eJsonReadStatus::Success && CountInlineWarnings(Rows[0]) == 2);
+	TestTrue(TEXT("Default replacement protects inline tags, with an opt-in to rewrite them"),
+		Rows[1].Status == EDnd5eJsonReadStatus::Success && CountInlineWarnings(Rows[1]) == 0 &&
+		Rows[2].Status == EDnd5eJsonReadStatus::Success && CountInlineWarnings(Rows[2]) == 1 &&
+		CountInlineWarnings(Reports[1].Rows[1]) == 0);
+	TestTrue(TEXT("Named array operations run first and descendants see the renamed trait"), Rows[3].Status == EDnd5eJsonReadStatus::Success && Rows[4].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("Invalid regex points to the authored pattern"), Rows[5].Status == EDnd5eJsonReadStatus::Failure &&
+		Rows[5].Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/5/_copy/_mod/*/replace") &&
+				Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+		}));
+	return !HasAnyErrors();
+}
+#endif
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

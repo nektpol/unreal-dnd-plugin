@@ -20,5 +20,9 @@ public class Dnd5eJson : ModuleRules
 			"Json",
 			"GameplayTags",
 		});
+		if (Target.bCompileICU)
+		{
+			AddEngineThirdPartyPrivateStaticDependencies(Target, "ICU");
+		}
 	}
 }

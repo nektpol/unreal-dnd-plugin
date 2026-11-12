@@ -1,6 +1,14 @@
 // Developed by Neko Creative Technologies
 
 #include "Readers/Bestiary/Dnd5eJsonCreatureCopyResolver.h"
+#include "Containers/StringConv.h"
+
+#if UE_ENABLE_ICU
+THIRD_PARTY_INCLUDES_START
+#include <string>
+#include <unicode/regex.h>
+THIRD_PARTY_INCLUDES_END
+#endif
 
 namespace
 {
@@ -229,12 +237,277 @@ namespace
 		return true;
 	}
 
+#if UE_ENABLE_ICU
+	icu::UnicodeString CreatureTextToIcu(const FString& Text)
+	{
+		const FTCHARToUTF8 Utf8(*Text, Text.Len());
+		return icu::UnicodeString::fromUTF8(icu::StringPiece(Utf8.Get(), Utf8.Length()));
+	}
+
+	struct FCreatureTextReplacement
+	{
+		const icu::RegexPattern& Pattern;
+		const icu::UnicodeString& Replacement;
+		const FString& OperationPointer;
+		bool bTagInsensitive;
+
+		bool ReplaceSegment(const FString& Input, FString& Out, FReadState& State) const
+		{
+			const auto Text = CreatureTextToIcu(Input);
+			UErrorCode Status = U_ZERO_ERROR;
+			TUniquePtr<icu::RegexMatcher> Matcher(Pattern.matcher(Text, Status));
+			if (U_FAILURE(Status) || !Matcher.IsValid())
+			{
+				return Fail(State, Codes::InvalidFieldValue, OperationPointer, TEXT("Could not create text matcher."));
+			}
+			Matcher->setTimeLimit(50, Status);
+			Matcher->setStackLimit(256 * 1024, Status);
+			const auto Replaced = Matcher->replaceAll(Replacement, Status);
+			if (U_FAILURE(Status))
+			{
+				return Fail(State, Codes::InvalidFieldValue, OperationPointer,
+					TEXT("Creature text replacement failed or exceeded the matcher limits."));
+			}
+
+			std::string Utf8;
+			Replaced.toUTF8String(Utf8);
+			const FUTF8ToTCHAR Converted(Utf8.data(), static_cast<int32>(Utf8.size()));
+			Out.AppendChars(Converted.Get(), Converted.Length());
+			return true;
+		}
+
+		bool RewriteString(const FString& Input, FString& Out, FReadState& State) const
+		{
+			if (bTagInsensitive) { return ReplaceSegment(Input, Out, State); }
+
+			int32 Cursor = 0;
+			while (Cursor < Input.Len())
+			{
+				const int32 Start = Input.Find(TEXT("{@"), ESearchCase::CaseSensitive, ESearchDir::FromStart, Cursor);
+				if (Start == INDEX_NONE) { break; }
+
+				int32 Depth = 1;
+				int32 End = Start + 2;
+				for (; End < Input.Len() && Depth > 0; ++End)
+				{
+					if (Input[End] == TEXT('{')) { ++Depth; }
+					else if (Input[End] == TEXT('}')) { --Depth; }
+				}
+				if (Depth != 0) { break; }
+
+				if (Start > Cursor && !ReplaceSegment(Input.Mid(Cursor, Start - Cursor), Out, State)) { return false; }
+				Out += Input.Mid(Start, End - Start);
+				Cursor = End;
+			}
+			return Cursor < Input.Len() ? ReplaceSegment(Input.Mid(Cursor), Out, State) : true;
+		}
+	};
+
+	bool RewriteCreatureTextValue(const TSharedPtr<FJsonValue>& Value, const FCreatureTextReplacement& Rule,
+		int32 Depth, TSharedPtr<FJsonValue>& Out, FReadState& State)
+	{
+		if (Depth > 64)
+		{
+			return Fail(State, Codes::ResourceLimitExceeded, Rule.OperationPointer, TEXT("Creature text nesting is too deep."));
+		}
+		Out = Value;
+		if (!Value.IsValid()) { return true; }
+
+		if (Value->Type == EJson::String)
+		{
+			FString Text;
+			if (!Rule.RewriteString(Value->AsString(), Text, State)) { return false; }
+			Out = MakeShared<FJsonValueString>(MoveTemp(Text));
+		}
+		else if (Value->Type == EJson::Array)
+		{
+			TArray<TSharedPtr<FJsonValue>> Children;
+			for (const auto& Child : Value->AsArray())
+			{
+				TSharedPtr<FJsonValue> Rewritten;
+				if (!RewriteCreatureTextValue(Child, Rule, Depth + 1, Rewritten, State)) { return false; }
+				Children.Add(MoveTemp(Rewritten));
+			}
+			Out = MakeShared<FJsonValueArray>(MoveTemp(Children));
+		}
+		else if (Value->Type == EJson::Object)
+		{
+			const auto Object = MakeShared<FJsonObject>();
+			for (const auto& Pair : Value->AsObject()->Values)
+			{
+				const FString Key(Pair.Key.Len(), *Pair.Key);
+				TSharedPtr<FJsonValue> Rewritten;
+				if (!RewriteCreatureTextValue(Pair.Value, Rule, Depth + 1, Rewritten, State)) { return false; }
+				Object->SetField(Key, MoveTemp(Rewritten));
+			}
+			Out = MakeShared<FJsonValueObject>(Object);
+		}
+		return true;
+	}
+
+	bool RewriteCreatureTextField(FJsonObject& Merged, const TCHAR* Field, bool bRewriteStrings,
+		const TArray<FString>& Properties, const FCreatureTextReplacement& Rule, FReadState& State)
+	{
+		const auto Value = FindExactField(Merged, Field);
+		if (!Value.IsValid() || Value->Type == EJson::Null) { return true; }
+
+		const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+		if (!RequireArray(Value, Rule.OperationPointer, Entries, State)) { return false; }
+
+		TArray<TSharedPtr<FJsonValue>> RewrittenEntries;
+		RewrittenEntries.Reserve(Entries->Num());
+		for (const auto& Entry : *Entries)
+		{
+			TSharedPtr<FJsonValue> Rewritten = Entry;
+			if (Entry.IsValid() && Entry->Type == EJson::String && bRewriteStrings)
+			{
+				if (!RewriteCreatureTextValue(Entry, Rule, 0, Rewritten, State)) { return false; }
+			}
+			else if (Entry.IsValid() && Entry->Type == EJson::Object && !Properties.IsEmpty())
+			{
+				const auto Object = MakeShared<FJsonObject>();
+				for (const auto& Pair : Entry->AsObject()->Values)
+				{
+					const FString Key(Pair.Key.Len(), *Pair.Key);
+					TSharedPtr<FJsonValue> Property = Pair.Value;
+					const bool bSelected = Properties.ContainsByPredicate([&Key](const FString& Name)
+					{
+						return Name.Equals(Key, ESearchCase::CaseSensitive);
+					});
+					if (bSelected && !RewriteCreatureTextValue(Pair.Value, Rule, 0, Property, State)) { return false; }
+					Object->SetField(Key, MoveTemp(Property));
+				}
+				Rewritten = MakeShared<FJsonValueObject>(Object);
+			}
+			RewrittenEntries.Add(MoveTemp(Rewritten));
+		}
+
+		Merged.SetField(Field, MakeShared<FJsonValueArray>(MoveTemp(RewrittenEntries)));
+		return true;
+	}
+#endif
+
+	bool ApplyCreatureReplaceText(const FJsonObject& Operation, const FString& Pointer,
+		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
+	{
+#if UE_ENABLE_ICU
+		FString PatternText, Replacement, Flags;
+		bool bTagInsensitive = false;
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("replace"), TEXT("with"), TEXT("flags"),
+				TEXT("props"), TEXT("tagInsensitive")}, Pointer, State) ||
+			!ReadRequiredString(Operation, TEXT("replace"), Pointer, PatternText, State) ||
+			!ReadRequiredString(Operation, TEXT("with"), Pointer, Replacement, State) ||
+			!ReadOptionalBool(Operation, TEXT("tagInsensitive"), Pointer, bTagInsensitive, State))
+		{
+			return false;
+		}
+		if (FindExactField(Operation, TEXT("flags")).IsValid() &&
+			!ReadRequiredString(Operation, TEXT("flags"), Pointer, Flags, State))
+		{
+			return false;
+		}
+		if (!Flags.IsEmpty() && !Flags.Equals(TEXT("i"), ESearchCase::CaseSensitive))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer, TEXT("Creature text regex flags are deferred."));
+		}
+		for (int32 Index = 0; Index < Replacement.Len(); ++Index)
+		{
+			if (Replacement[Index] == TEXT('\\'))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer, TEXT("Creature replacement escapes are deferred."));
+			}
+			if (Replacement[Index] != TEXT('$')) { continue; }
+			if (++Index >= Replacement.Len() || Replacement[Index] < TEXT('1') || Replacement[Index] > TEXT('9') ||
+				(Index + 1 < Replacement.Len() && FChar::IsDigit(Replacement[Index + 1])))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer, TEXT("Creature replacement token is deferred."));
+			}
+		}
+
+		bool bRewriteStrings = true;
+		TArray<FString> Properties{TEXT("entries"), TEXT("headerEntries"), TEXT("footerEntries")};
+		if (const auto Props = FindExactField(Operation, TEXT("props")))
+		{
+			const FString PropsPointer = AppendPointer(Pointer, TEXT("props"));
+			const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+			if (!RequireArray(Props, PropsPointer, Values, State)) { return false; }
+			Properties.Reset();
+			bRewriteStrings = false;
+			for (int32 Index = 0; Index < Values->Num(); ++Index)
+			{
+				const auto& Value = (*Values)[Index];
+				if (Value.IsValid() && Value->Type == EJson::Null) { bRewriteStrings = true; }
+				else if (Value.IsValid() && Value->Type == EJson::String) { Properties.Add(Value->AsString()); }
+				else
+				{
+					return Fail(State, Codes::InvalidFieldValue, AppendPointer(PropsPointer, FString::FromInt(Index)),
+						TEXT("Expected a property name or null."));
+				}
+			}
+		}
+
+		UErrorCode Status = U_ZERO_ERROR;
+		const uint32 RegexFlags = Flags.IsEmpty() ? 0u : static_cast<uint32>(UREGEX_CASE_INSENSITIVE);
+		const TUniquePtr<icu::RegexPattern> Pattern(icu::RegexPattern::compile(CreatureTextToIcu(PatternText), RegexFlags, Status));
+		if (U_FAILURE(Status) || !Pattern.IsValid())
+		{
+			return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("replace")), TEXT("Invalid creature regex pattern."));
+		}
+		if (!bRewriteStrings && Properties.IsEmpty()) { return true; }
+
+		const auto IcuReplacement = CreatureTextToIcu(Replacement);
+		const FCreatureTextReplacement Rule{*Pattern, IcuReplacement, Pointer, bTagInsensitive};
+		static const TCHAR* Fields[] = {
+			TEXT("action"), TEXT("bonus"), TEXT("reaction"), TEXT("trait"), TEXT("legendary"),
+			TEXT("mythic"), TEXT("variant"), TEXT("spellcasting"), TEXT("actionHeader"), TEXT("bonusHeader"),
+			TEXT("reactionHeader"), TEXT("legendaryHeader"), TEXT("mythicHeader"),
+		};
+		for (const TCHAR* Field : Fields)
+		{
+			if (!RewriteCreatureTextField(Merged, Field, bRewriteStrings, Properties, Rule, State)) { return false; }
+		}
+		return true;
+#else
+		return Fail(State, Codes::UnsupportedRequiredValue, ModPointer, TEXT("Creature regex replacement requires ICU."));
+#endif
+	}
+
+	bool ApplyCreatureWildcardOperations(const TSharedPtr<FJsonValue>& Value, const FString& ModPointer,
+		FJsonObject& Merged, FReadState& State)
+	{
+		const FString FieldPointer = AppendPointer(ModPointer, TEXT("*"));
+		const bool bArray = Value.IsValid() && Value->Type == EJson::Array;
+		TArray<TSharedPtr<FJsonValue>> Operations;
+		if (bArray) { Operations = Value->AsArray(); }
+		else { Operations.Add(Value); }
+
+		for (int32 Index = 0; Index < Operations.Num(); ++Index)
+		{
+			const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
+			TSharedPtr<FJsonObject> Operation;
+			FString Mode;
+			if (!RequireObject(Operations[Index], Pointer, Operation, State) ||
+				!ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State))
+			{
+				return false;
+			}
+			if (!Mode.Equals(TEXT("replaceTxt"), ESearchCase::CaseSensitive))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+					TEXT("Creature wildcard modifier mode is deferred: ") + Mode);
+			}
+			if (!ApplyCreatureReplaceText(*Operation, Pointer, ModPointer, Merged, State)) { return false; }
+		}
+		return true;
+	}
+
 	bool ApplyCreatureCopyModifiers(const FJsonObject& Modifiers, const FString& ModPointer,
 		FJsonObject& Merged, FReadState& State)
 	{
 		for (const auto& Pair : Modifiers.Values)
 		{
 			const FString Field(Pair.Key.Len(), *Pair.Key);
+			if (Field.Equals(TEXT("*"), ESearchCase::CaseSensitive)) { continue; }
 			if (!Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) &&
 				!Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) &&
 				!Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive))
@@ -268,7 +541,8 @@ namespace
 				}
 			}
 		}
-		return true;
+		const auto Wildcard = FindExactField(Modifiers, TEXT("*"));
+		return !Wildcard.IsValid() || ApplyCreatureWildcardOperations(Wildcard, ModPointer, Merged, State);
 	}
 
 	bool CollectCreatureCopyChain(const FDnd5eCreatureCopyIndex& Index,
