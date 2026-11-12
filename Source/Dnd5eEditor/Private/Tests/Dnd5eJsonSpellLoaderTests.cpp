@@ -2,6 +2,8 @@
 
 #include "Dnd5eTestSupport.h"
 #include "Catalog/Dnd5eCreatureCatalog.h"
+#include "Catalog/Dnd5eCreatureCatalogObject.h"
+#include "Readers/Bestiary/Dnd5eJsonCreatureCatalogLibrary.h"
 #include "Readers/Bestiary/Dnd5eJsonCreatureCatalogLoader.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
 #include "Readers/Items/Dnd5eJsonItemCatalogLoader.h"
@@ -511,6 +513,23 @@ bool FDnd5eJsonCreatureLoaderTest::RunTest(const FString& Parameters)
 		Ids.Num() == 2 && Catalog.TryGetCreature(Ids[0], Child) && Child.Header.DisplayName == TEXT("Child") &&
 		Child.Languages.Num() == 2 && Child.Languages[1] == TEXT("Added"));
 
+
+	const auto MissingObject = UDnd5eJsonCreatureCatalogLibrary::LoadCreatureCatalog(nullptr, Request);
+	TestTrue(TEXT("Blueprint load rejects a null catalog object"),
+		MissingObject.Status == EDnd5eJsonReadStatus::Failure && MissingObject.Diagnostics.Num() == 1 &&
+		MissingObject.Diagnostics[0].Code == FName(TEXT("Dnd5e.Json.InvalidCatalogObject")));
+
+	const TStrongObjectPtr<UDnd5eCreatureCatalogObject> CatalogObject(NewObject<UDnd5eCreatureCatalogObject>());
+	const auto Wrapped = UDnd5eJsonCreatureCatalogLibrary::LoadCreatureCatalog(CatalogObject.Get(), Request);
+	FDnd5eCreatureQuery Query;
+	Query.Name = TEXT("Child");
+	const auto WrappedIds = CatalogObject->QueryCreatureIds(Query);
+	FDnd5eCreature WrappedChild;
+	TestTrue(TEXT("Blueprint wrapper loads and retrieves the assembled copy"),
+		Wrapped.Status == EDnd5eJsonReadStatus::Success && Wrapped.CreatureCount == 2 &&
+		CatalogObject->GetCreatureCount() == 2 && WrappedIds.Num() == 1 &&
+		CatalogObject->TryGetCreature(WrappedIds[0], WrappedChild) && WrappedChild.Languages == Child.Languages);
+
 	if (!TestTrue(TEXT("Write invalid template"), Files.Write(TEXT("template.json"), TEXT(R"json({"monsterTemplate":false})json"))))
 	{
 		return false;
@@ -520,6 +539,22 @@ bool FDnd5eJsonCreatureLoaderTest::RunTest(const FString& Parameters)
 		Invalid.Status == EDnd5eJsonReadStatus::Failure && Invalid.CreatureCount == 0 &&
 		Invalid.Documents.Num() == 2 && !Invalid.Documents[0].Diagnostics.IsEmpty() &&
 		Catalog.QueryCreatureIds({}) == Ids);
+
+
+	const auto WrappedFailure = UDnd5eJsonCreatureCatalogLibrary::LoadCreatureCatalog(CatalogObject.Get(), Request);
+	TestTrue(TEXT("Blueprint result carries template and row diagnostics and keeps active records"),
+		WrappedFailure.Status == EDnd5eJsonReadStatus::Failure && WrappedFailure.CreatureCount == 0 &&
+		WrappedFailure.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error &&
+				Diagnostic.RelativeFilePath == TEXT("template.json") && Diagnostic.JsonPointer == TEXT("/monsterTemplate");
+		}) &&
+		WrappedFailure.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.RelativeFilePath == TEXT("a-child.json") &&
+				Diagnostic.JsonPointer == TEXT("/monster/0/_copy/_templates");
+		}) &&
+		CatalogObject->QueryCreatureIds(Query) == WrappedIds);
 
 	if (!TestTrue(TEXT("Write traversal fixture"),
 		Files.Write(TEXT("index.json"), TEXT(R"json({"A":"../outside.json"})json"))))

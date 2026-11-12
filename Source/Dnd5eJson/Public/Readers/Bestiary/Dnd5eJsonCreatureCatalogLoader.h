@@ -4,13 +4,22 @@
 
 #include "CoreMinimal.h"
 #include "Readers/Bestiary/Dnd5eJsonCreatureReader.h"
+#include "Dnd5eJsonCreatureCatalogLoader.generated.h"
 
 class FDnd5eCreatureCatalog;
 
+USTRUCT(BlueprintType)
 struct DND5EJSON_API FDnd5eJsonCreatureCatalogLoadRequest
 {
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString DatasetRoot;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString DatasetNamespace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString TemplateFile;
 };
 

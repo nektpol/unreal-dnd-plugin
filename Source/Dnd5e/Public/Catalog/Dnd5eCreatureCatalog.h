@@ -5,12 +5,23 @@
 #include "CoreMinimal.h"
 #include "Bestiary/Dnd5eCreature.h"
 #include "Diagnostics/Dnd5eDiagnostic.h"
+#include "Dnd5eCreatureCatalog.generated.h"
 
+USTRUCT(BlueprintType)
 struct DND5E_API FDnd5eCreatureQuery
 {
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString DatasetNamespace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString SourceId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FGameplayTag CreatureType;
 };
 
