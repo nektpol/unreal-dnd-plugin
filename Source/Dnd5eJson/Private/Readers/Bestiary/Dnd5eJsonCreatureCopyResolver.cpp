@@ -163,9 +163,10 @@ namespace
 
 		const bool bPrepend = Mode.Equals(TEXT("prependArr"), ESearchCase::CaseSensitive);
 		const bool bAppend = Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive);
+		const bool bAppendUnique = Mode.Equals(TEXT("appendIfNotExistsArr"), ESearchCase::CaseSensitive);
 		const bool bReplace = Mode.Equals(TEXT("replaceArr"), ESearchCase::CaseSensitive);
 		const bool bRemove = Mode.Equals(TEXT("removeArr"), ESearchCase::CaseSensitive);
-		if (!bPrepend && !bAppend && !bReplace && !bRemove)
+		if (!bPrepend && !bAppend && !bAppendUnique && !bReplace && !bRemove)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier mode is deferred: ") + Mode);
@@ -177,8 +178,10 @@ namespace
 		{
 			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected an existing creature array."));
 		}
+
 		const TArray<TSharedPtr<FJsonValue>>* ExistingItems = nullptr;
 		if (bHasTarget && !RequireArray(Existing, Pointer, ExistingItems, State)) { return false; }
+
 		TArray<TSharedPtr<FJsonValue>> Entries;
 		if (ExistingItems) { Entries = *ExistingItems; }
 
@@ -206,10 +209,33 @@ namespace
 			{
 				return Fail(State, Codes::MissingRequiredField, ItemsPointer, TEXT("Expected modifier items."));
 			}
+
 			TArray<TSharedPtr<FJsonValue>> Added;
-			if (Items->Type == EJson::Array) { Added = Items->AsArray(); }
-			else if (Items->Type == EJson::Object) { Added.Add(Items); }
-			else { return Fail(State, Codes::InvalidFieldValue, ItemsPointer, TEXT("Expected an entry object or array.")); }
+			if (Items->Type == EJson::Array)
+			{
+				Added = Items->AsArray();
+			}
+			else if (Items->Type == EJson::Object || (bAppendUnique && Items->Type == EJson::String))
+			{
+				Added.Add(Items);
+			}
+			else
+			{
+				return Fail(State, Codes::InvalidFieldValue, ItemsPointer,
+					TEXT("Expected modifier items in a supported form."));
+			}
+
+			if (bAppendUnique && ExistingItems)
+			{
+				Added.RemoveAll([ExistingItems](const TSharedPtr<FJsonValue>& Candidate)
+				{
+					return Candidate.IsValid() && ExistingItems->ContainsByPredicate(
+						[&Candidate](const TSharedPtr<FJsonValue>& ExistingEntry)
+						{
+							return ExistingEntry.IsValid() && FJsonValue::CompareEqual(*Candidate, *ExistingEntry);
+						});
+				});
+			}
 
 			int32 InsertAt = bPrepend ? 0 : Entries.Num();
 			if (bReplace)
@@ -221,12 +247,15 @@ namespace
 					return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 						TEXT("Creature copy replacement by index or regex is deferred."));
 				}
+
 				FString Name;
 				if (!ReadRequiredString(Operation, TEXT("replace"), Pointer, Name, State)) { return false; }
+
 				InsertAt = FindCreatureArrayEntry(Entries, Name);
 				if (InsertAt == INDEX_NONE)
 				{
-					return Fail(State, Codes::UnresolvedReference, ReplacePointer, TEXT("Creature array entry was not found."));
+					return Fail(State, Codes::UnresolvedReference, ReplacePointer,
+						TEXT("Creature array entry was not found."));
 				}
 				Entries.RemoveAt(InsertAt);
 			}
@@ -502,6 +531,85 @@ namespace
 		return true;
 	}
 
+	bool ApplyCreatureAddSenses(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, FReadState& State)
+	{
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("senses")}, Pointer, State))
+		{
+			return false;
+		}
+
+		const FString SensesPointer = AppendPointer(Pointer, TEXT("senses"));
+		const auto Value = FindExactField(Operation, TEXT("senses"));
+		if (!Value.IsValid())
+		{
+			return Fail(State, Codes::MissingRequiredField, SensesPointer, TEXT("Expected senses."));
+		}
+
+		const bool bArray = Value->Type == EJson::Array;
+		const TArray<TSharedPtr<FJsonValue>> Added = bArray
+			? Value->AsArray() : TArray<TSharedPtr<FJsonValue>>{Value};
+		TArray<TSharedPtr<FJsonValue>> Senses;
+		if (const auto Existing = FindExactField(Merged, TEXT("senses")); Existing.IsValid() && Existing->Type != EJson::Null)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* ExistingItems = nullptr;
+			if (!RequireArray(Existing, SensesPointer, ExistingItems, State)) { return false; }
+			Senses = *ExistingItems;
+		}
+
+		for (int32 Index = 0; Index < Added.Num(); ++Index)
+		{
+			const FString ItemPointer = bArray ? AppendPointer(SensesPointer, FString::FromInt(Index)) : SensesPointer;
+			TSharedPtr<FJsonObject> Sense;
+			FString Type;
+			FString Literal;
+			int32 Range = 0;
+			if (!RequireObject(Added[Index], ItemPointer, Sense, State) ||
+				!CheckAllowedKeys(*Sense, {TEXT("type"), TEXT("range")}, ItemPointer, State) ||
+				!ReadRequiredString(*Sense, TEXT("type"), ItemPointer, Type, State) ||
+				!ValidateIdentityText(Type, AppendPointer(ItemPointer, TEXT("type")), State) ||
+				!ReadRequiredInteger(*Sense, TEXT("range"), ItemPointer, 0, MAX_int32, Range, Literal, State))
+			{
+				return false;
+			}
+
+			const FString Prefix = Type + TEXT(" ");
+			const FString Formatted = FString::Printf(TEXT("%s %d ft."), *Type, Range);
+			bool bMatched = false;
+			for (auto& ExistingSense : Senses)
+			{
+				if (!ExistingSense.IsValid() || ExistingSense->Type != EJson::String) { continue; }
+				const FString Text = ExistingSense->AsString();
+				if (!Text.StartsWith(Prefix, ESearchCase::IgnoreCase)) { continue; }
+
+				int32 End = Prefix.Len();
+				while (End < Text.Len() && Text[End] >= TEXT('0') && Text[End] <= TEXT('9'))
+				{
+					++End;
+				}
+				int32 ExistingRange = 0;
+				if (End == Prefix.Len() ||
+					!LexTryParseString(ExistingRange, *Text.Mid(Prefix.Len(), End - Prefix.Len())))
+				{
+					continue;
+				}
+				if (ExistingRange < Range)
+				{
+					ExistingSense = MakeShared<FJsonValueString>(Formatted);
+				}
+				bMatched = true;
+				break;
+			}
+			if (!bMatched)
+			{
+				Senses.Add(MakeShared<FJsonValueString>(Formatted));
+			}
+		}
+
+		Merged.SetField(TEXT("senses"), MakeShared<FJsonValueArray>(MoveTemp(Senses)));
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -509,9 +617,17 @@ namespace
 		{
 			return ApplyCreatureWildcardOperations(FieldValue, ModPointer, Merged, State);
 		}
-		if (!Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) &&
-			!Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) &&
-			!Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive))
+
+		const bool bRoot = Field.Equals(TEXT("_"), ESearchCase::CaseSensitive);
+		const bool bEntryArray = Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive);
+		const bool bUniqueArray = Field.Equals(TEXT("languages"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("resist"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("immune"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("conditionImmune"), ESearchCase::CaseSensitive);
+
+		if (!bRoot && !bEntryArray && !bUniqueArray)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier target is deferred: ") + Field);
@@ -520,14 +636,21 @@ namespace
 		const FString FieldPointer = AppendPointer(ModPointer, Field);
 		const bool bArray = FieldValue.IsValid() && FieldValue->Type == EJson::Array;
 		TArray<TSharedPtr<FJsonValue>> Operations;
-		if (bArray) { Operations = FieldValue->AsArray(); }
-		else { Operations.Add(FieldValue); }
+		if (bArray)
+		{
+			Operations = FieldValue->AsArray();
+		}
+		else
+		{
+			Operations.Add(FieldValue);
+		}
 
 		for (int32 Index = 0; Index < Operations.Num(); ++Index)
 		{
 			const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
 			const auto& Value = Operations[Index];
-			if (Value.IsValid() && Value->Type == EJson::String &&
+
+			if (bEntryArray && Value.IsValid() && Value->Type == EJson::String &&
 				Value->AsString().Equals(TEXT("remove"), ESearchCase::CaseSensitive))
 			{
 				Merged.RemoveField(Field);
@@ -535,12 +658,38 @@ namespace
 			}
 
 			TSharedPtr<FJsonObject> Operation;
-			if (!RequireObject(Value, Pointer, Operation, State) ||
-				!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
+			if (!RequireObject(Value, Pointer, Operation, State)) { return false; }
+
+			if (bRoot || bUniqueArray)
+			{
+				FString Mode;
+				if (!ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
+
+				if (bRoot)
+				{
+					if (!Mode.Equals(TEXT("addSenses"), ESearchCase::CaseSensitive))
+					{
+						return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+							TEXT("Creature root modifier mode is deferred: ") + Mode);
+					}
+
+					if (!ApplyCreatureAddSenses(Merged, *Operation, Pointer, State)) { return false; }
+					continue;
+				}
+
+				if (!Mode.Equals(TEXT("appendIfNotExistsArr"), ESearchCase::CaseSensitive))
+				{
+					return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+						TEXT("Creature array modifier mode is deferred: ") + Mode);
+				}
+			}
+
+			if (!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
 			{
 				return false;
 			}
 		}
+
 		return true;
 	}
 
