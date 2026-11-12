@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #include "Readers/Bestiary/Dnd5eJsonCreatureLoreReader.h"
 #include "Dnd5eTags.h"
@@ -6,15 +6,14 @@
 
 namespace
 {
-    FDnd5eRecordId MakeLoreJoinKey(const FString& Namespace, const FString& Name, const FString& Source)
+    using namespace Dnd5eJsonReader;
+
+    struct FLoreRow
     {
-        FDnd5eRecordId Key;
-        Key.DatasetNamespace = Namespace;
-        Key.Category = Dnd5e::Category::Creature;
-        Key.SourceKey = Dnd5eJsonReader::EscapeIdentityComponent(Name) + TEXT("|") +
-            Dnd5eJsonReader::EscapeIdentityComponent(Source);
-        return Key;
-    }
+        TSharedPtr<FJsonObject> Object;
+        FString Source;
+        FString Pointer;
+    };
 
     struct FPendingCreatureLore
     {
@@ -22,34 +21,265 @@ namespace
         TArray<FDnd5eContentBlock> Entries;
         FDnd5eRecordProvenance Provenance;
     };
+
+    enum class ELoreChainResult : uint8
+    {
+        Resolved,
+        Skipped,
+        Invalid
+    };
+
+    FDnd5eRecordId MakeLoreJoinKey(const FString& Namespace, const FString& Name, const FString& Source)
+    {
+        FDnd5eRecordId Key;
+        Key.DatasetNamespace = Namespace;
+        Key.Category = Dnd5e::Category::Creature;
+        Key.SourceKey = EscapeIdentityComponent(Name) + TEXT("|") + EscapeIdentityComponent(Source);
+        return Key;
+    }
+
+    bool ReadLoreRows(const TArray<TSharedPtr<FJsonValue>>& Values, FReadState& State,
+        TArray<FLoreRow>& Rows, TMap<FDnd5eRecordId, int32>& Lookup, TArray<FDnd5eRecordId>& Keys)
+    {
+        Rows.Reserve(Values.Num());
+        Lookup.Reserve(Values.Num());
+        Keys.Reserve(Values.Num());
+        for (int32 Index = 0; Index < Values.Num(); ++Index)
+        {
+            FLoreRow Row;
+            Row.Pointer = AppendPointer(TEXT("/monsterFluff"), FString::FromInt(Index));
+            FString Name;
+            if (!RequireObject(Values[Index], Row.Pointer, Row.Object, State) ||
+                !ReadRequiredString(*Row.Object, TEXT("name"), Row.Pointer, Name, State) ||
+                !ReadRequiredString(*Row.Object, TEXT("source"), Row.Pointer, Row.Source, State) ||
+                !ValidateIdentityText(Name, AppendPointer(Row.Pointer, TEXT("name")), State) ||
+                !ValidateIdentityText(Row.Source, AppendPointer(Row.Pointer, TEXT("source")), State))
+            {
+                return false;
+            }
+
+            FDnd5eRecordId Key = MakeLoreJoinKey(State.Context.DatasetNamespace, Name, Row.Source);
+            if (Lookup.Contains(Key))
+            {
+                return Fail(State, Codes::InvalidFieldValue, Row.Pointer, TEXT("Duplicate creature lore identity."));
+            }
+            Lookup.Add(Key, Index);
+            Keys.Add(MoveTemp(Key));
+            Rows.Add(MoveTemp(Row));
+        }
+        return true;
+    }
+
+    ELoreChainResult CollectLoreChain(int32 StartIndex, const TArray<FLoreRow>& Rows,
+        const TMap<FDnd5eRecordId, int32>& Lookup, FReadState& State, TArray<int32>& Chain)
+    {
+        TSet<int32> Seen;
+        int32 Index = StartIndex;
+        for (;;)
+        {
+            const FLoreRow& Row = Rows[Index];
+            FReadState RowState{State.Context, State.JsonText, State.Diagnostics, Row.Source};
+            if (Seen.Contains(Index))
+            {
+                Fail(RowState, Codes::InvalidFieldValue, Row.Pointer, TEXT("Creature lore copy cycle."));
+                return ELoreChainResult::Invalid;
+            }
+            if (Chain.Num() >= 64)
+            {
+                Fail(RowState, Codes::ResourceLimitExceeded, Row.Pointer, TEXT("Creature lore copy chain exceeds 64 rows."));
+                return ELoreChainResult::Invalid;
+            }
+            Seen.Add(Index);
+            Chain.Add(Index);
+            if (FindExactField(*Row.Object, TEXT("_appendCopy")))
+            {
+                AddDiagnostic(RowState, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata,
+                    AppendPointer(Row.Pointer, TEXT("_appendCopy")), TEXT("Append-copy lore is outside this reader's supported forms."));
+                return ELoreChainResult::Skipped;
+            }
+
+            const auto CopyValue = FindExactField(*Row.Object, TEXT("_copy"));
+            if (!CopyValue) { return ELoreChainResult::Resolved; }
+            const FString Pointer = AppendPointer(Row.Pointer, TEXT("_copy"));
+            TSharedPtr<FJsonObject> Copy;
+            FString ParentName;
+            FString ParentSource;
+            if (!RequireObject(CopyValue, Pointer, Copy, RowState) ||
+                !CheckAllowedKeys(*Copy, {TEXT("name"), TEXT("source"), TEXT("_mod")}, Pointer, RowState) ||
+                !ReadRequiredString(*Copy, TEXT("name"), Pointer, ParentName, RowState) ||
+                !ReadRequiredString(*Copy, TEXT("source"), Pointer, ParentSource, RowState) ||
+                !ValidateIdentityText(ParentName, AppendPointer(Pointer, TEXT("name")), RowState) ||
+                !ValidateIdentityText(ParentSource, AppendPointer(Pointer, TEXT("source")), RowState))
+            {
+                return ELoreChainResult::Invalid;
+            }
+
+            const auto ParentKey = MakeLoreJoinKey(State.Context.DatasetNamespace, ParentName, ParentSource);
+            const int32* ParentIndex = Lookup.Find(ParentKey);
+            if (!ParentIndex)
+            {
+                AddDiagnostic(RowState, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, Pointer,
+                    TEXT("Creature lore parent is absent from the selected file."));
+                return ELoreChainResult::Skipped;
+            }
+            Index = *ParentIndex;
+        }
+    }
+
+    bool ReadLoreContent(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, bool bAllowSingle,
+        FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Out)
+    {
+        const int32 Before = State.Budget->ContentValues;
+        if (bAllowSingle && Value.IsValid() && Value->Type != EJson::Array)
+        {
+            FDnd5eContentBlock Block;
+            if (!ReadContent(Value, Pointer, Block, State)) { return false; }
+            Out.Reset();
+            Out.Add(MoveTemp(Block));
+        }
+        else if (!ReadBlocks(Value, Pointer, Out, State))
+        {
+            return false;
+        }
+
+        const int32 Cost = State.Budget->ContentValues - Before;
+        if (Cost > 1000000 - Converted)
+        {
+            return Fail(State, Codes::ResourceLimitExceeded, Pointer, TEXT("Creature lore conversion budget exceeded."));
+        }
+        Converted += Cost;
+        return true;
+    }
+
+    bool ApplyLoreEntryOperation(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+        FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Entries)
+    {
+        TSharedPtr<FJsonObject> Operation;
+        FString Mode;
+        if (!RequireObject(Value, Pointer, Operation, State) ||
+            !ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State))
+        {
+            return false;
+        }
+
+        const bool bReplace = Mode.Equals(TEXT("setProp"), ESearchCase::CaseSensitive);
+        const bool bPrepend = Mode.Equals(TEXT("prependArr"), ESearchCase::CaseSensitive);
+        const bool bAppend = Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive);
+        if (!bReplace && !bPrepend && !bAppend)
+        {
+            return Fail(State, Codes::UnsupportedRequiredValue, AppendPointer(Pointer, TEXT("mode")),
+                TEXT("Unsupported creature lore entries modifier."));
+        }
+
+        const TCHAR* Field = bReplace ? TEXT("value") : TEXT("items");
+        if (!CheckAllowedKeys(*Operation, {TEXT("mode"), Field}, Pointer, State)) { return false; }
+        const auto Items = FindExactField(*Operation, Field);
+        const FString ItemsPointer = AppendPointer(Pointer, Field);
+        if (!Items)
+        {
+            return Fail(State, Codes::MissingRequiredField, ItemsPointer, TEXT("Creature lore modifier requires content."));
+        }
+
+        TArray<FDnd5eContentBlock> Blocks;
+        if (!ReadLoreContent(Items, ItemsPointer, !bReplace, State, Converted, Blocks)) { return false; }
+        if (bReplace)
+        {
+            Entries = MoveTemp(Blocks);
+        }
+        else if (bPrepend)
+        {
+            Blocks.Append(MoveTemp(Entries));
+            Entries = MoveTemp(Blocks);
+        }
+        else
+        {
+            Entries.Append(MoveTemp(Blocks));
+        }
+        return true;
+    }
+
+    bool ResolveLoreEntries(const TArray<FLoreRow>& Rows, const TArray<int32>& Chain,
+        FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Entries)
+    {
+        for (int32 Index = Chain.Num() - 1; Index >= 0; --Index)
+        {
+            const FLoreRow& Row = Rows[Chain[Index]];
+            FReadState RowState{State.Context, State.JsonText, State.Diagnostics, Row.Source};
+            if (const auto Direct = FindExactField(*Row.Object, TEXT("entries")))
+            {
+                if (!ReadLoreContent(Direct, AppendPointer(Row.Pointer, TEXT("entries")), false, RowState, Converted, Entries))
+                {
+                    return false;
+                }
+            }
+
+            const auto CopyValue = FindExactField(*Row.Object, TEXT("_copy"));
+            if (!CopyValue) { continue; }
+            const auto Copy = CopyValue->AsObject();
+            const auto ModsValue = FindExactField(*Copy, TEXT("_mod"));
+            if (!ModsValue) { continue; }
+
+            const FString ModsPointer = AppendPointer(AppendPointer(Row.Pointer, TEXT("_copy")), TEXT("_mod"));
+            TSharedPtr<FJsonObject> Mods;
+            if (!RequireObject(ModsValue, ModsPointer, Mods, RowState) ||
+                !CheckAllowedKeys(*Mods, {TEXT("entries"), TEXT("images")}, ModsPointer, RowState))
+            {
+                return false;
+            }
+
+            const auto Operations = FindExactField(*Mods, TEXT("entries"));
+            if (!Operations) { continue; }
+            const FString Pointer = AppendPointer(ModsPointer, TEXT("entries"));
+            if (Operations->Type == EJson::Array)
+            {
+                const auto& Values = Operations->AsArray();
+                for (int32 OpIndex = 0; OpIndex < Values.Num(); ++OpIndex)
+                {
+                    if (!ApplyLoreEntryOperation(Values[OpIndex], AppendPointer(Pointer, FString::FromInt(OpIndex)),
+                        RowState, Converted, Entries))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (!ApplyLoreEntryOperation(Operations, Pointer, RowState, Converted, Entries))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const FDnd5eJsonDocument& Document,
     TArray<FDnd5eCreature>& Creatures, TArray<FDnd5eDiagnostic>& Diagnostics)
 {
-    using namespace Dnd5eJsonReader;
     FReadState State{Document.Context, Document.JsonText, Diagnostics, FString{}};
     TSharedPtr<FJsonValue> RootValue;
     TSharedPtr<FJsonObject> Root;
-    const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+    const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
     if (!ValidateReadContext(State) || !ValidateDocumentText(State) || !PreflightJson(State) ||
         !ParseJsonDocument(RootValue, State) || !RequireObject(RootValue, TEXT(""), Root, State) ||
-        !ReadRequiredArray(*Root, TEXT("monsterFluff"), TEXT(""), Rows, State))
+        !ReadRequiredArray(*Root, TEXT("monsterFluff"), TEXT(""), Values, State))
     {
         return false;
     }
-    if (Rows->Num() > 100000)
+    if (Values->Num() > 100000)
     {
         return Fail(State, Codes::ResourceLimitExceeded, TEXT("/monsterFluff"), TEXT("Too many creature lore rows."));
     }
+
+    TArray<FLoreRow> Rows;
+    TMap<FDnd5eRecordId, int32> LoreLookup;
+    TArray<FDnd5eRecordId> Keys;
+    if (!ReadLoreRows(*Values, State, Rows, LoreLookup, Keys)) { return false; }
 
     TMap<FDnd5eRecordId, int32> Primary;
     for (int32 Index = 0; Index < Creatures.Num(); ++Index)
     {
         const FDnd5eRecordHeader& Header = Creatures[Index].Header;
         if (Header.Provenance.IsEmpty()) { continue; }
-        const FDnd5eRecordId Key = MakeLoreJoinKey(Header.RecordId.DatasetNamespace,
-            Header.DisplayName, Header.Provenance[0].SourceId);
+        const auto Key = MakeLoreJoinKey(Header.RecordId.DatasetNamespace, Header.DisplayName, Header.Provenance[0].SourceId);
         if (Primary.Contains(Key))
         {
             return Fail(State, Codes::InvalidFieldValue, TEXT("/monsterFluff"),
@@ -58,59 +288,25 @@ bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const FDnd5eJsonDocument& Docume
         Primary.Add(Key, Index);
     }
 
-    TSet<FDnd5eRecordId> Seen;
     TArray<FPendingCreatureLore> Pending;
     int32 Converted = 0;
-    for (int32 Index = 0; Index < Rows->Num(); ++Index)
+    for (int32 RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
     {
-        const FString Pointer = AppendPointer(TEXT("/monsterFluff"), FString::FromInt(Index));
-        TSharedPtr<FJsonObject> Object;
-        FString Name;
-        FString Source;
-        if (!RequireObject((*Rows)[Index], Pointer, Object, State) ||
-            !ReadRequiredString(*Object, TEXT("name"), Pointer, Name, State) ||
-            !ReadRequiredString(*Object, TEXT("source"), Pointer, Source, State) ||
-            !ValidateIdentityText(Name, AppendPointer(Pointer, TEXT("name")), State) ||
-            !ValidateIdentityText(Source, AppendPointer(Pointer, TEXT("source")), State))
-        {
-            return false;
-        }
-
-        const FDnd5eRecordId Key = MakeLoreJoinKey(Document.Context.DatasetNamespace, Name, Source);
-        FReadState RowState{Document.Context, Document.JsonText, Diagnostics, Source};
-        if (Seen.Contains(Key))
-        {
-            return Fail(RowState, Codes::InvalidFieldValue, Pointer, TEXT("Duplicate creature lore identity."));
-        }
-        Seen.Add(Key);
-
-        const int32* CreatureIndex = Primary.Find(Key);
+        const int32* CreatureIndex = Primary.Find(Keys[RowIndex]);
         if (!CreatureIndex) { continue; }
-        const bool bCopy = FindExactField(*Object, TEXT("_copy")).IsValid();
-        if (bCopy || FindExactField(*Object, TEXT("_appendCopy")))
-        {
-            AddDiagnostic(RowState, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedMetadata,
-                AppendPointer(Pointer, bCopy ? TEXT("_copy") : TEXT("_appendCopy")),
-                TEXT("Creature lore copy directives are outside this reader's direct-row support."));
-            continue;
-        }
 
-        const auto Entries = FindExactField(*Object, TEXT("entries"));
-        if (!Entries) { continue; }
+        TArray<int32> Chain;
+        const ELoreChainResult Result = CollectLoreChain(RowIndex, Rows, LoreLookup, State, Chain);
+        if (Result == ELoreChainResult::Invalid) { return false; }
+        if (Result == ELoreChainResult::Skipped) { continue; }
+
+        const FLoreRow& Row = Rows[RowIndex];
         FPendingCreatureLore Attachment;
         Attachment.CreatureIndex = *CreatureIndex;
-        Attachment.Provenance.SourceId = Source;
+        Attachment.Provenance.SourceId = Row.Source;
         Attachment.Provenance.RelativeFilePath = Document.Context.RelativeFilePath;
-        Attachment.Provenance.JsonPointer = Pointer;
-        if (!ReadBlocks(Entries, AppendPointer(Pointer, TEXT("entries")), Attachment.Entries, RowState))
-        {
-            return false;
-        }
-        if (RowState.Budget->ContentValues > 1000000 - Converted)
-        {
-            return Fail(RowState, Codes::ResourceLimitExceeded, Pointer, TEXT("Creature lore conversion budget exceeded."));
-        }
-        Converted += RowState.Budget->ContentValues;
+        Attachment.Provenance.JsonPointer = Row.Pointer;
+        if (!ResolveLoreEntries(Rows, Chain, State, Converted, Attachment.Entries)) { return false; }
         if (!Attachment.Entries.IsEmpty()) { Pending.Add(MoveTemp(Attachment)); }
     }
 

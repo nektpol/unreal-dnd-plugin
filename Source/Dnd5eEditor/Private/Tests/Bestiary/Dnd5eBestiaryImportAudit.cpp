@@ -230,6 +230,22 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	if (TestTrue(TEXT("Indexed loader publishes the snapshot catalog"), Loaded.Status == EDnd5eJsonReadStatus::Success))
 	{
 		TestEqual(TEXT("Catalog exposes every converted row"), Catalog.GetCreatureCount(), Converted);
+		if (Request.LoreFile == TEXT("fluff-bestiary-mm.json"))
+		{
+			FDnd5eCreatureQuery Query;
+			Query.Name = TEXT("Allosaurus");
+			Query.SourceId = TEXT("MM");
+			const auto Ids = Catalog.QueryCreatureIds(Query);
+			FDnd5eCreature Allosaurus;
+			if (TestTrue(TEXT("Find the Monster Manual Allosaurus"), Ids.Num() == 1 && Catalog.TryGetCreature(Ids[0], Allosaurus)))
+			{
+				const auto& Entries = Allosaurus.SupplementaryContent.Entries;
+				TestTrue(TEXT("Allosaurus modifier precedes inherited Dinosaurs entries"), Entries.Num() >= 2 &&
+					Entries[0].Metadata.JsonPointer.Contains(TEXT("/_copy/_mod/entries/items")) &&
+					Entries[1].Metadata.JsonPointer.Contains(TEXT("/entries/")) &&
+					!Entries[1].Metadata.JsonPointer.Contains(TEXT("/_copy/")));
+			}
+		}
 	}
 	else
 	{

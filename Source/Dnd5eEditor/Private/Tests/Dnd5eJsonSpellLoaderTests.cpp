@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Browser/Dnd5eBrowserText.h"
 #include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
 #include "Subsystems/Dnd5eEditorBestiaryDatasetSubsystem.h"
 #include "Catalog/Dnd5eCreatureCatalog.h"
@@ -693,6 +694,90 @@ bool FDnd5eBestiaryDirectLoreTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Lore path traversal fails without replacing the catalog"),
 		FDnd5eJsonCreatureCatalogLoader::LoadCatalog(BadPath, Catalog).Status == EDnd5eJsonReadStatus::Failure &&
 		Catalog.QueryCreatureIds({}) == Ids);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryInheritedLoreTest, "Dnd5e.Bestiary.Loader.InheritedLore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryInheritedLoreTest::RunTest(const FString& Parameters)
+{
+	const FLoaderFiles Files;
+	if (!TestTrue(TEXT("Write nested lore and primary fixtures"),
+		Files.Write(TEXT("index.json"), TEXT(R"json({"SYN":"creatures.json"})json")) &&
+		Files.Write(TEXT("creatures.json"), TEXT(R"json({"monster":[
+			{"name":"Child","source":"SYN","size":["M"],"type":"humanoid"},
+			{"name":"Reset","source":"SYN","size":["M"],"type":"humanoid"}
+		]})json")) &&
+		Files.Write(TEXT("lore.json"), TEXT(R"json({"monsterFluff":[
+			{"name":"Child","source":"SYN","_copy":{"name":"Middle","source":"SYN","_mod":{"entries":[
+				{"mode":"prependArr","items":"Child introduction."},
+				{"mode":"appendArr","items":["Child ending."]}
+			]}}},
+			{"name":"Reset","source":"SYN","_copy":{"name":"Child","source":"SYN","_mod":{"entries":
+				{"mode":"setProp","value":["Only replacement."]}
+			}}},
+			{"name":"Middle","source":"SYN","_copy":{"name":"Shared","source":"SYN","_mod":{"entries":
+				{"mode":"prependArr","items":["Middle introduction."]}
+			}}},
+			{"name":"Shared","source":"SYN","entries":["Shared lore."]}
+		]})json"))))
+	{
+		return false;
+	}
+
+	FDnd5eJsonCreatureCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("inherited-lore-test");
+	Request.LoreFile = TEXT("lore.json");
+	FDnd5eCreatureCatalog Catalog;
+	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	if (!TestTrue(TEXT("Publish creatures with forward parent references"), Loaded.Status == EDnd5eJsonReadStatus::Success))
+	{
+		for (const auto& Diagnostic : Loaded.Diagnostics) { AddError(Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message); }
+		return false;
+	}
+
+	const auto Ids = Catalog.QueryCreatureIds({});
+	FDnd5eCreature Child;
+	FDnd5eCreature Reset;
+	if (!TestTrue(TEXT("Both creatures are available"), Ids.Num() == 2 &&
+		Catalog.TryGetCreature(Ids[0], Child) && Catalog.TryGetCreature(Ids[1], Reset)))
+	{
+		return false;
+	}
+
+	const auto& Entries = Child.SupplementaryContent.Entries;
+	if (TestEqual(TEXT("Inherited entries count"), Entries.Num(), 4))
+	{
+		const TCHAR* ExpectedText[] = {TEXT("Child introduction."), TEXT("Middle introduction."), TEXT("Shared lore."), TEXT("Child ending.")};
+		const TCHAR* ExpectedPointer[] = {TEXT("/monsterFluff/0/_copy/_mod/entries/0/items"),
+			TEXT("/monsterFluff/2/_copy/_mod/entries/items/0"), TEXT("/monsterFluff/3/entries/0"),
+			TEXT("/monsterFluff/0/_copy/_mod/entries/1/items/0")};
+		for (int32 Index = 0; Index < Entries.Num(); ++Index)
+		{
+			TestEqual(TEXT("Entry order"), Dnd5eBrowserText::FormatDescription({Entries[Index]}).ToString(), FString(ExpectedText[Index]));
+			TestTrue(TEXT("Entry keeps its authoring location"), Entries[Index].Metadata.RelativeFilePath == TEXT("lore.json") &&
+				Entries[Index].Metadata.JsonPointer == ExpectedPointer[Index]);
+		}
+	}
+	TestTrue(TEXT("Replacement clears inherited entries"), Reset.SupplementaryContent.Entries.Num() == 1 &&
+		Dnd5eBrowserText::FormatDescription(Reset.SupplementaryContent.Entries).ToString() == TEXT("Only replacement."));
+
+	if (!TestTrue(TEXT("Write a copy cycle"), Files.Write(TEXT("lore.json"), TEXT(R"json({"monsterFluff":[
+		{"name":"Child","source":"SYN","_copy":{"name":"Shared","source":"SYN"}},
+		{"name":"Shared","source":"SYN","_copy":{"name":"Child","source":"SYN"}}
+	]})json"))))
+	{
+		return false;
+	}
+	const auto Failed = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	FDnd5eCreature Preserved;
+	TestTrue(TEXT("Cycle is diagnosed and leaves the last published lore active"), Failed.Status == EDnd5eJsonReadStatus::Failure &&
+		Failed.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Message.Contains(TEXT("cycle")) && Diagnostic.RelativeFilePath == TEXT("lore.json");
+		}) && Catalog.TryGetCreature(Ids[0], Preserved) && Preserved.SupplementaryContent.Entries.Num() == 4);
 	return !HasAnyErrors();
 }
 
