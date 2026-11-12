@@ -1,10 +1,11 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #include "Readers/Bestiary/Dnd5eJsonCreatureCatalogLoader.h"
 #include "Catalog/Dnd5eCreatureCatalog.h"
 #include "Misc/Paths.h"
 #include "Readers/Dnd5eJsonLocalDocuments.h"
 #include "Readers/Dnd5eJsonReaderInternal.h"
+#include "Readers/Bestiary/Dnd5eJsonCreatureLoreReader.h"
 
 namespace
 {
@@ -148,7 +149,32 @@ FDnd5eJsonCreatureCatalogLoadResult FDnd5eJsonCreatureCatalogLoader::LoadCatalog
 	{
 		return Result;
 	}
-	if (!Catalog.ReplaceCreatures(MoveTemp(Batch.Creatures), Result.Diagnostics)) { return Result; }
+	if (!Request.LoreFile.IsEmpty())
+	{
+		FString LorePath;
+		if (!ResolveSelectedFile(Root, Request.LoreFile, Request.DatasetNamespace, LorePath, Result.Diagnostics))
+		{
+			return Result;
+		}
+		if (FPaths::IsSamePath(IndexPath, LorePath) || (bHasTemplate && FPaths::IsSamePath(TemplatePath, LorePath)) ||
+			ReadPaths.ContainsByPredicate([&LorePath](const FString& Path) { return FPaths::IsSamePath(Path, LorePath); }))
+		{
+			LoadError(Result.Diagnostics, TEXT("Dnd5e.Json.Load.DuplicateFile"),
+				TEXT("The lore file must be separate from the index, template, and creature documents."), Request.LoreFile);
+			return Result;
+		}
+
+		FDnd5eJsonDocument Lore;
+		if (!ReadDocument(LorePath, Request.LoreFile, Request.DatasetNamespace, TotalBytes, Lore, Result.Diagnostics) ||
+			!Dnd5eJsonCreatureLoreReader::ReadAndAttach(Lore, Batch.Creatures, Result.Diagnostics))
+		{
+			return Result;
+		}
+	}
+	TArray<FDnd5eDiagnostic> CatalogDiagnostics;
+	const bool bPublished = Catalog.ReplaceCreatures(MoveTemp(Batch.Creatures), CatalogDiagnostics);
+	Result.Diagnostics.Append(MoveTemp(CatalogDiagnostics));
+	if (!bPublished) { return Result; }
 
 	Result.CreatureCount = Catalog.GetCreatureCount();
 	Result.Status = EDnd5eJsonReadStatus::Success;

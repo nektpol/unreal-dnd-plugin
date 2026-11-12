@@ -8,6 +8,7 @@
 #include "Values/Dnd5eSize.h"
 #include "Bestiary/Dnd5eCreatureTypes.h"
 #include "Values/Dnd5eValuePresence.h"
+#include "Content/Dnd5eSupplementaryContent.h"
 #include "Dnd5eCreature.generated.h"
 
 USTRUCT(BlueprintType)
@@ -134,4 +135,7 @@ struct DND5E_API FDnd5eCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eCreatureSpellcasting> Spellcasting;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eSupplementaryContent SupplementaryContent;
 };

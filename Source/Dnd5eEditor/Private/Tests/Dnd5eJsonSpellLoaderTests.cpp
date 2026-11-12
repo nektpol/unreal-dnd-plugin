@@ -620,4 +620,80 @@ bool FDnd5eBestiaryEditorSessionTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryDirectLoreTest, "Dnd5e.Bestiary.Loader.DirectLore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryDirectLoreTest::RunTest(const FString& Parameters)
+{
+	const FLoaderFiles Files;
+	const auto* ValidLore = TEXT(R"json({"monsterFluff":[
+		{"name":"Invented Scout","source":"SYN-A","entries":["Lore for the first scout."],"images":[{"type":"image"}]},
+		{"name":"Invented Scout","source":"SYN-B","_copy":{"name":"Other","source":"SYN-B"}},
+		{"name":"invented scout","source":"SYN-A","entries":["Different exact identity."]}
+	]})json");
+	if (!TestTrue(TEXT("Write indexed creature and lore fixtures"),
+		Files.Write(TEXT("index.json"), TEXT(R"json({"SYN-A":"creatures.json","SYN-B":"creatures.json"})json")) &&
+		Files.Write(TEXT("creatures.json"), TEXT(R"json({"monster":[
+			{"name":"Invented Scout","source":"SYN-A","size":["M"],"type":"humanoid"},
+			{"name":"Invented Scout","source":"SYN-B","size":["M"],"type":"humanoid"}
+		]})json")) && Files.Write(TEXT("lore.json"), ValidLore)))
+	{
+		return false;
+	}
+
+	const TStrongObjectPtr<UDnd5eEditorBestiaryDatasetSettings> Settings(NewObject<UDnd5eEditorBestiaryDatasetSettings>());
+	Settings->DatasetRoot.Path = Files.Root;
+	Settings->DatasetNamespace = TEXT("lore-test");
+	Settings->LoreFile.FilePath = FPaths::Combine(Files.Root, TEXT("lore.json"));
+	const auto Request = Settings->MakeLoadRequest();
+	TestEqual(TEXT("Editor picker supplies a dataset-relative lore file"), Request.LoreFile, FString(TEXT("lore.json")));
+
+	FDnd5eCreatureCatalog Catalog;
+	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	if (!TestTrue(TEXT("Optional lore publishes both creatures"), Loaded.Status == EDnd5eJsonReadStatus::Success &&
+		Catalog.GetCreatureCount() == 2))
+	{
+		return false;
+	}
+	const auto Ids = Catalog.QueryCreatureIds({});
+	FDnd5eCreature First;
+	FDnd5eCreature Second;
+	if (!TestTrue(TEXT("Read both same-name records by exact ID"), Ids.Num() == 2 &&
+		Catalog.TryGetCreature(Ids[0], First) && Catalog.TryGetCreature(Ids[1], Second)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Only exact source and name attach, with original location and no image import"),
+		First.SupplementaryContent.Entries.Num() == 1 && First.SupplementaryContent.Images.IsEmpty() &&
+		First.Header.Provenance.Num() == 2 && First.Header.Provenance[1].RelativeFilePath == TEXT("lore.json") &&
+		First.Header.Provenance[1].JsonPointer == TEXT("/monsterFluff/0") &&
+		Second.SupplementaryContent.Entries.IsEmpty() && Second.Header.Provenance.Num() == 1);
+	TestTrue(TEXT("Matched copy reports its own row"), Loaded.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+	{
+		return Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning &&
+			Diagnostic.RelativeFilePath == TEXT("lore.json") &&
+			Diagnostic.JsonPointer == TEXT("/monsterFluff/1/_copy");
+	}));
+
+	if (!TestTrue(TEXT("Write duplicate identity"), Files.Write(TEXT("lore.json"), TEXT(R"json({"monsterFluff":[
+		{"name":"Invented Scout","source":"SYN-A","entries":["Replacement lore."]},
+		{"name":"Invented Scout","source":"SYN-A","entries":["Duplicate lore."]}
+	]})json"))))
+	{
+		return false;
+	}
+	const auto Failure = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	FDnd5eCreature Preserved;
+	TestTrue(TEXT("Duplicate lore fails and the published creature and lore survive"),
+		Failure.Status == EDnd5eJsonReadStatus::Failure && Catalog.QueryCreatureIds({}) == Ids &&
+		Catalog.TryGetCreature(Ids[0], Preserved) && Preserved.SupplementaryContent.Entries.Num() == 1 &&
+		Preserved.Header.Provenance.Num() == 2);
+	auto BadPath = Request;
+	BadPath.LoreFile = TEXT("../outside.json");
+	TestTrue(TEXT("Lore path traversal fails without replacing the catalog"),
+		FDnd5eJsonCreatureCatalogLoader::LoadCatalog(BadPath, Catalog).Status == EDnd5eJsonReadStatus::Failure &&
+		Catalog.QueryCreatureIds({}) == Ids);
+	return !HasAnyErrors();
+}
+
 #endif

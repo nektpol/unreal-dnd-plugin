@@ -21,6 +21,9 @@ struct DND5EJSON_API FDnd5eJsonCreatureCatalogLoadRequest
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
 	FString TemplateFile;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|CreatureCatalog")
+	FString LoreFile;
 };
 
 struct DND5EJSON_API FDnd5eJsonCreatureCatalogLoadResult

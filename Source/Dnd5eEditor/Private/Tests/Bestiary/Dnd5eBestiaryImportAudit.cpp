@@ -224,6 +224,7 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	Request.DatasetRoot = FPaths::ConvertRelativePathToFull(Root);
 	Request.DatasetNamespace = TEXT("local-bestiary-audit");
 	if (bLoadedTemplates) { Request.TemplateFile = TEXT("template.json"); }
+	FParse::Value(FCommandLine::Get(), TEXT("Dnd5eBestiaryLoreFile="), Request.LoreFile);
 	FDnd5eCreatureCatalog Catalog;
 	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
 	if (TestTrue(TEXT("Indexed loader publishes the snapshot catalog"), Loaded.Status == EDnd5eJsonReadStatus::Success))
