@@ -648,4 +648,78 @@ bool FDnd5eCreatureCopyRootPropertiesTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyXpAndHpTest, "Dnd5e.Bestiary.Reader.CopyXpAndHp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyXpAndHpTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","cr":"1/8","hp":{"average":43,"formula":"6d8+16"}},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"_":{"mode":"scalarMultXp","scalar":0.5,"floor":true},
+			"hp":[{"mode":"scalarMultProp","prop":"average","scalar":0.5,"floor":true},
+				{"mode":"prefixSuffixStringProp","prop":"formula","prefix":"floor((","suffix":") / 2)"}]
+		}}},
+		{"name":"Explicit","source":"SYN","cr":{"cr":"5","xp":1000,"lair":"6"},
+			"_copy":{"name":"Parent","source":"SYN","_mod":{"_":{"mode":"scalarMultXp","scalar":0.5}}}},
+		{"name":"Fractional","source":"SYN","_copy":{"name":"Parent","source":"SYN",
+			"_mod":{"_":{"mode":"scalarMultXp","scalar":0.5}}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("XP and HP fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 4))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	const auto Resolve = [&](int32 Row)
+	{
+		Merged.Reset();
+		return ResolveCreatureCopy(Index, {(*Rows)[Row]->AsObject(), Context.RelativeFilePath,
+			AppendPointer(TEXT("/monster"), FString::FromInt(Row))}, Merged, Ancestors, State);
+	};
+	if (!TestTrue(TEXT("Table XP and HP formula resolve"), Resolve(1))) { return false; }
+
+	const auto Rating = Merged->GetObjectField(TEXT("cr"));
+	int32 Xp = 0;
+	FString Literal;
+	TestTrue(TEXT("Fractional CR supplies floored XP readable by the typed reader"),
+		Rating->GetStringField(TEXT("cr")) == TEXT("1/8") &&
+		ReadRequiredInteger(*Rating, TEXT("xp"), TEXT("/cr"), 0, MAX_int32, Xp, Literal, State) && Xp == 12);
+	const auto Hp = Merged->GetObjectField(TEXT("hp"));
+	TestTrue(TEXT("Formula wrapping preserves the adjusted average"), Hp->GetNumberField(TEXT("average")) == 21 &&
+		Hp->GetStringField(TEXT("formula")) == TEXT("floor((6d8+16) / 2)"));
+	TestEqual(TEXT("Parent formula survives"), Parent->GetObjectField(TEXT("hp"))->GetStringField(TEXT("formula")),
+		FString(TEXT("6d8+16")));
+
+	if (!TestTrue(TEXT("Explicit XP resolves"), Resolve(2))) { return false; }
+	const auto ExplicitRating = Merged->GetObjectField(TEXT("cr"));
+	TestTrue(TEXT("Explicit XP takes precedence and lair metadata survives"),
+		ExplicitRating->GetNumberField(TEXT("xp")) == 500 &&
+		ExplicitRating->GetStringField(TEXT("lair")) == TEXT("6"));
+	TestFalse(TEXT("Fractional XP without flooring defers"), Resolve(3));
+	TestTrue(TEXT("Deferred XP publishes no result"), !Merged.IsValid() && Diagnostics.ContainsByPredicate(
+		[](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Code == Codes::UnsupportedRequiredValue &&
+				Diagnostic.JsonPointer == TEXT("/monster/3/_copy/_mod");
+		}));
+	return !HasAnyErrors();
+}
+
 #endif

@@ -1420,6 +1420,132 @@ namespace
 		return true;
 	}
 
+	bool TryGetCreatureBaseXp(const FString& Rating, int32& Out)
+	{
+		if (Rating == TEXT("1/8")) { Out = 25; return true; }
+		if (Rating == TEXT("1/4")) { Out = 50; return true; }
+		if (Rating == TEXT("1/2")) { Out = 100; return true; }
+
+		static constexpr int32 XpByRating[] = {
+			10, 200, 450, 700, 1100, 1800, 2300, 2900, 3900, 5000,
+			5900, 7200, 8400, 10000, 11500, 13000, 15000, 18000, 20000, 22000,
+			25000, 33000, 41000, 50000, 62000, 75000, 90000, 105000, 120000, 135000, 155000,
+		};
+		int32 Index = 0;
+		if (!TryParseBoundedIntegerToken(Rating, 0, UE_ARRAY_COUNT(XpByRating) - 1, Index))
+		{
+			return false;
+		}
+		Out = XpByRating[Index];
+		return true;
+	}
+
+	bool ApplyCreatureScalarXpModifier(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		TSharedPtr<FJsonValue> ScalarValue;
+		bool bFloor = false;
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("scalar"), TEXT("floor")}, Pointer, State) ||
+			!ReadRequiredValue(Operation, TEXT("scalar"), EJson::Number, Pointer, ScalarValue, State) ||
+			!ReadOptionalBool(Operation, TEXT("floor"), Pointer, bFloor, State))
+		{
+			return false;
+		}
+
+		const FString ScalarPointer = AppendPointer(Pointer, TEXT("scalar"));
+		double Scalar = 0;
+		if (!ScalarValue->TryGetNumber(Scalar) || !FMath::IsFinite(Scalar) || Scalar < 0.0)
+		{
+			return Fail(State, Codes::InvalidFieldValue, ScalarPointer, TEXT("Expected a finite nonnegative XP scalar."));
+		}
+
+		const auto Current = FindExactField(Merged, TEXT("cr"));
+		const auto Rating = MakeShared<FJsonObject>();
+		if (Current.IsValid() && Current->Type == EJson::String)
+		{
+			Rating->SetField(TEXT("cr"), Current);
+		}
+		else if (Current.IsValid() && Current->Type == EJson::Object)
+		{
+			Rating->Values = Current->AsObject()->Values;
+		}
+		else
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer, TEXT("XP scaling requires a creature challenge rating."));
+		}
+
+		const FString RatingPointer = AppendPointer(Pointer, TEXT("cr"));
+		FString Base;
+		if (!ReadRequiredString(*Rating, TEXT("cr"), RatingPointer, Base, State)) { return false; }
+
+		int32 Xp = 0;
+		FString Literal;
+		if (FindExactField(*Rating, TEXT("xp")).IsValid() &&
+			!ReadRequiredInteger(*Rating, TEXT("xp"), RatingPointer, 0, MAX_int32, Xp, Literal, State))
+		{
+			return false;
+		}
+		if (Xp == 0 && !TryGetCreatureBaseXp(Base, Xp))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("XP scaling requires a standard challenge rating or positive explicit XP."));
+		}
+
+		double Scaled = static_cast<double>(Xp) * Scalar;
+		if (!FMath::IsFinite(Scaled))
+		{
+			return Fail(State, Codes::InvalidFieldValue, ScalarPointer, TEXT("XP scaling produced a nonfinite result."));
+		}
+		if (bFloor) { Scaled = FMath::FloorToDouble(Scaled); }
+		if (Scaled > MAX_int32 || Scaled != FMath::FloorToDouble(Scaled))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Adjusted XP must fit the creature reader's nonnegative integer range."));
+		}
+
+		Rating->SetField(TEXT("xp"), MakeShared<FJsonValueNumberString>(FString::FromInt(static_cast<int32>(Scaled))));
+		Merged.SetObjectField(TEXT("cr"), Rating);
+		return true;
+	}
+
+	bool ApplyCreatureHpFormulaWrapper(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		FString Property;
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("prop"), TEXT("prefix"), TEXT("suffix")}, Pointer, State) ||
+			!ReadRequiredString(Operation, TEXT("prop"), Pointer, Property, State))
+		{
+			return false;
+		}
+		if (!Property.Equals(TEXT("formula"), ESearchCase::CaseSensitive))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Creature HP string wrapping supports the formula property."));
+		}
+
+		FString Prefix;
+		FString Suffix;
+		if ((FindExactField(Operation, TEXT("prefix")).IsValid() &&
+				!ReadRequiredString(Operation, TEXT("prefix"), Pointer, Prefix, State)) ||
+			(FindExactField(Operation, TEXT("suffix")).IsValid() &&
+				!ReadRequiredString(Operation, TEXT("suffix"), Pointer, Suffix, State)))
+		{
+			return false;
+		}
+
+		const auto Hp = FindExactField(Merged, TEXT("hp"));
+		if (!Hp.IsValid() || Hp->Type != EJson::Object) { return true; }
+		const auto Original = Hp->AsObject();
+		const auto Formula = FindExactField(*Original, TEXT("formula"));
+		if (!Formula.IsValid() || Formula->Type != EJson::String) { return true; }
+
+		const auto Updated = MakeShared<FJsonObject>();
+		Updated->Values = Original->Values;
+		Updated->SetStringField(TEXT("formula"), Prefix + Formula->AsString() + Suffix);
+		Merged.SetObjectField(TEXT("hp"), Updated);
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -1491,6 +1617,12 @@ namespace
 			{
 				FString Mode;
 				if (!ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
+				if (Field.Equals(TEXT("hp"), ESearchCase::CaseSensitive) &&
+					Mode.Equals(TEXT("prefixSuffixStringProp"), ESearchCase::CaseSensitive))
+				{
+					if (!ApplyCreatureHpFormulaWrapper(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+					continue;
+				}
 				const bool bMultiply = Mode.Equals(TEXT("scalarMultProp"), ESearchCase::CaseSensitive);
 				if (!bMultiply && !Mode.Equals(TEXT("scalarAddProp"), ESearchCase::CaseSensitive))
 				{
@@ -1551,6 +1683,11 @@ namespace
 					if (Mode.Equals(TEXT("setProp"), ESearchCase::CaseSensitive))
 					{
 						if (!ApplyCreatureSetRootProperty(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+						continue;
+					}
+					if (Mode.Equals(TEXT("scalarMultXp"), ESearchCase::CaseSensitive))
+					{
+						if (!ApplyCreatureScalarXpModifier(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
 						continue;
 					}
 					if (Mode.Equals(TEXT("maxSize"), ESearchCase::CaseSensitive))
