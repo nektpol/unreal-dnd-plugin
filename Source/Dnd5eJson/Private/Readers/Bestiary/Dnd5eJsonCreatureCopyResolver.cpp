@@ -1329,6 +1329,97 @@ namespace
 		return true;
 	}
 
+	bool ApplyCreatureSetRootProperty(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		FString Property;
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("prop"), TEXT("value")}, Pointer, State) ||
+			!ReadRequiredString(Operation, TEXT("prop"), Pointer, Property, State) ||
+			!ValidateIdentityText(Property, AppendPointer(Pointer, TEXT("prop")), State))
+		{
+			return false;
+		}
+
+		if (Property.Contains(TEXT("."), ESearchCase::CaseSensitive) ||
+			Property.StartsWith(TEXT("_"), ESearchCase::CaseSensitive) ||
+			Property.Equals(TEXT("name"), ESearchCase::IgnoreCase) ||
+			Property.Equals(TEXT("source"), ESearchCase::IgnoreCase))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Creature copy property path is deferred: ") + Property);
+		}
+
+		const auto Value = FindExactField(Operation, TEXT("value"));
+		if (!Value.IsValid())
+		{
+			return Fail(State, Codes::MissingRequiredField, AppendPointer(Pointer, TEXT("value")),
+				TEXT("Expected a value to set or null to clear."));
+		}
+		if (Value->Type == EJson::Null)
+		{
+			Merged.RemoveField(Property);
+		}
+		else
+		{
+			Merged.SetField(Property, Value);
+		}
+		return true;
+	}
+
+	bool ApplyCreatureMaxSize(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		FString Maximum;
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("max")}, Pointer, State) ||
+			!ReadRequiredString(Operation, TEXT("max"), Pointer, Maximum, State))
+		{
+			return false;
+		}
+
+		const FString SizeOrder = TEXT("TSMLHG");
+		int32 MaxRank = INDEX_NONE;
+		if (Maximum.Len() != 1 || !SizeOrder.FindChar(Maximum[0], MaxRank))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Creature copy size cap is unsupported."));
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Sizes = nullptr;
+		if (!ReadRequiredArray(Merged, TEXT("size"), Pointer, Sizes, State)) { return false; }
+
+		TArray<int32> KeptRanks;
+		KeptRanks.Reserve(Sizes->Num());
+		for (const auto& Value : *Sizes)
+		{
+			const FString Code = Value.IsValid() && Value->Type == EJson::String
+				? Value->AsString() : FString();
+			int32 Rank = INDEX_NONE;
+			if (Code.Len() != 1 || !SizeOrder.FindChar(Code[0], Rank))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+					TEXT("Creature copy size cap requires ordinary size codes."));
+			}
+			if (Rank <= MaxRank)
+			{
+				KeptRanks.Add(Rank);
+			}
+		}
+		if (KeptRanks.IsEmpty())
+		{
+			KeptRanks.Add(MaxRank);
+		}
+		KeptRanks.Sort();
+
+		TArray<TSharedPtr<FJsonValue>> Updated;
+		Updated.Reserve(KeptRanks.Num());
+		for (const int32 Rank : KeptRanks)
+		{
+			Updated.Add(MakeShared<FJsonValueString>(SizeOrder.Mid(Rank, 1)));
+		}
+		Merged.SetArrayField(TEXT("size"), MoveTemp(Updated));
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -1457,6 +1548,16 @@ namespace
 
 				if (bRoot)
 				{
+					if (Mode.Equals(TEXT("setProp"), ESearchCase::CaseSensitive))
+					{
+						if (!ApplyCreatureSetRootProperty(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+						continue;
+					}
+					if (Mode.Equals(TEXT("maxSize"), ESearchCase::CaseSensitive))
+					{
+						if (!ApplyCreatureMaxSize(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+						continue;
+					}
 					if (Mode.Equals(TEXT("addSkills"), ESearchCase::CaseSensitive))
 					{
 						if (!ApplyCreatureAddSkills(Merged, *Operation, Pointer, ModPointer, State)) { return false; }

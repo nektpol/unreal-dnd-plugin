@@ -583,4 +583,69 @@ bool FDnd5eCreatureCopyNumericPropertiesTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyRootPropertiesTest, "Dnd5e.Bestiary.Reader.CopyRootProperties",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyRootPropertiesTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","size":["G","H"],"languages":["Invented"],"vulnerable":["cold"]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{"_":[
+			{"mode":"setProp","prop":"languages","value":null},
+			{"mode":"setProp","prop":"vulnerable","value":null},
+			{"mode":"setProp","prop":"size","value":["H","M","S"]},
+			{"mode":"maxSize","max":"L"}
+		]}}},
+		{"name":"Capped","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{"_":{"mode":"maxSize","max":"L"}}}},
+		{"name":"Invalid","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{"_":{"mode":"setProp","prop":"languages"}}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Root property fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 4))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	const auto Resolve = [&](int32 Row)
+	{
+		Merged.Reset();
+		return ResolveCreatureCopy(Index, {(*Rows)[Row]->AsObject(), Context.RelativeFilePath,
+			AppendPointer(TEXT("/monster"), FString::FromInt(Row))}, Merged, Ancestors, State);
+	};
+	if (!TestTrue(TEXT("Root property edits resolve"), Resolve(1))) { return false; }
+	TestTrue(TEXT("Explicit null clears inherited fields"),
+		!Merged->HasField(TEXT("languages")) && !Merged->HasField(TEXT("vulnerable")) &&
+		Parent->HasField(TEXT("languages")) && Parent->HasField(TEXT("vulnerable")));
+	const auto& Sizes = Merged->GetArrayField(TEXT("size"));
+	TestTrue(TEXT("Cap reads the preceding assignment and sorts retained sizes"),
+		Sizes.Num() == 2 && Sizes[0]->AsString() == TEXT("S") && Sizes[1]->AsString() == TEXT("M"));
+
+	if (!TestTrue(TEXT("Cap with no remaining sizes resolves"), Resolve(2))) { return false; }
+	const auto& CappedSizes = Merged->GetArrayField(TEXT("size"));
+	TestTrue(TEXT("Cap becomes the fallback size"), CappedSizes.Num() == 1 && CappedSizes[0]->AsString() == TEXT("L"));
+	TestFalse(TEXT("Missing value fails"), Resolve(3));
+	TestTrue(TEXT("Missing value identifies the modifier without publishing a result"),
+		!Merged.IsValid() && Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Code == Codes::MissingRequiredField &&
+				Diagnostic.JsonPointer == TEXT("/monster/3/_copy/_mod/_/value");
+		}));
+	return !HasAnyErrors();
+}
+
 #endif
