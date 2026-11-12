@@ -901,6 +901,58 @@ bool FDnd5eCreatureSavingThrowsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureDefensesTest, "Dnd5e.Bestiary.Reader.Defenses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureDefensesTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Fields)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT("\"page\":4"), *FString::Printf(TEXT("\"page\":4%s"), Fields));
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+	const auto Result = Read(TEXT(R"json(,"resist":["fire",{"cond":true,"note":"while hidden","resist":[
+		"cold",{"preNote":"except when visible","resist":["acid"]}]}],
+		"immune":[{"special":"See trait."}],"conditionImmune":["poisoned","disease"],"vulnerable":null)json"));
+	const auto& Creature = Result.Creature;
+	const auto& Resist = Creature.DamageResistances.Entries;
+	if (!TestTrue(TEXT("Defenses convert"), Result.Status == EDnd5eJsonReadStatus::Success && Resist.Num() == 5 &&
+		Creature.DamageImmunities.Entries.Num() == 1 && Creature.ConditionImmunities.Entries.Num() == 2))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Nested groups preserve order, tags, qualifiers, and parent indices"),
+		Resist[0].ParentIndex == INDEX_NONE && Resist[0].TypeTag == Dnd5e::Damage::Type::Fire &&
+		Resist[1].Kind == EDnd5eCreatureDefenseEntryKind::Group && Resist[1].ParentIndex == INDEX_NONE &&
+		Resist[1].bConditional && !Resist[1].Note.IsEmpty() && Resist[2].ParentIndex == 1 &&
+		Resist[2].TypeTag == Dnd5e::Damage::Type::Cold && Resist[3].ParentIndex == 1 &&
+		!Resist[3].PreNote.IsEmpty() && Resist[4].ParentIndex == 3 && Resist[4].TypeTag == Dnd5e::Damage::Type::Acid);
+	TestTrue(TEXT("Special text is preserved"),
+		Creature.DamageImmunities.Entries[0].Kind == EDnd5eCreatureDefenseEntryKind::Special &&
+		!Creature.DamageImmunities.Entries[0].Special.IsEmpty());
+	TestTrue(TEXT("Condition immunity preserves untagged source vocabulary"),
+		Creature.ConditionImmunities.Entries[0].TypeTag == Dnd5e::Condition::Type::Poisoned &&
+		Creature.ConditionImmunities.Entries[1].SourceToken == TEXT("disease") &&
+		!Creature.ConditionImmunities.Entries[1].TypeTag.IsValid());
+	const auto Empty = Read(TEXT(",\"immune\":[]"));
+	TestTrue(TEXT("Missing, null, and empty lists preserve distinct presence"),
+		Creature.DamageVulnerabilities.Presence == EDnd5eValuePresence::ExplicitNull &&
+		Empty.Status == EDnd5eJsonReadStatus::Success &&
+		Empty.Creature.DamageVulnerabilities.Presence == EDnd5eValuePresence::Unspecified &&
+		Empty.Creature.DamageImmunities.Presence == EDnd5eValuePresence::Present &&
+		Empty.Creature.DamageImmunities.Entries.IsEmpty());
+
+	const auto Invalid = Read(TEXT(",\"resist\":[\"fire\",{\"resist\":false}]"));
+	TestTrue(TEXT("Invalid group identifies the nested key and publishes no partial list"),
+		Invalid.Status == EDnd5eJsonReadStatus::Failure && Invalid.Creature.DamageResistances.Entries.IsEmpty() &&
+		Invalid.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/1/resist/1/resist");
+		}));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

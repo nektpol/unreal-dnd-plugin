@@ -254,3 +254,53 @@ struct DND5E_API FDnd5eCreatureSavingThrowBonus
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	FString BonusExpression;
 };
+
+UENUM(BlueprintType)
+enum class EDnd5eCreatureDefenseEntryKind : uint8
+{
+	Type,
+	Group,
+	Special,
+};
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureDefenseEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eCreatureDefenseEntryKind Kind = EDnd5eCreatureDefenseEntryKind::Type;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	int32 ParentIndex = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString SourceToken;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FGameplayTag TypeTag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bConditional = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eInlineContent> PreNote;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eInlineContent> Note;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eInlineContent> Special;
+};
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureDefenseList
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence Presence = EDnd5eValuePresence::Unspecified;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureDefenseEntry> Entries;
+};

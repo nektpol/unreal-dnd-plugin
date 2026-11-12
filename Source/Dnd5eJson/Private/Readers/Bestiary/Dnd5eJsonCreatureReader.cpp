@@ -979,6 +979,129 @@ namespace
 		return true;
 	}
 
+	FGameplayTag FindCreatureDefenseTag(const FString& Token, bool bCondition)
+	{
+		static const TMap<FString, FGameplayTag> DamageTags{
+			{TEXT("acid"), Dnd5e::Damage::Type::Acid}, {TEXT("bludgeoning"), Dnd5e::Damage::Type::Bludgeoning},
+			{TEXT("cold"), Dnd5e::Damage::Type::Cold}, {TEXT("fire"), Dnd5e::Damage::Type::Fire},
+			{TEXT("force"), Dnd5e::Damage::Type::Force}, {TEXT("lightning"), Dnd5e::Damage::Type::Lightning},
+			{TEXT("necrotic"), Dnd5e::Damage::Type::Necrotic}, {TEXT("piercing"), Dnd5e::Damage::Type::Piercing},
+			{TEXT("poison"), Dnd5e::Damage::Type::Poison}, {TEXT("psychic"), Dnd5e::Damage::Type::Psychic},
+			{TEXT("radiant"), Dnd5e::Damage::Type::Radiant}, {TEXT("slashing"), Dnd5e::Damage::Type::Slashing},
+			{TEXT("thunder"), Dnd5e::Damage::Type::Thunder},
+		};
+		static const TMap<FString, FGameplayTag> ConditionTags{
+			{TEXT("blinded"), Dnd5e::Condition::Type::Blinded}, {TEXT("charmed"), Dnd5e::Condition::Type::Charmed},
+			{TEXT("deafened"), Dnd5e::Condition::Type::Deafened}, {TEXT("exhaustion"), Dnd5e::Condition::Type::Exhaustion},
+			{TEXT("frightened"), Dnd5e::Condition::Type::Frightened}, {TEXT("grappled"), Dnd5e::Condition::Type::Grappled},
+			{TEXT("incapacitated"), Dnd5e::Condition::Type::Incapacitated}, {TEXT("invisible"), Dnd5e::Condition::Type::Invisible},
+			{TEXT("paralyzed"), Dnd5e::Condition::Type::Paralyzed}, {TEXT("petrified"), Dnd5e::Condition::Type::Petrified},
+			{TEXT("poisoned"), Dnd5e::Condition::Type::Poisoned}, {TEXT("prone"), Dnd5e::Condition::Type::Prone},
+			{TEXT("restrained"), Dnd5e::Condition::Type::Restrained}, {TEXT("stunned"), Dnd5e::Condition::Type::Stunned},
+			{TEXT("unconscious"), Dnd5e::Condition::Type::Unconscious},
+		};
+		const auto& Tags = bCondition ? ConditionTags : DamageTags;
+		const auto* Tag = Tags.Find(Token);
+		return Tag ? *Tag : FGameplayTag();
+	}
+
+	bool ReadCreatureDefenseEntries(const TArray<TSharedPtr<FJsonValue>>& Values, const TCHAR* Key,
+		bool bCondition, const FString& Pointer, int32 ParentIndex, int32 Depth,
+		TArray<FDnd5eCreatureDefenseEntry>& Out, FReadState& State)
+	{
+		if (Depth > 32)
+		{
+			return Fail(State, Codes::ResourceLimitExceeded, Pointer, TEXT("Creature defense groups are nested too deeply."));
+		}
+
+		for (int32 Index = 0; Index < Values.Num(); ++Index)
+		{
+			const FString EntryPointer = AppendPointer(Pointer, FString::FromInt(Index));
+			const auto& Value = Values[Index];
+			FDnd5eCreatureDefenseEntry Entry;
+			Entry.ParentIndex = ParentIndex;
+			if (Value.IsValid() && Value->Type == EJson::String)
+			{
+				Entry.SourceToken = Value->AsString();
+				if (Entry.SourceToken.TrimStartAndEnd().IsEmpty())
+				{
+					return Fail(State, Codes::InvalidFieldValue, EntryPointer, TEXT("Expected a nonempty defense token."));
+				}
+				Entry.TypeTag = FindCreatureDefenseTag(Entry.SourceToken, bCondition);
+				Out.Add(MoveTemp(Entry));
+				continue;
+			}
+
+			TSharedPtr<FJsonObject> Object;
+			if (!RequireObject(Value, EntryPointer, Object, State)) { return false; }
+			if (FindExactField(*Object, TEXT("special")).IsValid())
+			{
+				FString Text;
+				if (!CheckAllowedKeys(*Object, {TEXT("special")}, EntryPointer, State) ||
+					!ReadRequiredString(*Object, TEXT("special"), EntryPointer, Text, State) ||
+					!ReadInlines(Text, AppendPointer(EntryPointer, TEXT("special")), Entry.Special, State))
+				{
+					return false;
+				}
+				Entry.Kind = EDnd5eCreatureDefenseEntryKind::Special;
+				Out.Add(MoveTemp(Entry));
+				continue;
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>* Children = nullptr;
+			if (!CheckAllowedKeys(*Object, {Key, TEXT("cond"), TEXT("preNote"), TEXT("note")}, EntryPointer, State) ||
+				!ReadRequiredArray(*Object, Key, EntryPointer, Children, State) ||
+				!ReadOptionalBool(*Object, TEXT("cond"), EntryPointer, Entry.bConditional, State))
+			{
+				return false;
+			}
+			const auto ReadNote = [&](const TCHAR* NoteKey, TArray<FDnd5eInlineContent>& Inlines)
+			{
+				if (!FindExactField(*Object, NoteKey).IsValid()) { return true; }
+				FString Text;
+				return ReadRequiredString(*Object, NoteKey, EntryPointer, Text, State) &&
+					ReadInlines(Text, AppendPointer(EntryPointer, NoteKey), Inlines, State);
+			};
+			if (!ReadNote(TEXT("preNote"), Entry.PreNote) || !ReadNote(TEXT("note"), Entry.Note))
+			{
+				return false;
+			}
+
+			Entry.Kind = EDnd5eCreatureDefenseEntryKind::Group;
+			const int32 GroupIndex = Out.Add(MoveTemp(Entry));
+			if (!ReadCreatureDefenseEntries(*Children, Key, bCondition, AppendPointer(EntryPointer, Key),
+				GroupIndex, Depth + 1, Out, State))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool ReadCreatureDefenseList(const FJsonObject& Object, const TCHAR* Key, bool bCondition,
+		const FString& Pointer, FDnd5eCreatureDefenseList& Out, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, Key);
+		if (!Value.IsValid()) { return true; }
+		if (Value->Type == EJson::Null)
+		{
+			Out.Presence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+
+		const FString ListPointer = AppendPointer(Pointer, Key);
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		FDnd5eCreatureDefenseList List;
+		if (!RequireArray(Value, ListPointer, Values, State) ||
+			!ReadCreatureDefenseEntries(*Values, Key, bCondition, ListPointer, INDEX_NONE, 0, List.Entries, State))
+		{
+			return false;
+		}
+		List.Presence = EDnd5eValuePresence::Present;
+		Out = MoveTemp(List);
+		return true;
+	}
+
 	bool ReadCreatureObservations(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -987,7 +1110,11 @@ namespace
 			ReadStrings(Object, TEXT("senses"), Pointer, Creature.Senses, State) &&
 			ReadStrings(Object, TEXT("languages"), Pointer, Creature.Languages, State) &&
 			ReadCreaturePassivePerception(Object, Pointer, Creature, State) &&
-			ReadCreatureChallengeRating(Object, Pointer, Creature.ChallengeRating, State);
+			ReadCreatureChallengeRating(Object, Pointer, Creature.ChallengeRating, State) &&
+			ReadCreatureDefenseList(Object, TEXT("vulnerable"), false, Pointer, Creature.DamageVulnerabilities, State) &&
+			ReadCreatureDefenseList(Object, TEXT("resist"), false, Pointer, Creature.DamageResistances, State) &&
+			ReadCreatureDefenseList(Object, TEXT("immune"), false, Pointer, Creature.DamageImmunities, State) &&
+			ReadCreatureDefenseList(Object, TEXT("conditionImmune"), true, Pointer, Creature.ConditionImmunities, State);
 	}
 
 	bool ReadCreatureEntries(const FJsonObject& Object, const TCHAR* Key, const FString& Pointer,

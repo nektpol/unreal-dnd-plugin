@@ -64,6 +64,18 @@ struct DND5E_API FDnd5eCreature
 	TArray<FDnd5eCreatureSavingThrowBonus> SavingThrows;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eCreatureDefenseList DamageVulnerabilities;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eCreatureDefenseList DamageResistances;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eCreatureDefenseList DamageImmunities;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eCreatureDefenseList ConditionImmunities;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eCreatureSkillBonus> Skills;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
