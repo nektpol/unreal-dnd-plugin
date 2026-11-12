@@ -707,6 +707,176 @@ namespace
 		return true;
 	}
 
+	bool ReplaceCreatureSpellList(FJsonObject& Target, const FString& Field,
+		const TSharedPtr<FJsonValue>& InstructionsValue, const FString& Pointer,
+		const FString& ModPointer, FReadState& State)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Instructions = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Existing = nullptr;
+		if (!RequireArray(InstructionsValue, Pointer, Instructions, State) ||
+			!RequireArray(FindExactField(Target, *Field), Pointer, Existing, State))
+		{
+			return false;
+		}
+		if (Instructions->IsEmpty()) { return true; }
+
+		TArray<FString> Spells;
+		Spells.Reserve(Existing->Num());
+		for (const auto& Entry : *Existing)
+		{
+			if (!Entry.IsValid() || Entry->Type != EJson::String)
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+					TEXT("Replacing spells in a list containing non-string entries is deferred."));
+			}
+			Spells.Add(Entry->AsString());
+		}
+
+		for (int32 Index = 0; Index < Instructions->Num(); ++Index)
+		{
+			const FString ItemPointer = AppendPointer(Pointer, FString::FromInt(Index));
+			TSharedPtr<FJsonObject> Instruction;
+			FString Selector;
+			if (!RequireObject((*Instructions)[Index], ItemPointer, Instruction, State) ||
+				!CheckAllowedKeys(*Instruction, {TEXT("replace"), TEXT("with")}, ItemPointer, State) ||
+				!ReadRequiredString(*Instruction, TEXT("replace"), ItemPointer, Selector, State))
+			{
+				return false;
+			}
+
+			const FString WithPointer = AppendPointer(ItemPointer, TEXT("with"));
+			const auto With = FindExactField(*Instruction, TEXT("with"));
+			if (!With.IsValid())
+			{
+				return Fail(State, Codes::MissingRequiredField, WithPointer, TEXT("Expected replacement spells."));
+			}
+			const bool bWithArray = With->Type == EJson::Array;
+			const TArray<TSharedPtr<FJsonValue>> Replacements = bWithArray
+				? With->AsArray() : TArray<TSharedPtr<FJsonValue>>{With};
+			TArray<FString> Added;
+			for (int32 ReplacementIndex = 0; ReplacementIndex < Replacements.Num(); ++ReplacementIndex)
+			{
+				const auto& Entry = Replacements[ReplacementIndex];
+				if (!Entry.IsValid() || Entry->Type != EJson::String)
+				{
+					const FString EntryPointer = bWithArray
+						? AppendPointer(WithPointer, FString::FromInt(ReplacementIndex)) : WithPointer;
+					return Fail(State, Codes::InvalidFieldValue, EntryPointer, TEXT("Expected a spell string."));
+				}
+				Added.Add(Entry->AsString());
+			}
+
+			const int32 Found = Spells.IndexOfByPredicate([&Selector](const FString& Spell)
+			{
+				return Spell.Equals(Selector, ESearchCase::CaseSensitive);
+			});
+			if (Found == INDEX_NONE)
+			{
+				return Fail(State, Codes::UnresolvedReference, AppendPointer(ItemPointer, TEXT("replace")),
+					TEXT("Spell to replace was not found."));
+			}
+			Spells.RemoveAt(Found);
+			if (!Added.IsEmpty()) { Spells.Insert(Added.GetData(), Added.Num(), Found); }
+			Spells.StableSort([](const FString& Left, const FString& Right)
+			{
+				return Left.Compare(Right, ESearchCase::IgnoreCase) < 0;
+			});
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Values;
+		Values.Reserve(Spells.Num());
+		for (auto& Spell : Spells)
+		{
+			Values.Add(MakeShared<FJsonValueString>(MoveTemp(Spell)));
+		}
+		Target.SetArrayField(Field, MoveTemp(Values));
+		return true;
+	}
+
+	bool ApplyCreatureReplaceSpells(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("spells"), TEXT("daily")}, Pointer, State))
+		{
+			return false;
+		}
+
+		const FString CastingPointer = AppendPointer(Pointer, TEXT("spellcasting"));
+		const TArray<TSharedPtr<FJsonValue>>* ExistingCasting = nullptr;
+		if (!RequireArray(FindExactField(Merged, TEXT("spellcasting")), CastingPointer, ExistingCasting, State))
+		{
+			return false;
+		}
+		if (ExistingCasting->IsEmpty())
+		{
+			return Fail(State, Codes::InvalidFieldValue, CastingPointer, TEXT("Expected a spellcasting block."));
+		}
+
+		TSharedPtr<FJsonObject> FirstBlock;
+		if (!RequireObject((*ExistingCasting)[0], AppendPointer(CastingPointer, TEXT("0")), FirstBlock, State))
+		{
+			return false;
+		}
+		const auto Block = MakeShared<FJsonObject>();
+		Block->Values = FirstBlock->Values;
+
+		for (const TCHAR* Group : {TEXT("spells"), TEXT("daily")})
+		{
+			const auto Authored = FindExactField(Operation, Group);
+			if (!Authored.IsValid()) { continue; }
+			const bool bDaily = FCString::Strcmp(Group, TEXT("daily")) == 0;
+			const FString GroupPointer = AppendPointer(Pointer, Group);
+			TSharedPtr<FJsonObject> Instructions;
+			if (!RequireObject(Authored, GroupPointer, Instructions, State)) { return false; }
+			if (Instructions->Values.IsEmpty()) { continue; }
+
+			TSharedPtr<FJsonObject> ExistingGroup;
+			if (!RequireObject(FindExactField(*Block, Group), GroupPointer, ExistingGroup, State)) { return false; }
+			const auto GroupCopy = MakeShared<FJsonObject>();
+			GroupCopy->Values = ExistingGroup->Values;
+
+			for (const auto& Pair : Instructions->Values)
+			{
+				const FString Key(Pair.Key.Len(), *Pair.Key);
+				const FString KeyPointer = AppendPointer(GroupPointer, Key);
+				const FString CountToken = bDaily && Key.EndsWith(TEXT("e"), ESearchCase::CaseSensitive)
+					? Key.LeftChop(1) : Key;
+				int32 Count = 0;
+				if (!TryParseBoundedIntegerToken(CountToken, bDaily ? 1 : 0, bDaily ? 99 : 9, Count))
+				{
+					return Fail(State, Codes::InvalidFieldValue, KeyPointer, TEXT("Invalid spell level or daily use key."));
+				}
+
+				if (bDaily)
+				{
+					if (!ReplaceCreatureSpellList(*GroupCopy, Key, Pair.Value, KeyPointer, ModPointer, State))
+					{
+						return false;
+					}
+					continue;
+				}
+
+				const auto LevelValue = FindExactField(*GroupCopy, *Key);
+				if (!LevelValue.IsValid()) { continue; }
+				TSharedPtr<FJsonObject> ExistingLevel;
+				if (!RequireObject(LevelValue, KeyPointer, ExistingLevel, State)) { return false; }
+				const auto Level = MakeShared<FJsonObject>();
+				Level->Values = ExistingLevel->Values;
+				if (!ReplaceCreatureSpellList(*Level, TEXT("spells"), Pair.Value, KeyPointer, ModPointer, State))
+				{
+					return false;
+				}
+				GroupCopy->SetObjectField(Key, Level);
+			}
+			Block->SetObjectField(Group, GroupCopy);
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Casting = *ExistingCasting;
+		Casting[0] = MakeShared<FJsonValueObject>(Block);
+		Merged.SetArrayField(TEXT("spellcasting"), MoveTemp(Casting));
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -723,7 +893,8 @@ namespace
 			Field.Equals(TEXT("resist"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("immune"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("conditionImmune"), ESearchCase::CaseSensitive) ||
-			Field.Equals(TEXT("miscTags"), ESearchCase::CaseSensitive);
+			Field.Equals(TEXT("miscTags"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("vulnerable"), ESearchCase::CaseSensitive);
 
 		if (!bRoot && !bEntryArray && !bUniqueArray)
 		{
@@ -768,6 +939,11 @@ namespace
 					if (Mode.Equals(TEXT("addSkills"), ESearchCase::CaseSensitive))
 					{
 						if (!ApplyCreatureAddSkills(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+						continue;
+					}
+					if (Mode.Equals(TEXT("replaceSpells"), ESearchCase::CaseSensitive))
+					{
+						if (!ApplyCreatureReplaceSpells(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
 						continue;
 					}
 					if (!Mode.Equals(TEXT("addSenses"), ESearchCase::CaseSensitive))
