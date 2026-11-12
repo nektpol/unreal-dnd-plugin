@@ -1,6 +1,7 @@
 // Developed by Neko Creative Technologies
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Catalog/Dnd5eCreatureCatalog.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
@@ -218,6 +219,22 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	TestEqual(TEXT("All indexed files opened"), FilesOpened, Files.Num());
 	TestEqual(TEXT("All file envelopes traversed"), BadDocuments, 0);
 	TestEqual(TEXT("Every visited row has a conversion outcome"), Converted + Failed, RowsVisited);
+	auto Batch = FDnd5eJsonCreatureReader::ReadDocuments(Documents, bLoadedTemplates ? &TemplateDocument : nullptr);
+	TestEqual(TEXT("Batch materializes every converted row"), Batch.Creatures.Num(), Converted);
+	FDnd5eCreatureCatalog Catalog;
+	TArray<FDnd5eDiagnostic> CatalogDiagnostics;
+	if (TestTrue(TEXT("Snapshot records publish to the native catalog"),
+		Catalog.ReplaceCreatures(MoveTemp(Batch.Creatures), CatalogDiagnostics)))
+	{
+		TestEqual(TEXT("Catalog exposes every converted row"), Catalog.GetCreatureCount(), Converted);
+	}
+	else
+	{
+		for (const auto& Diagnostic : CatalogDiagnostics)
+		{
+			AddError(Diagnostic.Message + TEXT(" ") + Diagnostic.RelativeFilePath + Diagnostic.JsonPointer);
+		}
+	}
 	return !HasAnyErrors();
 }
 

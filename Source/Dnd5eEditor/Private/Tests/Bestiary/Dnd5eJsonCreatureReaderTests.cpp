@@ -6,6 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Catalog/Dnd5eCreatureCatalog.h"
 #include "Dnd5eTags.h"
 #include "Readers/Bestiary/Dnd5eJsonCreatureReader.h"
 
@@ -1108,6 +1109,58 @@ bool FDnd5eCreatureBatchReadTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Only the audit collects source field inventory"), Audit.Num() == 3 && Audit[0].Rows.Num() == 2 &&
 		Audit[0].Rows[0].Status == Batch.Documents[0].Rows[0].Status &&
 		!Audit[0].Rows[0].FieldShapes.IsEmpty() && Batch.Documents[0].Rows[0].FieldShapes.IsEmpty());
+	return !HasAnyErrors();
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCatalogTest, "Dnd5e.Bestiary.Catalog.LookupAndReplace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCatalogTest::RunTest(const FString& Parameters)
+{
+	const auto Read = FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(StatBlock), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	if (!TestTrue(TEXT("Catalog fixture converts"), Read.Status == EDnd5eJsonReadStatus::Success))
+	{
+		return false;
+	}
+	const auto& First = Read.Creature;
+	auto Second = First;
+	Second.Header.RecordId.DatasetNamespace = TEXT("another-dataset");
+	Second.Header.Provenance[0].SourceId = TEXT("SYN-C");
+	Second.CreatureType = FGameplayTag();
+	Second.CreatureTypeChoices.Add(First.CreatureType);
+	FDnd5eCreatureCatalog Catalog;
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	if (!TestTrue(TEXT("Same-name creatures in different namespaces can coexist"),
+		Catalog.ReplaceCreatures({First, Second}, Diagnostics) && Catalog.GetCreatureCount() == 2))
+	{
+		return false;
+	}
+
+	FDnd5eCreatureQuery Query;
+	Query.Name = TEXT("lantern scout");
+	Query.CreatureType = First.CreatureType;
+	const auto Both = Catalog.QueryCreatureIds(Query);
+	TestTrue(TEXT("Name and alternative type matches preserve input order"),
+		Both.Num() == 2 && Both[0] == First.Header.RecordId && Both[1] == Second.Header.RecordId);
+	Query.SourceId = TEXT("SYN-C");
+	Query.DatasetNamespace = TEXT("another-dataset");
+	const auto Filtered = Catalog.QueryCreatureIds(Query);
+	TestTrue(TEXT("Namespace and source filters combine"), Filtered.Num() == 1 && Filtered[0] == Second.Header.RecordId);
+	Query.SourceId = TEXT("syn-c");
+	TestTrue(TEXT("Source filter is case-sensitive"), Catalog.QueryCreatureIds(Query).IsEmpty());
+
+	TestFalse(TEXT("Duplicate ID rejects replacement"), Catalog.ReplaceCreatures({First, First}, Diagnostics));
+	TestTrue(TEXT("Duplicate keeps active catalog and reports provenance"), Catalog.GetCreatureCount() == 2 &&
+		Diagnostics.Num() == 1 && Diagnostics[0].Code == FName(TEXT("Dnd5e.Catalog.DuplicateRecordId")) &&
+		Diagnostics[0].JsonPointer == First.Header.Provenance[0].JsonPointer);
+	FDnd5eCreature Out;
+	TestTrue(TEXT("Existing record remains queryable"), Catalog.TryGetCreature(Second.Header.RecordId, Out) &&
+		Out.Header.RecordId == Second.Header.RecordId);
+	TestFalse(TEXT("Exact lookup misses an empty ID"), Catalog.TryGetCreature(FDnd5eRecordId{}, Out));
+	TestTrue(TEXT("Lookup miss clears output"), Out.Header.DisplayName.IsEmpty());
+	TestTrue(TEXT("Empty replacement clears the catalog"), Catalog.ReplaceCreatures({}, Diagnostics) &&
+		Catalog.GetCreatureCount() == 0 && Catalog.QueryCreatureIds({}).IsEmpty());
 	return !HasAnyErrors();
 }
 
