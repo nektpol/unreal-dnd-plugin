@@ -12,40 +12,10 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
+#include "Browser/Bestiary/Dnd5eBestiaryStatBlockText.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eBestiaryBrowser"
 
-namespace
-{
-    void AppendStat(FString& Out, const TCHAR* Label, const FString& Value)
-    {
-        if (!Value.IsEmpty())
-        {
-            Dnd5eBrowserText::AppendPreview(Out, FString::Printf(TEXT("%s  %s\n"), Label, *Value));
-        }
-    }
-
-    void AppendEntryGroup(FString& Out, const TCHAR* Label, const TArray<FDnd5eCreatureEntry>& Entries,
-        const TArray<FDnd5eContentBlock>* Header = nullptr)
-    {
-        if (Entries.IsEmpty() && (!Header || Header->IsEmpty())) { return; }
-
-        Dnd5eBrowserText::AppendPreview(Out, FString::Printf(TEXT("\n%s\n"), Label));
-        if (Header && !Header->IsEmpty())
-        {
-            Dnd5eBrowserText::AppendPreview(Out, Dnd5eBrowserText::FormatDescription(*Header).ToString() + TEXT("\n"));
-        }
-        for (const FDnd5eCreatureEntry& Entry : Entries)
-        {
-            if (!Entry.Name.IsEmpty()) { Dnd5eBrowserText::AppendPreview(Out, Entry.Name + TEXT("\n")); }
-            if (!Entry.Entries.IsEmpty())
-            {
-                Dnd5eBrowserText::AppendPreview(Out,
-                    Dnd5eBrowserText::FormatDescription(Entry.Entries).ToString() + TEXT("\n"));
-            }
-        }
-    }
-}
 
 void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
 {
@@ -216,65 +186,7 @@ void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
 {
     CardTitle = FText::FromString(Creature.Header.DisplayName);
     CardSource = Dnd5eBrowserText::FormatSource(Creature.Header);
-    FString Body;
-
-    TArray<FString> ArmorClasses;
-    for (const FDnd5eCreatureArmorClass& Armor : Creature.ArmorClasses)
-    {
-        if (!Armor.bHasValue) { continue; }
-        FString Value = FString::FromInt(Armor.Value);
-        if (!Armor.Sources.IsEmpty())
-        {
-            Value += TEXT(" (") + Dnd5eBrowserText::FormatDescription(Armor.Sources).ToString() + TEXT(")");
-        }
-        ArmorClasses.Add(MoveTemp(Value));
-    }
-    AppendStat(Body, TEXT("Armor Class"), FString::Join(ArmorClasses, TEXT(", ")));
-
-    FString HitPoints = Creature.HitPoints.bHasAverage ? FString::FromInt(Creature.HitPoints.Average) : FString();
-    const FString& Formula = Creature.HitPoints.Formula.Expression;
-    if (!Formula.IsEmpty())
-    {
-        HitPoints = HitPoints.IsEmpty() ? Formula : HitPoints + TEXT(" (") + Formula + TEXT(")");
-    }
-    AppendStat(Body, TEXT("Hit Points"), HitPoints);
-
-    TArray<FString> Speeds;
-    for (const FDnd5eCreatureSpeed& Speed : Creature.Movement.Speeds)
-    {
-        const FString Distance = Dnd5eBrowserText::FormatDistance(Speed.Distance);
-        if (Distance.IsEmpty()) { continue; }
-        const FString Mode = Speed.Mode == EDnd5eCreatureMovementMode::Walk
-            ? FString() : StaticEnum<EDnd5eCreatureMovementMode>()->GetDisplayNameTextByValue(static_cast<int64>(Speed.Mode)).ToString() + TEXT(" ");
-        Speeds.Add(Mode + Distance);
-    }
-    AppendStat(Body, TEXT("Speed"), FString::Join(Speeds, TEXT(", ")));
-
-    const auto& Scores = Creature.AbilityScores;
-    if (Scores.bHasScores)
-    {
-        Dnd5eBrowserText::AppendPreview(Body, FString::Printf(TEXT("\nSTR %d    DEX %d    CON %d    INT %d    WIS %d    CHA %d\n\n"),
-            Scores.Strength, Scores.Dexterity, Scores.Constitution, Scores.Intelligence, Scores.Wisdom, Scores.Charisma));
-    }
-
-    TArray<FString> Senses = Creature.Senses;
-    if (Creature.PassivePerceptionPresence == EDnd5eValuePresence::Present)
-    {
-        const FString Passive = Creature.PassivePerceptionFormula.IsEmpty()
-            ? FString::FromInt(Creature.PassivePerception) : Creature.PassivePerceptionFormula;
-        Senses.Add(TEXT("passive Perception ") + Passive);
-    }
-    AppendStat(Body, TEXT("Senses"), FString::Join(Senses, TEXT(", ")));
-    AppendStat(Body, TEXT("Languages"), FString::Join(Creature.Languages, TEXT(", ")));
-    AppendStat(Body, TEXT("Challenge"), Creature.ChallengeRating.Base);
-
-    AppendEntryGroup(Body, TEXT("Traits"), Creature.Traits);
-    AppendEntryGroup(Body, TEXT("Actions"), Creature.Actions);
-    AppendEntryGroup(Body, TEXT("Bonus Actions"), Creature.BonusActions);
-    AppendEntryGroup(Body, TEXT("Reactions"), Creature.Reactions.Entries, &Creature.Reactions.Header);
-    AppendEntryGroup(Body, TEXT("Legendary Actions"), Creature.LegendaryActions.Entries, &Creature.LegendaryActions.Header);
-    AppendEntryGroup(Body, TEXT("Mythic Actions"), Creature.MythicActions.Entries, &Creature.MythicActions.Header);
-    CardBody = Dnd5eBrowserText::FinishPreview(MoveTemp(Body));
+    CardBody = Dnd5eBestiaryStatBlockText::Format(Creature);
 }
 
 #undef LOCTEXT_NAMESPACE

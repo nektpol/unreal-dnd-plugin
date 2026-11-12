@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 
 struct FDnd5eContentBlock;
+struct FDnd5eInlineContent;
 struct FDnd5eDistance;
 struct FDnd5eNumber;
 struct FDnd5eRecordHeader;
@@ -21,4 +22,5 @@ namespace Dnd5eBrowserText
 	void AppendBlocks(const TArray<FDnd5eContentBlock>& Blocks, FString& Out, int32 Depth);
 	FText FinishPreview(FString Description);
 	FText FormatDescription(const TArray<FDnd5eContentBlock>& Blocks);
+	FString FormatInlines(const TArray<FDnd5eInlineContent>& Inlines);
 }

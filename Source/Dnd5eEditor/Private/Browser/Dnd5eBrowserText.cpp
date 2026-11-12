@@ -194,6 +194,13 @@ namespace Dnd5eBrowserText
 		return Description.IsEmpty() ? LOCTEXT("NoDescription", "No description supplied.") : FText::FromString(Description);
 	}
 
+	FString FormatInlines(const TArray<FDnd5eInlineContent>& Inlines)
+	{
+		FString Text;
+		AppendInlines(Inlines, Text, 0);
+		return Text.TrimStartAndEnd();
+	}
+
 	FText FormatDescription(const TArray<FDnd5eContentBlock>& Blocks)
 	{
 		FString Description;

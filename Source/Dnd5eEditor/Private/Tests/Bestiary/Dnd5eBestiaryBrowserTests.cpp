@@ -13,6 +13,26 @@
 #include "ToolMenus.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
+#include "Widgets/Text/STextBlock.h"
+
+namespace
+{
+	bool ContainsText(SWidget& Widget, const TCHAR* Expected)
+	{
+		if (Widget.GetType() == TEXT("STextBlock") &&
+			static_cast<const STextBlock&>(Widget).GetText().ToString().Contains(Expected))
+		{
+			return true;
+		}
+
+		FChildren* Children = Widget.GetChildren();
+		for (int32 Index = 0; Index < Children->Num(); ++Index)
+		{
+			if (ContainsText(*Children->GetChildAt(Index), Expected)) { return true; }
+		}
+		return false;
+	}
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryBrowserWidgetTest, "Dnd5e.Bestiary.Editor.BrowserSelectionAndRefresh",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -64,10 +84,10 @@ bool FDnd5eBestiaryBrowserWidgetTest::RunTest(const FString& Parameters)
 
 	Browser->ListView->SetSelection(Browser->ListView->GetItems()[0]);
 	TestTrue(TEXT("First row shows the matching source and HP"), Browser->CardSource.ToString() == TEXT("SYN-FIRST") &&
-		Browser->CardBody.ToString().Contains(TEXT("Hit Points  7")));
+		ContainsText(*Browser, TEXT("Hit Points  7")));
 	Browser->ListView->SetSelection(Browser->ListView->GetItems()[1]);
 	TestTrue(TEXT("Second row retrieves its own record by exact ID"), Browser->CardSource.ToString() == TEXT("SYN-SECOND") &&
-		Browser->CardBody.ToString().Contains(TEXT("Hit Points  15")));
+		ContainsText(*Browser, TEXT("Hit Points  15")));
 
 	Browser->HandleSearchChanged(FText::FromString(TEXT("  syn-first  ")));
 	TestTrue(TEXT("Source search trims and ignores case, and clears the old selection"),
