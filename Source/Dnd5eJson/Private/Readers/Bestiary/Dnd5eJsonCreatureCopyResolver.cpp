@@ -610,6 +610,103 @@ namespace
 		return true;
 	}
 
+	bool ApplyCreatureAddSkills(FJsonObject& Merged, const FJsonObject& Operation,
+		const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("skills")}, Pointer, State))
+		{
+			return false;
+		}
+
+		const FString SkillsPointer = AppendPointer(Pointer, TEXT("skills"));
+		TSharedPtr<FJsonValue> GrantsValue;
+		TSharedPtr<FJsonObject> Grants;
+		if (!ReadRequiredValue(Operation, TEXT("skills"), EJson::Object, Pointer, GrantsValue, State) ||
+			!RequireObject(GrantsValue, SkillsPointer, Grants, State))
+		{
+			return false;
+		}
+		if (Grants->Values.IsEmpty()) { return true; }
+
+		auto CrValue = FindExactField(Merged, TEXT("cr"));
+		const TSharedPtr<FJsonObject>* CrObject = nullptr;
+		if (CrValue.IsValid() && CrValue->Type == EJson::Object &&
+			CrValue->TryGetObject(CrObject) && CrObject && CrObject->IsValid())
+		{
+			CrValue = FindExactField(**CrObject, TEXT("cr"));
+		}
+
+		FString CrToken;
+		int32 WholeCr = 0;
+		if (!CrValue.IsValid() || !CrValue->TryGetString(CrToken) ||
+			(!(CrToken == TEXT("1/8") || CrToken == TEXT("1/4") || CrToken == TEXT("1/2")) &&
+				!TryParseBoundedIntegerToken(CrToken, 0, 30, WholeCr)))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Skill grants require a standard creature challenge rating."));
+		}
+		const int32 ProficiencyBonus = WholeCr < 5 ? 2 : (WholeCr + 3) / 4 + 1;
+
+		const auto SkillValue = FindExactField(Merged, TEXT("skill"));
+		const auto Skills = MakeShared<FJsonObject>();
+		if (SkillValue.IsValid() && SkillValue->Type != EJson::Null)
+		{
+			TSharedPtr<FJsonObject> ExistingSkills;
+			if (!RequireObject(SkillValue, SkillsPointer, ExistingSkills, State)) { return false; }
+			Skills->Values = ExistingSkills->Values;
+		}
+
+		static const TMap<FString, const TCHAR*> AbilityBySkill{
+			{TEXT("athletics"), TEXT("str")},
+			{TEXT("acrobatics"), TEXT("dex")}, {TEXT("sleight of hand"), TEXT("dex")}, {TEXT("stealth"), TEXT("dex")},
+			{TEXT("arcana"), TEXT("int")}, {TEXT("history"), TEXT("int")}, {TEXT("investigation"), TEXT("int")},
+			{TEXT("nature"), TEXT("int")}, {TEXT("religion"), TEXT("int")},
+			{TEXT("animal handling"), TEXT("wis")}, {TEXT("insight"), TEXT("wis")}, {TEXT("medicine"), TEXT("wis")},
+			{TEXT("perception"), TEXT("wis")}, {TEXT("survival"), TEXT("wis")},
+			{TEXT("deception"), TEXT("cha")}, {TEXT("intimidation"), TEXT("cha")},
+			{TEXT("performance"), TEXT("cha")}, {TEXT("persuasion"), TEXT("cha")}
+		};
+
+		for (const auto& Pair : Grants->Values)
+		{
+			const FString Skill(Pair.Key.Len(), *Pair.Key);
+			const FString SkillPointer = AppendPointer(SkillsPointer, Skill);
+			const TCHAR* const* Ability = AbilityBySkill.Find(Skill);
+			if (!Ability)
+			{
+				return Fail(State, Codes::InvalidFieldValue, SkillPointer, TEXT("Unknown skill in copy grant."));
+			}
+
+			int32 Rank = 0;
+			int32 Score = 0;
+			FString Literal;
+			if (!ReadRequiredInteger(*Grants, *Skill, SkillsPointer, 1, 2, Rank, Literal, State) ||
+				!ReadRequiredInteger(Merged, *Ability, Pointer, 0, MAX_int32, Score, Literal, State))
+			{
+				return false;
+			}
+			const int32 Bonus = Score / 2 - 5 + Rank * ProficiencyBonus;
+			if (const auto Existing = FindExactField(*Skills, *Skill); Existing.IsValid() && Existing->Type != EJson::Null)
+			{
+				FString Token;
+				if (!Existing->TryGetString(Token)) { continue; }
+
+				const bool bNegative = Token.StartsWith(TEXT("-"));
+				const FString Digits = bNegative || Token.StartsWith(TEXT("+")) ? Token.Mid(1) : Token;
+				int32 Magnitude = 0;
+				if (!TryParseBoundedIntegerToken(Digits, 0, MAX_int32, Magnitude) ||
+					(bNegative ? -Magnitude : Magnitude) >= Bonus)
+				{
+					continue;
+				}
+			}
+			Skills->SetStringField(Skill, FString::Printf(TEXT("%+d"), Bonus));
+		}
+
+		Merged.SetObjectField(TEXT("skill"), Skills);
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -625,7 +722,8 @@ namespace
 		const bool bUniqueArray = Field.Equals(TEXT("languages"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("resist"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("immune"), ESearchCase::CaseSensitive) ||
-			Field.Equals(TEXT("conditionImmune"), ESearchCase::CaseSensitive);
+			Field.Equals(TEXT("conditionImmune"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("miscTags"), ESearchCase::CaseSensitive);
 
 		if (!bRoot && !bEntryArray && !bUniqueArray)
 		{
@@ -667,6 +765,11 @@ namespace
 
 				if (bRoot)
 				{
+					if (Mode.Equals(TEXT("addSkills"), ESearchCase::CaseSensitive))
+					{
+						if (!ApplyCreatureAddSkills(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+						continue;
+					}
 					if (!Mode.Equals(TEXT("addSenses"), ESearchCase::CaseSensitive))
 					{
 						return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,

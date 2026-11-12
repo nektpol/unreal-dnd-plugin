@@ -62,4 +62,69 @@ bool FDnd5eCreatureCopySensesAndArraysTest::RunTest(const FString& Parameters)
 		FString(TEXT("Darkvision 30 ft.")));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopySkillGrantsTest, "Dnd5e.Bestiary.Reader.CopySkillGrants",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopySkillGrantsTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Invented parent","source":"SYN","cr":{"cr":"5","lair":"6"},"wis":9,"dex":9,
+			"skill":{"insight":"+6","medicine":"+2 plus a bonus","stealth":"-3"},"miscTags":["old"]},
+		{"name":"Invented child","source":"SYN","_copy":{"name":"Invented parent","source":"SYN","_mod":{
+			"_":{"mode":"addSkills","skills":{"perception":2,"insight":1,"medicine":1,"stealth":1}},
+			"miscTags":{"mode":"appendIfNotExistsArr","items":["old","new"]}
+		}}},
+		{"name":"Invalid grant","source":"SYN","_copy":{"name":"Invented parent","source":"SYN",
+			"_mod":{"_":{"mode":"addSkills","skills":{"perception":3}}}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Skill grant fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 3))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	if (!TestTrue(TEXT("Skill and metadata modifiers resolve"), ResolveCreatureCopy(Index,
+		{(*Rows)[1]->AsObject(), Context.RelativeFilePath, TEXT("/monster/1")}, Merged, Ancestors, State)))
+	{
+		return false;
+	}
+
+	const auto Skills = Merged->GetObjectField(TEXT("skill"));
+	TestEqual(TEXT("Expertise uses base CR and floors a negative ability modifier"),
+		Skills->GetStringField(TEXT("perception")), FString(TEXT("+5")));
+	TestEqual(TEXT("Higher bonus survives"), Skills->GetStringField(TEXT("insight")), FString(TEXT("+6")));
+	TestEqual(TEXT("Compound bonus survives"), Skills->GetStringField(TEXT("medicine")), FString(TEXT("+2 plus a bonus")));
+	TestEqual(TEXT("Lower signed bonus is raised"), Skills->GetStringField(TEXT("stealth")), FString(TEXT("+2")));
+	TestEqual(TEXT("Parent retains its original bonus"),
+		Parent->GetObjectField(TEXT("skill"))->GetStringField(TEXT("stealth")), FString(TEXT("-3")));
+	const auto& Tags = Merged->GetArrayField(TEXT("miscTags"));
+	TestTrue(TEXT("Metadata append preserves order and skips original duplicates"),
+		Tags.Num() == 2 && Tags[0]->AsString() == TEXT("old") && Tags[1]->AsString() == TEXT("new"));
+
+	TestFalse(TEXT("Rank outside 1 and 2 fails"), ResolveCreatureCopy(Index,
+		{(*Rows)[2]->AsObject(), Context.RelativeFilePath, TEXT("/monster/2")}, Merged, Ancestors, State));
+	TestTrue(TEXT("Rank diagnostic points to the authored grant"), Diagnostics.ContainsByPredicate(
+		[](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod/_/skills/perception");
+		}));
+	return !HasAnyErrors();
+}
 #endif
