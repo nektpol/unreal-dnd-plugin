@@ -88,6 +88,64 @@ namespace
 		return Merged;
 	}
 
+	int32 FindCreatureArrayEntry(const TArray<TSharedPtr<FJsonValue>>& Entries, const FString& Name)
+	{
+		return Entries.IndexOfByPredicate([&Name](const TSharedPtr<FJsonValue>& Entry)
+		{
+			if (!Entry.IsValid()) { return false; }
+			if (Entry->Type == EJson::String)
+			{
+				return Entry->AsString().Equals(Name, ESearchCase::CaseSensitive);
+			}
+			if (Entry->Type != EJson::Object) { return false; }
+			const auto Value = FindExactField(*Entry->AsObject(), TEXT("name"));
+			return Value.IsValid() && Value->Type == EJson::String &&
+				Value->AsString().Equals(Name, ESearchCase::CaseSensitive);
+		});
+	}
+
+	bool RemoveCreatureArrayEntries(const FJsonObject& Operation, const FString& Pointer,
+		const FString& ModPointer, TArray<TSharedPtr<FJsonValue>>& Entries, FReadState& State)
+	{
+		const FString NamesPointer = AppendPointer(Pointer, TEXT("names"));
+		if (FindExactField(Operation, TEXT("items")).IsValid())
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Creature copy removal by literal item is deferred."));
+		}
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("names"), TEXT("force")}, Pointer, State)) { return false; }
+
+		bool bForce = false;
+		if (!ReadOptionalBool(Operation, TEXT("force"), Pointer, bForce, State)) { return false; }
+
+		const auto Value = FindExactField(Operation, TEXT("names"));
+		if (!Value.IsValid())
+		{
+			return Fail(State, Codes::MissingRequiredField, NamesPointer, TEXT("Expected removal names."));
+		}
+		TArray<TSharedPtr<FJsonValue>> Names;
+		if (Value->Type == EJson::Array) { Names = Value->AsArray(); }
+		else { Names.Add(Value); }
+
+		for (int32 Index = 0; Index < Names.Num(); ++Index)
+		{
+			const FString NamePointer = Value->Type == EJson::Array
+				? AppendPointer(NamesPointer, FString::FromInt(Index)) : NamesPointer;
+			if (!Names[Index].IsValid() || Names[Index]->Type != EJson::String)
+			{
+				return Fail(State, Codes::InvalidFieldValue, NamePointer, TEXT("Expected a removal name string."));
+			}
+
+			const int32 Match = FindCreatureArrayEntry(Entries, Names[Index]->AsString());
+			if (Match != INDEX_NONE) { Entries.RemoveAt(Match); }
+			else if (!bForce)
+			{
+				return Fail(State, Codes::UnresolvedReference, NamePointer, TEXT("Creature array entry was not found."));
+			}
+		}
+		return true;
+	}
+
 	bool ApplyCreatureArrayOperation(FJsonObject& Merged, const FString& Field,
 		const FJsonObject& Operation, const FString& Pointer, const FString& ModPointer, FReadState& State)
 	{
@@ -95,37 +153,79 @@ namespace
 		if (!ReadRequiredString(Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
 
 		const bool bPrepend = Mode.Equals(TEXT("prependArr"), ESearchCase::CaseSensitive);
-		if (!bPrepend && !Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive))
+		const bool bAppend = Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive);
+		const bool bReplace = Mode.Equals(TEXT("replaceArr"), ESearchCase::CaseSensitive);
+		const bool bRemove = Mode.Equals(TEXT("removeArr"), ESearchCase::CaseSensitive);
+		if (!bPrepend && !bAppend && !bReplace && !bRemove)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier mode is deferred: ") + Mode);
 		}
-		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("items")}, Pointer, State)) { return false; }
-		const auto Items = FindExactField(Operation, TEXT("items"));
-		const FString ItemsPointer = AppendPointer(Pointer, TEXT("items"));
-		if (!Items.IsValid())
-		{
-			return Fail(State, Codes::MissingRequiredField, ItemsPointer, TEXT("Expected modifier items."));
-		}
-
-		TArray<TSharedPtr<FJsonValue>> Added;
-		if (Items->Type == EJson::Array) { Added = Items->AsArray(); }
-		else if (Items->Type == EJson::Object) { Added.Add(Items); }
-		else { return Fail(State, Codes::InvalidFieldValue, ItemsPointer, TEXT("Expected an entry object or array.")); }
 
 		const auto Existing = FindExactField(Merged, *Field);
-		const TArray<TSharedPtr<FJsonValue>>* ExistingItems = nullptr;
-		if (Existing.IsValid() && Existing->Type != EJson::Null &&
-			!RequireArray(Existing, Pointer, ExistingItems, State))
+		const bool bHasTarget = Existing.IsValid() && Existing->Type != EJson::Null;
+		if (!bHasTarget && (bReplace || bRemove))
 		{
-			return false;
+			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected an existing creature array."));
+		}
+		const TArray<TSharedPtr<FJsonValue>>* ExistingItems = nullptr;
+		if (bHasTarget && !RequireArray(Existing, Pointer, ExistingItems, State)) { return false; }
+		TArray<TSharedPtr<FJsonValue>> Entries;
+		if (ExistingItems) { Entries = *ExistingItems; }
+
+		if (bRemove)
+		{
+			if (!RemoveCreatureArrayEntries(Operation, Pointer, ModPointer, Entries, State)) { return false; }
+		}
+		else
+		{
+			if (bReplace)
+			{
+				if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("replace"), TEXT("items")}, Pointer, State))
+				{
+					return false;
+				}
+			}
+			else if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("items")}, Pointer, State))
+			{
+				return false;
+			}
+
+			const auto Items = FindExactField(Operation, TEXT("items"));
+			const FString ItemsPointer = AppendPointer(Pointer, TEXT("items"));
+			if (!Items.IsValid())
+			{
+				return Fail(State, Codes::MissingRequiredField, ItemsPointer, TEXT("Expected modifier items."));
+			}
+			TArray<TSharedPtr<FJsonValue>> Added;
+			if (Items->Type == EJson::Array) { Added = Items->AsArray(); }
+			else if (Items->Type == EJson::Object) { Added.Add(Items); }
+			else { return Fail(State, Codes::InvalidFieldValue, ItemsPointer, TEXT("Expected an entry object or array.")); }
+
+			int32 InsertAt = bPrepend ? 0 : Entries.Num();
+			if (bReplace)
+			{
+				const auto Selector = FindExactField(Operation, TEXT("replace"));
+				const FString ReplacePointer = AppendPointer(Pointer, TEXT("replace"));
+				if (Selector.IsValid() && Selector->Type == EJson::Object)
+				{
+					return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+						TEXT("Creature copy replacement by index or regex is deferred."));
+				}
+				FString Name;
+				if (!ReadRequiredString(Operation, TEXT("replace"), Pointer, Name, State)) { return false; }
+				InsertAt = FindCreatureArrayEntry(Entries, Name);
+				if (InsertAt == INDEX_NONE)
+				{
+					return Fail(State, Codes::UnresolvedReference, ReplacePointer, TEXT("Creature array entry was not found."));
+				}
+				Entries.RemoveAt(InsertAt);
+			}
+
+			if (!Added.IsEmpty()) { Entries.Insert(Added.GetData(), Added.Num(), InsertAt); }
 		}
 
-		TArray<TSharedPtr<FJsonValue>> Combined;
-		if (bPrepend) { Combined.Append(Added); }
-		if (ExistingItems) { Combined.Append(*ExistingItems); }
-		if (!bPrepend) { Combined.Append(Added); }
-		Merged.SetField(Field, MakeShared<FJsonValueArray>(MoveTemp(Combined)));
+		Merged.SetField(Field, MakeShared<FJsonValueArray>(MoveTemp(Entries)));
 		return true;
 	}
 
@@ -144,16 +244,24 @@ namespace
 			}
 
 			const FString FieldPointer = AppendPointer(ModPointer, Field);
+			const bool bArray = Pair.Value.IsValid() && Pair.Value->Type == EJson::Array;
 			TArray<TSharedPtr<FJsonValue>> Operations;
-			if (Pair.Value.IsValid() && Pair.Value->Type == EJson::Array) { Operations = Pair.Value->AsArray(); }
+			if (bArray) { Operations = Pair.Value->AsArray(); }
 			else { Operations.Add(Pair.Value); }
 
 			for (int32 Index = 0; Index < Operations.Num(); ++Index)
 			{
-				const bool bArray = Pair.Value.IsValid() && Pair.Value->Type == EJson::Array;
 				const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
+				const auto& Value = Operations[Index];
+				if (Value.IsValid() && Value->Type == EJson::String &&
+					Value->AsString().Equals(TEXT("remove"), ESearchCase::CaseSensitive))
+				{
+					Merged.RemoveField(Field);
+					continue;
+				}
+
 				TSharedPtr<FJsonObject> Operation;
-				if (!RequireObject(Operations[Index], Pointer, Operation, State) ||
+				if (!RequireObject(Value, Pointer, Operation, State) ||
 					!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
 				{
 					return false;

@@ -626,7 +626,7 @@ bool FDnd5eCreatureCopyAuditTest::RunTest(const FString& Parameters)
 	Children.Context.RelativeFilePath = TEXT("children.json");
 	auto Middle = MakeDocument(TEXT(R"json({"monster":[
 		{"name":"Middle","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B"}},
-		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{"mode":"replaceArr"}}}},
+		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{"mode":"replaceTxt","replace":"old","with":"new"}}}},
 		{"name":"Duplicate","source":"M"},
 		{"name":"duplicate","source":"m"}
 	]})json"));
@@ -703,6 +703,47 @@ bool FDnd5eCreatureCopyArrayTest::RunTest(const FString& Parameters)
 	CheckFailure(2, TEXT("/monster/2/trait/1/entries"));
 	CheckFailure(4, TEXT("/monster/4/_copy/_mod/trait/items"));
 	CheckFailure(5, TEXT("/monster/5/trait/0/entries"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyReplaceRemoveTest, "Dnd5e.Bestiary.Reader.CopyReplaceRemove",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureCopyReplaceRemoveTest::RunTest(const FString& Parameters)
+{
+	const auto Children = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Replaced","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":[
+			{"mode":"replaceArr","replace":"Glow","items":[{"name":"First","entries":["First."]},{"name":"Second","entries":["Second."]}]},
+			{"mode":"removeArr","names":["First","Second"]}]}}},
+		{"name":"Sibling","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{"mode":"removeArr","names":"Glow"}}}},
+		{"name":"Delete and append","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":[
+			"remove",{"mode":"appendArr","items":{"name":"New","entries":false}}]}}},
+		{"name":"Missing replacement","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{
+			"mode":"replaceArr","replace":"Missing","items":[]}}}},
+		{"name":"Forced removal","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{
+			"mode":"removeArr","names":["Missing","Glow"],"force":true}}}},
+		{"name":"Missing removal","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{
+			"mode":"removeArr","names":["Glow","Missing"]}}}}
+	]})json"));
+	const TArray<FDnd5eJsonDocument> Documents{Children, MakeDocument(StatBlock)};
+	const auto Reports = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	if (!TestTrue(TEXT("All fixtures were audited"), Reports.Num() == 2 && Reports[0].Rows.Num() == 6)) { return false; }
+
+	const auto& Rows = Reports[0].Rows;
+	TestTrue(TEXT("Replacement makes both new names available for removal"), Rows[0].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("Sibling can still remove the original name"), Rows[1].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("Forced removal skips a missing name"), Rows[4].Status == EDnd5eJsonReadStatus::Success);
+
+	const auto CheckFailure = [this, &Rows](int32 Index, const TCHAR* Pointer)
+	{
+		TestTrue(Pointer, Rows[Index].Status == EDnd5eJsonReadStatus::Failure &&
+			Rows[Index].Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(2, TEXT("/monster/2/trait/0/entries"));
+	CheckFailure(3, TEXT("/monster/3/_copy/_mod/trait/replace"));
+	CheckFailure(5, TEXT("/monster/5/_copy/_mod/trait/names/1"));
 	return !HasAnyErrors();
 }
 
