@@ -730,17 +730,17 @@ namespace
 		return true;
 	}
 
-	bool ReadCreatureSkillBonus(const FString& Name, const TSharedPtr<FJsonValue>& Value,
-		const FString& Pointer, FDnd5eCreatureSkillBonus& Out, FReadState& State)
+	bool ReadCreatureBonusString(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		int32& OutBonus, bool& bOutHasNumericBonus, FString& OutExpression,
+		const TCHAR* ExpectedMessage, const TCHAR* RangeMessage, FReadState& State)
 	{
 		FString Token;
 		if (!Value.IsValid() || Value->Type != EJson::String || !Value->TryGetString(Token) ||
 			Token.TrimStartAndEnd().IsEmpty())
 		{
-			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected a nonempty skill bonus string."));
+			return Fail(State, Codes::InvalidFieldValue, Pointer, ExpectedMessage);
 		}
 
-		Out.Skill = Name;
 		const bool bNegative = Token.StartsWith(TEXT("-"));
 		const FString Digits = bNegative || Token.StartsWith(TEXT("+")) ? Token.Mid(1) : Token;
 		bool bAllDigits = !Digits.IsEmpty();
@@ -751,17 +751,30 @@ namespace
 
 		if (!bAllDigits)
 		{
-			Out.BonusExpression = MoveTemp(Token);
+			OutExpression = MoveTemp(Token);
 			return true;
 		}
 
 		int32 Magnitude = 0;
 		if (!TryParseBoundedIntegerToken(Digits, 0, MAX_int32, Magnitude))
 		{
-			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Skill bonus is outside the supported integer format."));
+			return Fail(State, Codes::InvalidFieldValue, Pointer, RangeMessage);
 		}
-		Out.bHasNumericBonus = true;
-		Out.Bonus = bNegative ? -Magnitude : Magnitude;
+		bOutHasNumericBonus = true;
+		OutBonus = bNegative ? -Magnitude : Magnitude;
+		return true;
+	}
+
+	bool ReadCreatureSkillBonus(const FString& Name, const TSharedPtr<FJsonValue>& Value,
+		const FString& Pointer, FDnd5eCreatureSkillBonus& Out, FReadState& State)
+	{
+		if (!ReadCreatureBonusString(Value, Pointer, Out.Bonus, Out.bHasNumericBonus, Out.BonusExpression,
+			TEXT("Expected a nonempty skill bonus string."),
+			TEXT("Skill bonus is outside the supported integer format."), State))
+		{
+			return false;
+		}
+		Out.Skill = Name;
 		return true;
 	}
 
@@ -914,10 +927,63 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureSavingThrows(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("save"));
+		if (!Value.IsValid()) { return true; }
+		if (Value->Type == EJson::Null)
+		{
+			Creature.SavingThrowsPresence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+
+		const FString SavesPointer = AppendPointer(Pointer, TEXT("save"));
+		TSharedPtr<FJsonObject> Saves;
+		if (!RequireObject(Value, SavesPointer, Saves, State) ||
+			!CheckAllowedKeys(*Saves, {TEXT("str"), TEXT("dex"), TEXT("con"), TEXT("int"), TEXT("wis"), TEXT("cha")},
+				SavesPointer, State))
+		{
+			return false;
+		}
+
+		const TPair<const TCHAR*, FGameplayTag> Abilities[] = {
+			{TEXT("str"), Dnd5e::Ability::Strength},
+			{TEXT("dex"), Dnd5e::Ability::Dexterity},
+			{TEXT("con"), Dnd5e::Ability::Constitution},
+			{TEXT("int"), Dnd5e::Ability::Intelligence},
+			{TEXT("wis"), Dnd5e::Ability::Wisdom},
+			{TEXT("cha"), Dnd5e::Ability::Charisma},
+		};
+		TArray<FDnd5eCreatureSavingThrowBonus> Bonuses;
+		Bonuses.Reserve(Saves->Values.Num());
+		for (const auto& Ability : Abilities)
+		{
+			const auto BonusValue = FindExactField(*Saves, Ability.Key);
+			if (!BonusValue.IsValid()) { continue; }
+
+			FDnd5eCreatureSavingThrowBonus Bonus;
+			Bonus.Ability = Ability.Value;
+			if (!ReadCreatureBonusString(BonusValue, AppendPointer(SavesPointer, Ability.Key),
+				Bonus.Bonus, Bonus.bHasNumericBonus, Bonus.BonusExpression,
+				TEXT("Expected a nonempty saving throw bonus string."),
+				TEXT("Saving throw bonus is outside the supported integer format."), State))
+			{
+				return false;
+			}
+			Bonuses.Add(MoveTemp(Bonus));
+		}
+
+		Creature.SavingThrows = MoveTemp(Bonuses);
+		Creature.SavingThrowsPresence = EDnd5eValuePresence::Present;
+		return true;
+	}
+
 	bool ReadCreatureObservations(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
-		return ReadSkills(Object, Pointer, Creature, State) &&
+		return ReadCreatureSavingThrows(Object, Pointer, Creature, State) &&
+			ReadSkills(Object, Pointer, Creature, State) &&
 			ReadStrings(Object, TEXT("senses"), Pointer, Creature.Senses, State) &&
 			ReadStrings(Object, TEXT("languages"), Pointer, Creature.Languages, State) &&
 			ReadCreaturePassivePerception(Object, Pointer, Creature, State) &&

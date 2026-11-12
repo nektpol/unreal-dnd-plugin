@@ -236,3 +236,21 @@ struct DND5E_API FDnd5eCreatureMovement
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eInlineContent> ChoiceNote;
 };
+
+USTRUCT(BlueprintType)
+struct DND5E_API FDnd5eCreatureSavingThrowBonus
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FGameplayTag Ability;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	int32 Bonus = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	bool bHasNumericBonus = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FString BonusExpression;
+};

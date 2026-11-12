@@ -854,6 +854,53 @@ bool FDnd5eCreatureCopyTemplateTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureSavingThrowsTest, "Dnd5e.Bestiary.Reader.SavingThrows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureSavingThrowsTest::RunTest(const FString& Parameters)
+{
+	const auto ReadWithSaves = [](const TCHAR* Saves)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT("\"page\":4"), *FString::Printf(TEXT("\"page\":4%s"), Saves));
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+	const auto Authored = ReadWithSaves(TEXT(",\"save\":{\"wis\":\"-1\",\"con\":\"+2 plus a bonus\",\"dex\":\"+0\"}"));
+	const auto& Bonuses = Authored.Creature.SavingThrows;
+	if (!TestTrue(TEXT("Three authored saves convert"), Authored.Status == EDnd5eJsonReadStatus::Success &&
+		Authored.Creature.SavingThrowsPresence == EDnd5eValuePresence::Present && Bonuses.Num() == 3))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Dexterity zero is numeric and ordered first"),
+		Bonuses[0].Ability == Dnd5e::Ability::Dexterity && Bonuses[0].bHasNumericBonus && Bonuses[0].Bonus == 0);
+	TestTrue(TEXT("Constitution expression is preserved"),
+		Bonuses[1].Ability == Dnd5e::Ability::Constitution && !Bonuses[1].bHasNumericBonus &&
+		Bonuses[1].BonusExpression == TEXT("+2 plus a bonus"));
+	TestTrue(TEXT("Wisdom negative is numeric"),
+		Bonuses[2].Ability == Dnd5e::Ability::Wisdom && Bonuses[2].bHasNumericBonus && Bonuses[2].Bonus == -1);
+
+	const auto Missing = ReadWithSaves(TEXT(""));
+	const auto Null = ReadWithSaves(TEXT(",\"save\":null"));
+	const auto Empty = ReadWithSaves(TEXT(",\"save\":{}"));
+	TestTrue(TEXT("Missing, null, and empty objects have distinct presence"),
+		Missing.Status == EDnd5eJsonReadStatus::Success && Missing.Creature.SavingThrows.IsEmpty() &&
+		Missing.Creature.SavingThrowsPresence == EDnd5eValuePresence::Unspecified &&
+		Null.Status == EDnd5eJsonReadStatus::Success && Null.Creature.SavingThrows.IsEmpty() &&
+		Null.Creature.SavingThrowsPresence == EDnd5eValuePresence::ExplicitNull &&
+		Empty.Status == EDnd5eJsonReadStatus::Success && Empty.Creature.SavingThrows.IsEmpty() &&
+		Empty.Creature.SavingThrowsPresence == EDnd5eValuePresence::Present);
+
+	const auto Invalid = ReadWithSaves(TEXT(",\"save\":{\"str\":\"+1\",\"dex\":2}"));
+	TestTrue(TEXT("Invalid bonus rejects the record without publishing a partial list"),
+		Invalid.Status == EDnd5eJsonReadStatus::Failure && Invalid.Creature.SavingThrows.IsEmpty() &&
+		Invalid.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/1/save/dex");
+		}));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

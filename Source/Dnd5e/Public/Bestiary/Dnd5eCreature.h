@@ -58,6 +58,12 @@ struct DND5E_API FDnd5eCreature
 	FDnd5eCreatureAbilityScores AbilityScores;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence SavingThrowsPresence = EDnd5eValuePresence::Unspecified;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureSavingThrowBonus> SavingThrows;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	TArray<FDnd5eCreatureSkillBonus> Skills;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
