@@ -16,6 +16,9 @@ struct FDnd5eCreatureCopyIndex
 {
 	TMap<FString, FDnd5eCreatureCopyRow> Rows;
 	TSet<FString> AmbiguousKeys;
+	TMap<FString, FDnd5eCreatureCopyRow> TemplateRows;
+	TSet<FString> AmbiguousTemplateKeys;
+	bool bHasTemplateDocument = false;
 };
 
 void IndexCreatureCopyRow(FDnd5eCreatureCopyIndex& Index, const FDnd5eCreatureCopyRow& Row);

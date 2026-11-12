@@ -1117,8 +1117,53 @@ FDnd5eCreatureDocumentAudit FDnd5eJsonCreatureReader::AuditDocument(const FDnd5e
 	return Report;
 }
 
-TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
-	TArrayView<const FDnd5eJsonDocument> Documents)
+static bool IndexCreatureTemplates(const FDnd5eJsonDocument& Document, const FString& DatasetNamespace,
+	FDnd5eCreatureCopyIndex& Out, TArray<FDnd5eDiagnostic>& Diagnostics)
+{
+	using namespace Dnd5eJsonReader;
+
+	FReadState State{Document.Context, Document.JsonText, Diagnostics};
+	if (!Document.Context.DatasetNamespace.Equals(DatasetNamespace, ESearchCase::CaseSensitive))
+	{
+		return Fail(State, Codes::InvalidFieldValue, TEXT(""), TEXT("Template and creature namespaces differ."));
+	}
+	TSharedPtr<FJsonValue> RootValue;
+	TSharedPtr<FJsonObject> Root;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!ValidateReadContext(State) || !ValidateDocumentText(State) ||
+		!PreflightJson(State) || !ParseJsonDocument(RootValue, State) ||
+		!RequireObject(RootValue, TEXT(""), Root, State) ||
+		!ReadRequiredArray(*Root, TEXT("monsterTemplate"), TEXT(""), Rows, State))
+	{
+		return false;
+	}
+
+	FDnd5eCreatureCopyIndex Templates;
+	for (int32 Index = 0; Index < Rows->Num(); ++Index)
+	{
+		const FString Pointer = AppendPointer(TEXT("/monsterTemplate"), FString::FromInt(Index));
+		TSharedPtr<FJsonObject> Object;
+		FString Name;
+		FString Source;
+		if (!RequireObject((*Rows)[Index], Pointer, Object, State) ||
+			!ReadRequiredString(*Object, TEXT("name"), Pointer, Name, State) ||
+			!ValidateIdentityText(Name, AppendPointer(Pointer, TEXT("name")), State) ||
+			!ReadRequiredString(*Object, TEXT("source"), Pointer, Source, State) ||
+			!ValidateIdentityText(Source, AppendPointer(Pointer, TEXT("source")), State))
+		{
+			return false;
+		}
+		IndexCreatureCopyRow(Templates, {Object, Document.Context.RelativeFilePath, Pointer});
+	}
+
+	Out.TemplateRows = MoveTemp(Templates.Rows);
+	Out.AmbiguousTemplateKeys = MoveTemp(Templates.AmbiguousKeys);
+	Out.bHasTemplateDocument = true;
+	return true;
+}
+
+static TArray<FDnd5eCreatureDocumentAudit> AuditCreatureDocuments(
+	TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument* TemplateDocument)
 {
 	using namespace Dnd5eJsonReader;
 	using FCreatureRows = TArray<TSharedPtr<FJsonValue>>;
@@ -1130,6 +1175,10 @@ TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
 	TArray<const FCreatureRows*> RowsByDocument;
 	RowsByDocument.SetNumZeroed(Documents.Num());
 	FDnd5eCreatureCopyIndex CopyIndex;
+	if (TemplateDocument && !Documents.IsEmpty())
+	{
+		IndexCreatureTemplates(*TemplateDocument, Documents[0].Context.DatasetNamespace, CopyIndex, Reports[0].Diagnostics);
+	}
 
 	for (int32 DocumentIndex = 0; DocumentIndex < Documents.Num(); ++DocumentIndex)
 	{
@@ -1168,4 +1217,16 @@ TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
 		}
 	}
 	return Reports;
+}
+
+TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
+	TArrayView<const FDnd5eJsonDocument> Documents)
+{
+	return AuditCreatureDocuments(Documents, nullptr);
+}
+
+TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
+	TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument& TemplateDocument)
+{
+	return AuditCreatureDocuments(Documents, &TemplateDocument);
 }

@@ -66,6 +66,7 @@ namespace
 		FDnd5eCreatureCopyRow Row;
 		TSharedPtr<FJsonObject> Preserve;
 		TSharedPtr<FJsonObject> Modifiers;
+		TArray<FDnd5eCreatureCopyRow> Templates;
 	};
 
 	TSharedPtr<FJsonObject> MergeCreatureCopy(const FCreatureCopyStep& Child, const FJsonObject& Parent)
@@ -501,48 +502,185 @@ namespace
 		return true;
 	}
 
-	bool ApplyCreatureCopyModifiers(const FJsonObject& Modifiers, const FString& ModPointer,
-		FJsonObject& Merged, FReadState& State)
+	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
+		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
-		for (const auto& Pair : Modifiers.Values)
+		if (Field.Equals(TEXT("*"), ESearchCase::CaseSensitive))
 		{
-			const FString Field(Pair.Key.Len(), *Pair.Key);
-			if (Field.Equals(TEXT("*"), ESearchCase::CaseSensitive)) { continue; }
-			if (!Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) &&
-				!Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) &&
-				!Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive))
+			return ApplyCreatureWildcardOperations(FieldValue, ModPointer, Merged, State);
+		}
+		if (!Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) &&
+			!Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) &&
+			!Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Creature copy modifier target is deferred: ") + Field);
+		}
+
+		const FString FieldPointer = AppendPointer(ModPointer, Field);
+		const bool bArray = FieldValue.IsValid() && FieldValue->Type == EJson::Array;
+		TArray<TSharedPtr<FJsonValue>> Operations;
+		if (bArray) { Operations = FieldValue->AsArray(); }
+		else { Operations.Add(FieldValue); }
+
+		for (int32 Index = 0; Index < Operations.Num(); ++Index)
+		{
+			const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
+			const auto& Value = Operations[Index];
+			if (Value.IsValid() && Value->Type == EJson::String &&
+				Value->AsString().Equals(TEXT("remove"), ESearchCase::CaseSensitive))
 			{
-				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
-					TEXT("Creature copy modifier target is deferred: ") + Field);
+				Merged.RemoveField(Field);
+				continue;
 			}
 
-			const FString FieldPointer = AppendPointer(ModPointer, Field);
-			const bool bArray = Pair.Value.IsValid() && Pair.Value->Type == EJson::Array;
-			TArray<TSharedPtr<FJsonValue>> Operations;
-			if (bArray) { Operations = Pair.Value->AsArray(); }
-			else { Operations.Add(Pair.Value); }
-
-			for (int32 Index = 0; Index < Operations.Num(); ++Index)
+			TSharedPtr<FJsonObject> Operation;
+			if (!RequireObject(Value, Pointer, Operation, State) ||
+				!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
 			{
-				const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
-				const auto& Value = Operations[Index];
-				if (Value.IsValid() && Value->Type == EJson::String &&
-					Value->AsString().Equals(TEXT("remove"), ESearchCase::CaseSensitive))
-				{
-					Merged.RemoveField(Field);
-					continue;
-				}
+				return false;
+			}
+		}
+		return true;
+	}
 
-				TSharedPtr<FJsonObject> Operation;
-				if (!RequireObject(Value, Pointer, Operation, State) ||
-					!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
+	struct FCreatureModifierSource
+	{
+		TSharedPtr<FJsonObject> Modifiers;
+		FString RelativeFilePath;
+		FString JsonPointer;
+	};
+
+	bool ApplyCreatureTemplate(const FDnd5eCreatureCopyRow& Template, const FJsonObject& OriginalChild,
+		FJsonObject& Merged, TArray<FCreatureModifierSource>& Sources, FReadState& State)
+	{
+		const auto Value = FindExactField(*Template.Object, TEXT("apply"));
+		if (!Value.IsValid()) { return true; }
+
+		auto Context = State.Context;
+		Context.RelativeFilePath = Template.RelativeFilePath;
+		FReadState TemplateState{Context, State.JsonText, State.Diagnostics};
+		const FString ApplyPointer = AppendPointer(Template.JsonPointer, TEXT("apply"));
+		TSharedPtr<FJsonObject> Apply;
+		if (!RequireObject(Value, ApplyPointer, Apply, TemplateState) ||
+			!CheckAllowedKeys(*Apply, {TEXT("_root"), TEXT("_mod")}, ApplyPointer, TemplateState))
+		{
+			return false;
+		}
+
+		if (const auto RootValue = FindExactField(*Apply, TEXT("_root")))
+		{
+			TSharedPtr<FJsonObject> Root;
+			if (!RequireObject(RootValue, AppendPointer(ApplyPointer, TEXT("_root")), Root, TemplateState)) { return false; }
+			for (const auto& Pair : Root->Values)
+			{
+				const FString Field(Pair.Key.Len(), *Pair.Key);
+				if (!FindExactField(OriginalChild, *Field).IsValid())
 				{
-					return false;
+					Merged.SetField(Field, Pair.Value);
 				}
 			}
 		}
-		const auto Wildcard = FindExactField(Modifiers, TEXT("*"));
-		return !Wildcard.IsValid() || ApplyCreatureWildcardOperations(Wildcard, ModPointer, Merged, State);
+		if (const auto ModValue = FindExactField(*Apply, TEXT("_mod")))
+		{
+			const FString ModPointer = AppendPointer(ApplyPointer, TEXT("_mod"));
+			TSharedPtr<FJsonObject> Modifiers;
+			if (!RequireObject(ModValue, ModPointer, Modifiers, TemplateState)) { return false; }
+			Sources.Add({Modifiers, Template.RelativeFilePath, ModPointer});
+		}
+		return true;
+	}
+
+	bool ApplyCreatureCopyStep(const FCreatureCopyStep& Step, FJsonObject& Merged, FReadState& State)
+	{
+		TArray<FCreatureModifierSource> Sources;
+		if (Step.Modifiers.IsValid())
+		{
+			Sources.Add({Step.Modifiers, Step.Row.RelativeFilePath,
+				AppendPointer(AppendPointer(Step.Row.JsonPointer, TEXT("_copy")), TEXT("_mod"))});
+		}
+		for (const auto& Template : Step.Templates)
+		{
+			if (!ApplyCreatureTemplate(Template, *Step.Row.Object, Merged, Sources, State)) { return false; }
+		}
+
+		TArray<FString> Fields;
+		bool bHasRootOperations = false;
+		bool bHasWildcard = false;
+		for (const auto& Source : Sources)
+		{
+			for (const auto& Pair : Source.Modifiers->Values)
+			{
+				const FString Field(Pair.Key.Len(), *Pair.Key);
+				if (Field.Equals(TEXT("_"), ESearchCase::CaseSensitive)) { bHasRootOperations = true; }
+				else if (Field.Equals(TEXT("*"), ESearchCase::CaseSensitive)) { bHasWildcard = true; }
+				else if (!Fields.ContainsByPredicate([&Field](const FString& Existing)
+				{
+					return Existing.Equals(Field, ESearchCase::CaseSensitive);
+				}))
+				{
+					Fields.Add(Field);
+				}
+			}
+		}
+		if (bHasRootOperations) { Fields.Add(TEXT("_")); }
+		if (bHasWildcard) { Fields.Add(TEXT("*")); }
+
+		for (const FString& Field : Fields)
+		{
+			for (const auto& Source : Sources)
+			{
+				const auto Value = FindExactField(*Source.Modifiers, *Field);
+				if (!Value.IsValid()) { continue; }
+
+				auto Context = State.Context;
+				Context.RelativeFilePath = Source.RelativeFilePath;
+				FReadState OperationState{Context, State.JsonText, State.Diagnostics};
+				if (!ApplyCreatureFieldModifiers(Field, Value, Source.JsonPointer, Merged, OperationState)) { return false; }
+			}
+		}
+		return true;
+	}
+
+	bool CollectCreatureTemplates(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		const FDnd5eCreatureCopyIndex& Index, TArray<FDnd5eCreatureCopyRow>& Out, FReadState& State)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* References = nullptr;
+		if (!RequireArray(Value, Pointer, References, State)) { return false; }
+		if (!References->IsEmpty() && !Index.bHasTemplateDocument)
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, Pointer, TEXT("Creature copy templates are deferred."));
+		}
+
+		for (int32 ReferenceIndex = 0; ReferenceIndex < References->Num(); ++ReferenceIndex)
+		{
+			const FString ReferencePointer = AppendPointer(Pointer, FString::FromInt(ReferenceIndex));
+			TSharedPtr<FJsonObject> Reference;
+			FString Name;
+			FString Source;
+			if (!RequireObject((*References)[ReferenceIndex], ReferencePointer, Reference, State) ||
+				!CheckAllowedKeys(*Reference, {TEXT("name"), TEXT("source")}, ReferencePointer, State) ||
+				!ReadRequiredString(*Reference, TEXT("name"), ReferencePointer, Name, State) ||
+				!ValidateIdentityText(Name, AppendPointer(ReferencePointer, TEXT("name")), State) ||
+				!ReadRequiredString(*Reference, TEXT("source"), ReferencePointer, Source, State) ||
+				!ValidateIdentityText(Source, AppendPointer(ReferencePointer, TEXT("source")), State))
+			{
+				return false;
+			}
+
+			const FString Key = MakeLookupKey(Name, Source);
+			if (Index.AmbiguousTemplateKeys.Contains(Key))
+			{
+				return Fail(State, Codes::UnresolvedReference, ReferencePointer, TEXT("Creature template is ambiguous."));
+			}
+			const auto* Template = Index.TemplateRows.Find(Key);
+			if (!Template)
+			{
+				return Fail(State, Codes::UnresolvedReference, ReferencePointer, TEXT("Creature template was not found."));
+			}
+			Out.Add(*Template);
+		}
+		return true;
 	}
 
 	bool CollectCreatureCopyChain(const FDnd5eCreatureCopyIndex& Index,
@@ -570,7 +708,7 @@ namespace
 			}
 			Visited.Add(Key);
 
-			FCreatureCopyStep Step{*Current, nullptr, nullptr};
+			FCreatureCopyStep Step{*Current, nullptr, nullptr, {}};
 			const auto CopyValue = FindExactField(*Current->Object, TEXT("_copy"));
 			if (!CopyValue.IsValid())
 			{
@@ -596,10 +734,13 @@ namespace
 			{
 				return false;
 			}
-			if (FindExactField(*Copy, TEXT("_templates")).IsValid())
+			if (const auto Templates = FindExactField(*Copy, TEXT("_templates")))
 			{
-				return Fail(RowState, Codes::UnsupportedRequiredValue, AppendPointer(CopyPointer, TEXT("_templates")),
-					TEXT("Creature copy templates are deferred."));
+				if (!CollectCreatureTemplates(Templates, AppendPointer(CopyPointer, TEXT("_templates")),
+					Index, Step.Templates, RowState))
+				{
+					return false;
+				}
 			}
 			if (const auto Modifiers = FindExactField(*Copy, TEXT("_mod")))
 			{
@@ -667,15 +808,7 @@ bool ResolveCreatureCopy(const FDnd5eCreatureCopyIndex& Index, const FDnd5eCreat
 	{
 		const auto& Step = Chain[IndexInChain];
 		Assembled = MergeCreatureCopy(Step, *Assembled);
-		if (Step.Modifiers.IsValid())
-		{
-			auto Context = State.Context;
-			Context.RelativeFilePath = Step.Row.RelativeFilePath;
-			Dnd5eJsonReader::FReadState RowState{Context, State.JsonText, State.Diagnostics};
-			const FString ModPointer = Dnd5eJsonReader::AppendPointer(
-				Dnd5eJsonReader::AppendPointer(Step.Row.JsonPointer, TEXT("_copy")), TEXT("_mod"));
-			if (!ApplyCreatureCopyModifiers(*Step.Modifiers, ModPointer, *Assembled, RowState)) { return false; }
-		}
+		if (!ApplyCreatureCopyStep(Step, *Assembled, State)) { return false; }
 	}
 
 	TArray<FDnd5eCreatureCopyRow> Ancestors;

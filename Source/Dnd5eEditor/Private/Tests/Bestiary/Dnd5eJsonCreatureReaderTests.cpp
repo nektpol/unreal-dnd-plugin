@@ -804,6 +804,56 @@ bool FDnd5eCreatureCopyTextTest::RunTest(const FString& Parameters)
 }
 #endif
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyTemplateTest, "Dnd5e.Bestiary.Reader.CopyTemplates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureCopyTemplateTest::RunTest(const FString& Parameters)
+{
+	const auto Children = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Templated","source":"C","action":[{"name":"Authored","entries":["Authored action."]}],
+			"_copy":{"name":"Lantern Scout","source":"SYN-B",
+				"_templates":[{"name":"first","source":"t"},{"name":"Second","source":"T"}],
+				"_mod":{"trait":{"mode":"appendArr","items":{"name":"Child","entries":["Child trait."]}}}}},
+		{"name":"Descendant","source":"C","_copy":{"name":"Templated","source":"C",
+			"_mod":{"trait":{"mode":"removeArr","names":["Second Root","Replacement"]},
+				"action":{"mode":"removeArr","names":"Authored"}}}},
+		{"name":"Missing","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B",
+			"_templates":[{"name":"Absent","source":"T"}]}},
+		{"name":"Invalid","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B",
+			"_templates":[{"name":"Invalid","source":"T"}]}}
+	]})json"));
+	auto Templates = MakeDocument(TEXT(R"json({"monsterTemplate":[
+		{"name":"First","source":"T","apply":{"_root":{"trait":[{"name":"First Root","entries":["First root."]}],"action":[]}}},
+		{"name":"Second","source":"T","apply":{"_root":{"trait":[{"name":"Second Root","entries":["Second root."]}]},
+			"_mod":{"trait":{"mode":"replaceArr","replace":"Child","items":{"name":"Replacement","entries":["Replacement trait."]}}}}},
+		{"name":"Invalid","source":"T","apply":{"_mod":[]}}
+	]})json"));
+	Templates.Context.RelativeFilePath = TEXT("fixtures/template.json");
+	const TArray<FDnd5eJsonDocument> Documents{Children, MakeDocument(StatBlock)};
+	const auto Reports = FDnd5eJsonCreatureReader::AuditDocuments(Documents, Templates);
+	if (!TestTrue(TEXT("Template fixtures were audited"), Reports.Num() == 2 && Reports[0].Rows.Num() == 4))
+	{
+		return false;
+	}
+
+	const auto& Rows = Reports[0].Rows;
+	TestTrue(TEXT("Later roots win, authored fields survive, and child modifiers run before template modifiers"),
+		Rows[0].Status == EDnd5eJsonReadStatus::Success && Rows[1].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("A missing template points to the creature reference"),
+		Rows[2].Status == EDnd5eJsonReadStatus::Failure &&
+		Rows[2].Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_templates/0");
+		}));
+	TestTrue(TEXT("Malformed modifiers point to the template document"),
+		Rows[3].Status == EDnd5eJsonReadStatus::Failure &&
+		Rows[3].Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.RelativeFilePath == TEXT("fixtures/template.json") &&
+				Diagnostic.JsonPointer == TEXT("/monsterTemplate/2/apply/_mod");
+		}));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

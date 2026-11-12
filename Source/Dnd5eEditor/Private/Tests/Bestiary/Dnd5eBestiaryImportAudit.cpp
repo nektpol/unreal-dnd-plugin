@@ -136,7 +136,14 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 		Documents.Add(MoveTemp(Document));
 	}
 
-	const auto Audits = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	FDnd5eJsonDocument TemplateDocument;
+	TemplateDocument.Context.DatasetNamespace = TEXT("local-bestiary-audit");
+	TemplateDocument.Context.RelativeFilePath = TEXT("template.json");
+	const bool bLoadedTemplates = FFileHelper::LoadFileToString(
+		TemplateDocument.JsonText, *FPaths::Combine(Root, TEXT("template.json")));
+	const auto Audits = bLoadedTemplates
+		? FDnd5eJsonCreatureReader::AuditDocuments(Documents, TemplateDocument)
+		: FDnd5eJsonCreatureReader::AuditDocuments(Documents);
 	for (int32 Index = 0; Index < Audits.Num(); ++Index)
 	{
 		const FString& File = Documents[Index].Context.RelativeFilePath;
@@ -171,7 +178,8 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 				{
 					return Diagnostic.Code == FName(TEXT("Dnd5e.Json.UnsupportedRequiredValue")) &&
 						(Diagnostic.JsonPointer.EndsWith(TEXT("/_copy/_mod")) ||
-							Diagnostic.JsonPointer.EndsWith(TEXT("/_copy/_templates")));
+						Diagnostic.JsonPointer.EndsWith(TEXT("/_copy/_templates")) ||
+						Diagnostic.JsonPointer.EndsWith(TEXT("/apply/_mod")));
 				}))
 				{
 					++DeferredCopies;
