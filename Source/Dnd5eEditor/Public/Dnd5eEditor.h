@@ -32,4 +32,7 @@ private:
 	TSharedRef<SDockTab> SpawnItemBrowser(const FSpawnTabArgs& Args);
 	TWeakPtr<SDockTab> ItemBrowserTab;
 	bool bEditorUiRegistered = false;
+	void OpenBestiaryBrowser();
+	TSharedRef<SDockTab> SpawnBestiaryBrowser(const FSpawnTabArgs& Args);
+	TWeakPtr<SDockTab> BestiaryBrowserTab;
 };

@@ -1,0 +1,91 @@
+// Developed by Neko Creative Technologies
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "Browser/Bestiary/SDnd5eBestiaryBrowser.h"
+#include "Dnd5eTags.h"
+#include "Editor.h"
+#include "Framework/Docking/TabManager.h"
+#include "Misc/AutomationTest.h"
+#include "Misc/ScopeExit.h"
+#include "Subsystems/Dnd5eEditorBestiaryDatasetSubsystem.h"
+#include "ToolMenu.h"
+#include "ToolMenus.h"
+#include "UObject/StrongObjectPtr.h"
+#include "UObject/UnrealType.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryBrowserWidgetTest, "Dnd5e.Bestiary.Editor.BrowserSelectionAndRefresh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryBrowserWidgetTest::RunTest(const FString& Parameters)
+{
+	const FName BrowserId(TEXT("Dnd5eBestiaryBrowser"));
+	TestTrue(TEXT("Bestiary tab spawner is registered"), FGlobalTabmanager::Get()->HasTabSpawner(BrowserId));
+	auto* Menu = UToolMenus::Get()->FindMenu(TEXT("LevelEditor.MainMenu.Tools"));
+	auto* Section = Menu ? Menu->FindSection(TEXT("Dnd5e")) : nullptr;
+	TestTrue(TEXT("Tools menu contains the Bestiary browser"), Section && Section->FindEntry(BrowserId));
+
+	auto* Session = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorBestiaryDatasetSubsystem>() : nullptr;
+	if (!TestNotNull(TEXT("The editor Bestiary session exists"), Session)) { return false; }
+	auto* CatalogProperty = FindFProperty<FObjectPropertyBase>(Session->GetClass(), TEXT("Catalog"));
+	if (!TestNotNull(TEXT("The transient catalog property exists"), CatalogProperty)) { return false; }
+
+	const TStrongObjectPtr<UDnd5eCreatureCatalogObject> Original(Session->GetCatalog());
+	const TStrongObjectPtr<UDnd5eCreatureCatalogObject> Fixture(NewObject<UDnd5eCreatureCatalogObject>());
+	ON_SCOPE_EXIT
+	{
+		CatalogProperty->SetObjectPropertyValue_InContainer(Session, Original.Get());
+		Session->OnCatalogChanged().Broadcast();
+	};
+	CatalogProperty->SetObjectPropertyValue_InContainer(Session, Fixture.Get());
+
+	FDnd5eCreature First;
+	First.Header.DisplayName = TEXT("Invented Scout");
+	First.Header.RecordId.DatasetNamespace = TEXT("browser-test");
+	First.Header.RecordId.Category = Dnd5e::Category::Creature;
+	First.Header.RecordId.SourceKey = TEXT("scout-first");
+	First.Header.Provenance.AddDefaulted_GetRef().SourceId = TEXT("SYN-FIRST");
+	First.HitPoints.bHasAverage = true;
+	First.HitPoints.Average = 7;
+
+	FDnd5eCreature Second = First;
+	Second.Header.RecordId.SourceKey = TEXT("scout-second");
+	Second.Header.Provenance[0].SourceId = TEXT("SYN-SECOND");
+	Second.HitPoints.Average = 15;
+
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	if (!TestTrue(TEXT("Install two same-name records with distinct sources"), Fixture->GetMutableCatalog().ReplaceCreatures({First, Second}, Diagnostics)))
+	{
+		return false;
+	}
+
+	const TSharedRef<SDnd5eBestiaryBrowser> Browser = SNew(SDnd5eBestiaryBrowser);
+	if (!TestEqual(TEXT("Both same-name rows appear"), Browser->ListView->GetItems().Num(), 2)) { return false; }
+
+	Browser->ListView->SetSelection(Browser->ListView->GetItems()[0]);
+	TestTrue(TEXT("First row shows the matching source and HP"), Browser->CardSource.ToString() == TEXT("SYN-FIRST") &&
+		Browser->CardBody.ToString().Contains(TEXT("Hit Points  7")));
+	Browser->ListView->SetSelection(Browser->ListView->GetItems()[1]);
+	TestTrue(TEXT("Second row retrieves its own record by exact ID"), Browser->CardSource.ToString() == TEXT("SYN-SECOND") &&
+		Browser->CardBody.ToString().Contains(TEXT("Hit Points  15")));
+
+	Browser->HandleSearchChanged(FText::FromString(TEXT("  syn-first  ")));
+	TestTrue(TEXT("Source search trims and ignores case, and clears the old selection"),
+		Browser->VisibleRows.Num() == 1 && Browser->VisibleRows[0]->Id == First.Header.RecordId &&
+		Browser->ListView->GetSelectedItems().IsEmpty() && Browser->CardTitle.IsEmpty());
+
+	if (!TestTrue(TEXT("Replace the active catalog with the other source"), Fixture->GetMutableCatalog().ReplaceCreatures({Second}, Diagnostics)))
+	{
+		return false;
+	}
+	Session->OnCatalogChanged().Broadcast();
+	TestTrue(TEXT("A publication refreshes the rows while preserving the filter"),
+		Browser->AllRows.Num() == 1 && Browser->VisibleRows.IsEmpty() && Browser->Filter == TEXT("syn-first"));
+
+	Browser->HandleSearchChanged(FText::GetEmpty());
+	TestTrue(TEXT("Clearing the filter exposes the replacement row"),
+		Browser->VisibleRows.Num() == 1 && Browser->VisibleRows[0]->Id == Second.Header.RecordId);
+	return !HasAnyErrors();
+}
+
+#endif

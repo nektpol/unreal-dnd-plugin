@@ -23,6 +23,7 @@
 #include "Catalog/Dnd5eSpellCatalogObject.h"
 #include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
 #include "Subsystems/Dnd5eEditorBestiaryDatasetSubsystem.h"
+#include "Browser/Bestiary/SDnd5eBestiaryBrowser.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eEditor"
 
@@ -31,6 +32,7 @@ namespace
     const FName DatasetLogName(TEXT("Dnd5eDataset"));
     const FName SpellBrowserTabName(TEXT("Dnd5eSpellBrowser"));
     const FName ItemBrowserTabName(TEXT("Dnd5eItemBrowser"));
+    const FName BestiaryBrowserTabName(TEXT("Dnd5eBestiaryBrowser"));
 
     void WriteDatasetDiagnostics(FMessageLog& Log, const TArray<FDnd5eDiagnostic>& Diagnostics)
     {
@@ -58,6 +60,10 @@ void FDnd5eEditorModule::StartupModule()
         FOnSpawnTab::CreateRaw(this, &FDnd5eEditorModule::SpawnItemBrowser))
         .SetDisplayName(LOCTEXT("ItemBrowserTitle", "Dnd5e Item Browser"))
         .SetMenuType(ETabSpawnerMenuType::Hidden);
+    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(BestiaryBrowserTabName,
+        FOnSpawnTab::CreateRaw(this, &FDnd5eEditorModule::SpawnBestiaryBrowser))
+        .SetDisplayName(LOCTEXT("BestiaryBrowserTitle", "Dnd5e Bestiary Browser"))
+        .SetMenuType(ETabSpawnerMenuType::Hidden);
     FMessageLogInitializationOptions Options;
     Options.bShowPages = true;
     Options.bAllowClear = true;
@@ -84,7 +90,15 @@ void FDnd5eEditorModule::ShutdownModule()
             Tab->RequestCloseTab();
         }
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(ItemBrowserTabName);
+
+        if (TSharedPtr<SDockTab> Tab = BestiaryBrowserTab.Pin())
+        {
+            Tab->SetContent(SNullWidget::NullWidget);
+            Tab->RequestCloseTab();
+        }
+        FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(BestiaryBrowserTabName);
     }
+    BestiaryBrowserTab.Reset();
     SpellBrowserTab.Reset();
     SpellBrowserWidget.Reset();
     if (FModuleManager::Get().IsModuleLoaded("ToolMenus"))
@@ -136,6 +150,10 @@ void FDnd5eEditorModule::RegisterMenus()
         LOCTEXT("LoadBestiaryDataset", "Load Dnd5e Bestiary Dataset"),
         LOCTEXT("LoadBestiaryDatasetTip", "Load the local Bestiary index and show diagnostics."),
         FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::LoadBestiaryDataset)));
+    Section.AddMenuEntry("Dnd5eBestiaryBrowser",
+        LOCTEXT("BestiaryBrowserMenu", "Dnd5e Bestiary Browser"),
+        LOCTEXT("BestiaryBrowserTip", "Search the active Bestiary catalog and view creature stat blocks."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenBestiaryBrowser)));
 }
 
 void FDnd5eEditorModule::OpenDatasetSettings()
@@ -289,6 +307,21 @@ TSharedRef<SDockTab> FDnd5eEditorModule::SpawnItemBrowser(const FSpawnTabArgs& A
         SNew(SDnd5eItemBrowser)
     ];
     ItemBrowserTab = Tab;
+    return Tab;
+}
+
+void FDnd5eEditorModule::OpenBestiaryBrowser()
+{
+    FGlobalTabmanager::Get()->TryInvokeTab(BestiaryBrowserTabName);
+}
+
+TSharedRef<SDockTab> FDnd5eEditorModule::SpawnBestiaryBrowser(const FSpawnTabArgs& Args)
+{
+    TSharedRef<SDockTab> Tab = SNew(SDockTab).TabRole(ETabRole::NomadTab)
+    [
+        SNew(SDnd5eBestiaryBrowser)
+    ];
+    BestiaryBrowserTab = Tab;
     return Tab;
 }
 
