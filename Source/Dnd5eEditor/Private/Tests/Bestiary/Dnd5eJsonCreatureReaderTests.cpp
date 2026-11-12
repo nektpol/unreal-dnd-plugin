@@ -626,7 +626,7 @@ bool FDnd5eCreatureCopyAuditTest::RunTest(const FString& Parameters)
 	Children.Context.RelativeFilePath = TEXT("children.json");
 	auto Middle = MakeDocument(TEXT(R"json({"monster":[
 		{"name":"Middle","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B"}},
-		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{}}},
+		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{"mode":"replaceArr"}}}},
 		{"name":"Duplicate","source":"M"},
 		{"name":"duplicate","source":"m"}
 	]})json"));
@@ -659,6 +659,50 @@ bool FDnd5eCreatureCopyAuditTest::RunTest(const FString& Parameters)
 	CheckFailure(3, TEXT("middle.json"), TEXT("/monster/1/_copy/_mod"), TEXT("deferred"));
 	CheckFailure(4, TEXT("children.json"), TEXT("/monster/4/page"), TEXT("page"));
 	CheckFailure(6, TEXT("children.json"), TEXT("/monster/6/_copy"), TEXT("ambiguous"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyArrayTest, "Dnd5e.Bestiary.Reader.CopyArrays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureCopyArrayTest::RunTest(const FString& Parameters)
+{
+	const auto Children = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Middle","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":[
+			{"mode":"prependArr","items":{"name":"First","entries":["First."]}},
+			{"mode":"appendArr","items":[{"name":"Last","entries":["Last."]}]}]}}},
+		{"name":"Grandchild","source":"C","_copy":{"name":"Middle","source":"M","_mod":{"trait":{
+			"mode":"appendArr","items":{"name":"Invalid","entries":false}}}}},
+		{"name":"Sibling","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{
+			"mode":"appendArr","items":{"name":"Invalid","entries":false}}}}},
+		{"name":"New bonus","source":"C","bonus":null,"_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{
+			"bonus":{"mode":"appendArr","items":{"name":"New","entries":["New."]}}}}},
+		{"name":"Invalid modifier","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{
+			"trait":{"mode":"appendArr","items":false}}}},
+		{"name":"Prepended invalid","source":"C","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{
+			"mode":"prependArr","items":{"name":"Invalid","entries":false}}}}}
+	]})json"));
+	const TArray<FDnd5eJsonDocument> Documents{Children, MakeDocument(StatBlock)};
+	const auto Reports = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	if (!TestTrue(TEXT("Both documents were audited"), Reports.Num() == 2 && Reports[0].Rows.Num() == 6 &&
+		Reports[1].Rows.Num() == 2)) { return false; }
+
+	const auto& Rows = Reports[0].Rows;
+	TestTrue(TEXT("Prepend and append support arrays and singleton items"), Rows[0].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("Append creates a target removed by the child"), Rows[3].Status == EDnd5eJsonReadStatus::Success);
+	TestTrue(TEXT("Parent still converts"), Reports[1].Rows[1].Status == EDnd5eJsonReadStatus::Success);
+
+	const auto CheckFailure = [this, &Rows](int32 Index, const TCHAR* Pointer)
+	{
+		TestTrue(Pointer, Rows[Index].Status == EDnd5eJsonReadStatus::Failure &&
+			Rows[Index].Diagnostics.ContainsByPredicate([Pointer](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == Pointer && Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error;
+			}));
+	};
+	CheckFailure(1, TEXT("/monster/1/trait/3/entries"));
+	CheckFailure(2, TEXT("/monster/2/trait/1/entries"));
+	CheckFailure(4, TEXT("/monster/4/_copy/_mod/trait/items"));
+	CheckFailure(5, TEXT("/monster/5/trait/0/entries"));
 	return !HasAnyErrors();
 }
 

@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #include "Readers/Bestiary/Dnd5eJsonCreatureCopyResolver.h"
 
@@ -57,6 +57,7 @@ namespace
 	{
 		FDnd5eCreatureCopyRow Row;
 		TSharedPtr<FJsonObject> Preserve;
+		TSharedPtr<FJsonObject> Modifiers;
 	};
 
 	TSharedPtr<FJsonObject> MergeCreatureCopy(const FCreatureCopyStep& Child, const FJsonObject& Parent)
@@ -87,6 +88,81 @@ namespace
 		return Merged;
 	}
 
+	bool ApplyCreatureArrayOperation(FJsonObject& Merged, const FString& Field,
+		const FJsonObject& Operation, const FString& Pointer, const FString& ModPointer, FReadState& State)
+	{
+		FString Mode;
+		if (!ReadRequiredString(Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
+
+		const bool bPrepend = Mode.Equals(TEXT("prependArr"), ESearchCase::CaseSensitive);
+		if (!bPrepend && !Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive))
+		{
+			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+				TEXT("Creature copy modifier mode is deferred: ") + Mode);
+		}
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("items")}, Pointer, State)) { return false; }
+		const auto Items = FindExactField(Operation, TEXT("items"));
+		const FString ItemsPointer = AppendPointer(Pointer, TEXT("items"));
+		if (!Items.IsValid())
+		{
+			return Fail(State, Codes::MissingRequiredField, ItemsPointer, TEXT("Expected modifier items."));
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Added;
+		if (Items->Type == EJson::Array) { Added = Items->AsArray(); }
+		else if (Items->Type == EJson::Object) { Added.Add(Items); }
+		else { return Fail(State, Codes::InvalidFieldValue, ItemsPointer, TEXT("Expected an entry object or array.")); }
+
+		const auto Existing = FindExactField(Merged, *Field);
+		const TArray<TSharedPtr<FJsonValue>>* ExistingItems = nullptr;
+		if (Existing.IsValid() && Existing->Type != EJson::Null &&
+			!RequireArray(Existing, Pointer, ExistingItems, State))
+		{
+			return false;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Combined;
+		if (bPrepend) { Combined.Append(Added); }
+		if (ExistingItems) { Combined.Append(*ExistingItems); }
+		if (!bPrepend) { Combined.Append(Added); }
+		Merged.SetField(Field, MakeShared<FJsonValueArray>(MoveTemp(Combined)));
+		return true;
+	}
+
+	bool ApplyCreatureCopyModifiers(const FJsonObject& Modifiers, const FString& ModPointer,
+		FJsonObject& Merged, FReadState& State)
+	{
+		for (const auto& Pair : Modifiers.Values)
+		{
+			const FString Field(Pair.Key.Len(), *Pair.Key);
+			if (!Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) &&
+				!Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) &&
+				!Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+					TEXT("Creature copy modifier target is deferred: ") + Field);
+			}
+
+			const FString FieldPointer = AppendPointer(ModPointer, Field);
+			TArray<TSharedPtr<FJsonValue>> Operations;
+			if (Pair.Value.IsValid() && Pair.Value->Type == EJson::Array) { Operations = Pair.Value->AsArray(); }
+			else { Operations.Add(Pair.Value); }
+
+			for (int32 Index = 0; Index < Operations.Num(); ++Index)
+			{
+				const bool bArray = Pair.Value.IsValid() && Pair.Value->Type == EJson::Array;
+				const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
+				TSharedPtr<FJsonObject> Operation;
+				if (!RequireObject(Operations[Index], Pointer, Operation, State) ||
+					!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	bool CollectCreatureCopyChain(const FDnd5eCreatureCopyIndex& Index,
 		const FDnd5eCreatureCopyRow& Child, TArray<FCreatureCopyStep>& Chain, FReadState& State)
 	{
@@ -112,7 +188,7 @@ namespace
 			}
 			Visited.Add(Key);
 
-			FCreatureCopyStep Step{*Current, nullptr};
+			FCreatureCopyStep Step{*Current, nullptr, nullptr};
 			const auto CopyValue = FindExactField(*Current->Object, TEXT("_copy"));
 			if (!CopyValue.IsValid())
 			{
@@ -138,12 +214,16 @@ namespace
 			{
 				return false;
 			}
-			for (const TCHAR* Deferred : {TEXT("_mod"), TEXT("_templates")})
+			if (FindExactField(*Copy, TEXT("_templates")).IsValid())
 			{
-				if (FindExactField(*Copy, Deferred).IsValid())
+				return Fail(RowState, Codes::UnsupportedRequiredValue, AppendPointer(CopyPointer, TEXT("_templates")),
+					TEXT("Creature copy templates are deferred."));
+			}
+			if (const auto Modifiers = FindExactField(*Copy, TEXT("_mod")))
+			{
+				if (!RequireObject(Modifiers, AppendPointer(CopyPointer, TEXT("_mod")), Step.Modifiers, RowState))
 				{
-					return Fail(RowState, Codes::UnsupportedRequiredValue, AppendPointer(CopyPointer, Deferred),
-						TEXT("Creature copy operation is deferred."));
+					return false;
 				}
 			}
 			if (const auto Preserve = FindExactField(*Copy, TEXT("_preserve")))
@@ -203,7 +283,17 @@ bool ResolveCreatureCopy(const FDnd5eCreatureCopyIndex& Index, const FDnd5eCreat
 	TSharedPtr<FJsonObject> Assembled = Chain.Last().Row.Object;
 	for (int32 IndexInChain = Chain.Num() - 2; IndexInChain >= 0; --IndexInChain)
 	{
-		Assembled = MergeCreatureCopy(Chain[IndexInChain], *Assembled);
+		const auto& Step = Chain[IndexInChain];
+		Assembled = MergeCreatureCopy(Step, *Assembled);
+		if (Step.Modifiers.IsValid())
+		{
+			auto Context = State.Context;
+			Context.RelativeFilePath = Step.Row.RelativeFilePath;
+			Dnd5eJsonReader::FReadState RowState{Context, State.JsonText, State.Diagnostics};
+			const FString ModPointer = Dnd5eJsonReader::AppendPointer(
+				Dnd5eJsonReader::AppendPointer(Step.Row.JsonPointer, TEXT("_copy")), TEXT("_mod"));
+			if (!ApplyCreatureCopyModifiers(*Step.Modifiers, ModPointer, *Assembled, RowState)) { return false; }
+		}
 	}
 
 	TArray<FDnd5eCreatureCopyRow> Ancestors;
