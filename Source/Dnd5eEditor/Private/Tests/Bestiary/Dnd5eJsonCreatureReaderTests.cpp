@@ -998,6 +998,65 @@ bool FDnd5eCreatureActionGroupsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureSpellcastingTest, "Dnd5e.Bestiary.Reader.Spellcasting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureSpellcastingTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Fields)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT("\"page\":4"), *FString::Printf(TEXT("\"page\":4%s"), Fields));
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+	const auto Result = Read(TEXT(R"json(,"spellcasting":[{"name":"Lantern Magic","ability":"wis",
+		"headerEntries":["A header."],"footerEntries":["A footer."],"hidden":["will"],
+		"will":[{"entry":"An invented spell (self only)","hidden":true}],
+		"spells":{"3":{"lower":1,"slots":0,"spells":["An invented spell"]}},
+		"daily":{"1":["One use"],"1e":["One use each"]},"recharge":{"4":["Recharge spell"]}}])json"));
+	const auto& Creature = Result.Creature;
+	if (!TestTrue(TEXT("Spellcasting converts"), Result.Status == EDnd5eJsonReadStatus::Success &&
+		Creature.SpellcastingPresence == EDnd5eValuePresence::Present && Creature.Spellcasting.Num() == 1))
+	{
+		return false;
+	}
+	const auto& Block = Creature.Spellcasting[0];
+	const auto FindList = [&Block](const TCHAR* Group, const TCHAR* Key)
+	{
+		return Block.Lists.FindByPredicate([Group, Key](const auto& List)
+		{
+			return List.Group == Group && List.Key == Key;
+		});
+	};
+	const auto* Will = FindList(TEXT("will"), TEXT(""));
+	const auto* Level = FindList(TEXT("spells"), TEXT("3"));
+	const auto* Daily = FindList(TEXT("daily"), TEXT("1"));
+	const auto* Each = FindList(TEXT("daily"), TEXT("1e"));
+	const auto* Recharge = FindList(TEXT("recharge"), TEXT("4"));
+	TestTrue(TEXT("Headers and hidden group metadata survive"), Block.Name == TEXT("Lantern Magic") &&
+		Block.Ability == TEXT("wis") && Block.Header.Num() == 1 && Block.Footer.Num() == 1 &&
+		Block.HiddenGroups.Num() == 1 && Block.HiddenGroups[0] == TEXT("will"));
+	TestTrue(TEXT("At-will object preserves hidden entry and inline content"),
+		Will && Will->Spells.Num() == 1 && Will->Spells[0].bHidden && !Will->Spells[0].Content.IsEmpty());
+	TestTrue(TEXT("Level list retains explicit zero slots and lower level"),
+		Level && Level->Level == 3 && Level->Slots == 0 && Level->LowerLevel == 1);
+	TestTrue(TEXT("Use keys preserve per-spell use and recharge group"),
+		Daily && Each && Recharge && Daily->UseCount == 1 && !Daily->bEach && Each->UseCount == 1 &&
+		Each->bEach && Recharge->UseCount == 4);
+	const auto Null = Read(TEXT(",\"spellcasting\":null"));
+	TestTrue(TEXT("Null spellcasting remains distinct"), Null.Status == EDnd5eJsonReadStatus::Success &&
+		Null.Creature.SpellcastingPresence == EDnd5eValuePresence::ExplicitNull && Null.Creature.Spellcasting.IsEmpty());
+
+	const auto Invalid = Read(TEXT(",\"spellcasting\":[{\"will\":[{\"entry\":42}]}]"));
+	TestTrue(TEXT("Invalid entry identifies the source property and publishes no casting blocks"),
+		Invalid.Status == EDnd5eJsonReadStatus::Failure && Invalid.Creature.Spellcasting.IsEmpty() &&
+		Invalid.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/1/spellcasting/0/will/0/entry");
+		}));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

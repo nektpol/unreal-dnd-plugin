@@ -128,4 +128,10 @@ struct DND5E_API FDnd5eCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	int32 LegendaryActionCountInLair = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	EDnd5eValuePresence SpellcastingPresence = EDnd5eValuePresence::Unspecified;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	TArray<FDnd5eCreatureSpellcasting> Spellcasting;
 };

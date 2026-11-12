@@ -1196,6 +1196,177 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureSpellcastingEntries(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+		TArray<FDnd5eCreatureSpellcastingEntry>& Out, FReadState& State)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!RequireArray(Value, Pointer, Values, State)) { return false; }
+
+		Out.Reserve(Values->Num());
+		for (int32 Index = 0; Index < Values->Num(); ++Index)
+		{
+			const FString EntryPointer = AppendPointer(Pointer, FString::FromInt(Index));
+			const auto& Item = (*Values)[Index];
+			FDnd5eCreatureSpellcastingEntry Entry;
+			FString Text;
+			FString TextPointer = EntryPointer;
+			if (Item.IsValid() && Item->Type == EJson::String)
+			{
+				Text = Item->AsString();
+			}
+			else
+			{
+				TSharedPtr<FJsonObject> Object;
+				if (!RequireObject(Item, EntryPointer, Object, State) ||
+					!CheckAllowedKeys(*Object, {TEXT("entry"), TEXT("hidden")}, EntryPointer, State) ||
+					!ReadRequiredString(*Object, TEXT("entry"), EntryPointer, Text, State) ||
+					!ReadOptionalBool(*Object, TEXT("hidden"), EntryPointer, Entry.bHidden, State))
+				{
+					return false;
+				}
+				TextPointer = AppendPointer(EntryPointer, TEXT("entry"));
+			}
+
+			if (!ReadInlines(Text, TextPointer, Entry.Content, State)) { return false; }
+			Out.Add(MoveTemp(Entry));
+		}
+		return true;
+	}
+
+	bool ReadCreatureSpellcastingLists(const FJsonObject& Object, const FString& Pointer,
+		TArray<FDnd5eCreatureSpellcastingList>& Out, FReadState& State)
+	{
+		for (const TCHAR* Group : {TEXT("constant"), TEXT("will"), TEXT("ritual")})
+		{
+			const auto Value = FindExactField(Object, Group);
+			if (!Value.IsValid()) { continue; }
+
+			FDnd5eCreatureSpellcastingList List;
+			List.Group = Group;
+			if (!ReadCreatureSpellcastingEntries(Value, AppendPointer(Pointer, Group), List.Spells, State))
+			{
+				return false;
+			}
+			Out.Add(MoveTemp(List));
+		}
+
+		for (const TCHAR* Group : {TEXT("spells"), TEXT("daily"), TEXT("rest"), TEXT("restLong"),
+			TEXT("recharge"), TEXT("legendary"), TEXT("charges"), TEXT("weekly"), TEXT("monthly"), TEXT("yearly")})
+		{
+			const auto Value = FindExactField(Object, Group);
+			if (!Value.IsValid()) { continue; }
+
+			const FString GroupPointer = AppendPointer(Pointer, Group);
+			TSharedPtr<FJsonObject> Lists;
+			if (!RequireObject(Value, GroupPointer, Lists, State)) { return false; }
+
+			const bool bLevels = FCString::Strcmp(Group, TEXT("spells")) == 0;
+			for (const auto& Pair : Lists->Values)
+			{
+				FDnd5eCreatureSpellcastingList List;
+				List.Group = Group;
+				List.Key = FString(Pair.Key.Len(), *Pair.Key);
+				const FString ListPointer = AppendPointer(GroupPointer, List.Key);
+				if (bLevels)
+				{
+					if (!TryParseBoundedIntegerToken(List.Key, 0, 9, List.Level))
+					{
+						return Fail(State, Codes::InvalidFieldValue, ListPointer, TEXT("Invalid spell level."));
+					}
+
+					TSharedPtr<FJsonObject> Level;
+					TSharedPtr<FJsonValue> Spells;
+					if (!RequireObject(Pair.Value, ListPointer, Level, State) ||
+						!CheckAllowedKeys(*Level, {TEXT("spells"), TEXT("slots"), TEXT("lower")}, ListPointer, State) ||
+						!ReadRequiredValue(*Level, TEXT("spells"), EJson::Array, ListPointer, Spells, State))
+					{
+						return false;
+					}
+					if ((FindExactField(*Level, TEXT("slots")).IsValid() &&
+							!ReadStatInteger(*Level, TEXT("slots"), ListPointer, List.Slots, State)) ||
+						(FindExactField(*Level, TEXT("lower")).IsValid() &&
+							!ReadStatInteger(*Level, TEXT("lower"), ListPointer, List.LowerLevel, State)) ||
+						!ReadCreatureSpellcastingEntries(Spells, AppendPointer(ListPointer, TEXT("spells")), List.Spells, State))
+					{
+						return false;
+					}
+				}
+				else
+				{
+					List.bEach = List.Key.EndsWith(TEXT("e"), ESearchCase::CaseSensitive);
+					const FString Count = List.bEach ? List.Key.LeftChop(1) : List.Key;
+					if (!TryParseBoundedIntegerToken(Count, 1, 99, List.UseCount))
+					{
+						return Fail(State, Codes::InvalidFieldValue, ListPointer, TEXT("Invalid spell use key."));
+					}
+					if (!ReadCreatureSpellcastingEntries(Pair.Value, ListPointer, List.Spells, State)) { return false; }
+				}
+				Out.Add(MoveTemp(List));
+			}
+		}
+		return true;
+	}
+
+	bool ReadCreatureSpellcasting(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("spellcasting"));
+		if (!Value.IsValid()) { return true; }
+		if (Value->Type == EJson::Null)
+		{
+			Creature.SpellcastingPresence = EDnd5eValuePresence::ExplicitNull;
+			return true;
+		}
+
+		const FString CastingPointer = AppendPointer(Pointer, TEXT("spellcasting"));
+		const TArray<TSharedPtr<FJsonValue>>* Blocks = nullptr;
+		if (!RequireArray(Value, CastingPointer, Blocks, State)) { return false; }
+
+		TArray<FDnd5eCreatureSpellcasting> Casting;
+		Casting.Reserve(Blocks->Num());
+		for (int32 Index = 0; Index < Blocks->Num(); ++Index)
+		{
+			const FString BlockPointer = AppendPointer(CastingPointer, FString::FromInt(Index));
+			TSharedPtr<FJsonObject> Block;
+			if (!RequireObject((*Blocks)[Index], BlockPointer, Block, State)) { return false; }
+
+			FDnd5eCreatureSpellcasting Entry;
+			const auto ReadText = [&](const TCHAR* Key, FString& Out)
+			{
+				return !FindExactField(*Block, Key).IsValid() ||
+					ReadRequiredString(*Block, Key, BlockPointer, Out, State);
+			};
+			const auto ReadContent = [&](const TCHAR* Key, TArray<FDnd5eContentBlock>& Out)
+			{
+				const auto Content = FindExactField(*Block, Key);
+				return !Content.IsValid() || ReadBlocks(Content, AppendPointer(BlockPointer, Key), Out, State);
+			};
+
+			FString ChargesItem;
+			if (!ReadText(TEXT("name"), Entry.Name) ||
+				!ReadText(TEXT("type"), Entry.SourceType) ||
+				!ReadText(TEXT("ability"), Entry.Ability) ||
+				!ReadText(TEXT("displayAs"), Entry.DisplayAs) ||
+				!ReadText(TEXT("chargesItem"), ChargesItem) ||
+				!ReadStrings(*Block, TEXT("hidden"), BlockPointer, Entry.HiddenGroups, State) ||
+				!ReadContent(TEXT("headerEntries"), Entry.Header) ||
+				!ReadContent(TEXT("footerEntries"), Entry.Footer) ||
+				!ReadCreatureSpellcastingLists(*Block, BlockPointer, Entry.Lists, State))
+			{
+				return false;
+			}
+			if (!ChargesItem.IsEmpty() && !ReadInlines(ChargesItem,
+				AppendPointer(BlockPointer, TEXT("chargesItem")), Entry.ChargesItem, State))
+			{
+				return false;
+			}
+			Casting.Add(MoveTemp(Entry));
+		}
+		Creature.Spellcasting = MoveTemp(Casting);
+		Creature.SpellcastingPresence = EDnd5eValuePresence::Present;
+		return true;
+	}
+
 	const TCHAR* DescribeJsonType(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid()) { return TEXT("Invalid"); }
@@ -1268,7 +1439,8 @@ namespace
 			ReadCreatureActionGroup(Object, TEXT("reaction"), TEXT("reactionHeader"), Pointer, Creature.Reactions, State) &&
 			ReadCreatureActionGroup(Object, TEXT("legendary"), TEXT("legendaryHeader"), Pointer, Creature.LegendaryActions, State) &&
 			ReadCreatureActionGroup(Object, TEXT("mythic"), TEXT("mythicHeader"), Pointer, Creature.MythicActions, State) &&
-			ReadCreatureLegendaryActionCounts(Object, Pointer, Creature, State);
+			ReadCreatureLegendaryActionCounts(Object, Pointer, Creature, State) &&
+			ReadCreatureSpellcasting(Object, Pointer, Creature, State);
 	}
 
 	void AuditCreatureRows(const FDnd5eJsonDocument& Document,
