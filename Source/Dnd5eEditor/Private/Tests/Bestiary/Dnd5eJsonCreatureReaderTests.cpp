@@ -626,7 +626,7 @@ bool FDnd5eCreatureCopyAuditTest::RunTest(const FString& Parameters)
 	Children.Context.RelativeFilePath = TEXT("children.json");
 	auto Middle = MakeDocument(TEXT(R"json({"monster":[
 		{"name":"Middle","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B"}},
-		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{"mode":"replaceTxt","replace":"old","with":"new"}}}},
+		{"name":"Deferred","source":"M","_copy":{"name":"Lantern Scout","source":"SYN-B","_mod":{"trait":{"mode":"syntheticUnsupported"}}}},
 		{"name":"Duplicate","source":"M"},
 		{"name":"duplicate","source":"m"}
 	]})json"));

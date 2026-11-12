@@ -439,4 +439,72 @@ bool FDnd5eCreatureCopyScalarTagsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Failed adjustments publish no result"), Merged.IsValid());
 	return !HasAnyErrors();
 }
+
+#if UE_ENABLE_ICU
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyNamedTextTest, "Dnd5e.Bestiary.Reader.CopyNamedText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyNamedTextTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","action":[{"name":"Moss","entries":["Moss"]}],
+			"trait":[{"name":"Moss","entries":["Moss"]}]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"*":{"mode":"replaceTxt","replace":"Bark","with":"Oak","props":["name"]},
+			"action":{"mode":"replaceTxt","replace":"Moss","with":"Bark","props":["name"]},
+			"actionHeader":{"mode":"replaceTxt","replace":"Moss","with":"Bark"}
+		}}},
+		{"name":"Invalid","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"action":{"mode":"replaceTxt","replace":"[","with":"Bark"}
+		}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Named text fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 3))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	if (!TestTrue(TEXT("Named replacement resolves"), ResolveCreatureCopy(Index,
+		{(*Rows)[1]->AsObject(), Context.RelativeFilePath, TEXT("/monster/1")}, Merged, Ancestors, State)))
+	{
+		return false;
+	}
+
+	const auto Action = Merged->GetArrayField(TEXT("action"))[0]->AsObject();
+	TestEqual(TEXT("Wildcard sees the named replacement"), Action->GetStringField(TEXT("name")), FString(TEXT("Oak")));
+	TestEqual(TEXT("Property selection preserves body text"), Action->GetArrayField(TEXT("entries"))[0]->AsString(),
+		FString(TEXT("Moss")));
+	TestEqual(TEXT("Named replacement leaves other fields intact"),
+		Merged->GetArrayField(TEXT("trait"))[0]->AsObject()->GetStringField(TEXT("name")), FString(TEXT("Moss")));
+	TestEqual(TEXT("Parent action remains intact"),
+		Parent->GetArrayField(TEXT("action"))[0]->AsObject()->GetStringField(TEXT("name")), FString(TEXT("Moss")));
+	TestFalse(TEXT("Absent header stays absent"), Merged->HasField(TEXT("actionHeader")));
+
+	Merged.Reset();
+	TestFalse(TEXT("Invalid named regex fails"), ResolveCreatureCopy(Index,
+		{(*Rows)[2]->AsObject(), Context.RelativeFilePath, TEXT("/monster/2")}, Merged, Ancestors, State));
+	TestTrue(TEXT("Invalid pattern points to the named operation"), Diagnostics.ContainsByPredicate(
+		[](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod/action/replace");
+		}));
+	return !HasAnyErrors();
+}
+#endif
+
 #endif

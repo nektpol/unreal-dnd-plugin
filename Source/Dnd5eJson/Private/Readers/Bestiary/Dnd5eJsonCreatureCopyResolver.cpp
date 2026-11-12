@@ -418,8 +418,13 @@ namespace
 #endif
 
 	bool ApplyCreatureReplaceText(const FJsonObject& Operation, const FString& Pointer,
-		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
+		const FString& ModPointer, FJsonObject& Merged, FReadState& State, const TCHAR* TargetField = nullptr)
 	{
+		if (TargetField)
+		{
+			const auto Existing = FindExactField(Merged, TargetField);
+			if (!Existing.IsValid() || Existing->Type == EJson::Null) { return true; }
+		}
 #if UE_ENABLE_ICU
 		FString PatternText, Replacement, Flags;
 		bool bTagInsensitive = false;
@@ -487,6 +492,10 @@ namespace
 
 		const auto IcuReplacement = CreatureTextToIcu(Replacement);
 		const FCreatureTextReplacement Rule{*Pattern, IcuReplacement, Pointer, bTagInsensitive};
+		if (TargetField)
+		{
+			return RewriteCreatureTextField(Merged, TargetField, bRewriteStrings, Properties, Rule, State);
+		}
 		static const TCHAR* Fields[] = {
 			TEXT("action"), TEXT("bonus"), TEXT("reaction"), TEXT("trait"), TEXT("legendary"),
 			TEXT("mythic"), TEXT("variant"), TEXT("spellcasting"), TEXT("actionHeader"), TEXT("bonusHeader"),
@@ -1247,7 +1256,13 @@ namespace
 			Field.Equals(TEXT("mythic"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("variant"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("spellcasting"), ESearchCase::CaseSensitive);
-		if (!bRoot && !bScalarTarget && !bUniqueArray)
+		const bool bNamedTextTarget = bScalarTarget ||
+			Field.Equals(TEXT("actionHeader"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("bonusHeader"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("reactionHeader"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("legendaryHeader"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("mythicHeader"), ESearchCase::CaseSensitive);
+		if (!bRoot && !bNamedTextTarget && !bUniqueArray)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier target is deferred: ") + Field);
@@ -1280,12 +1295,20 @@ namespace
 			TSharedPtr<FJsonObject> Operation;
 			if (!RequireObject(Value, Pointer, Operation, State)) { return false; }
 
-			if (bScalarTarget)
+			if (bNamedTextTarget)
 			{
 				FString Mode;
 				if (!ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
+				if (Mode.Equals(TEXT("replaceTxt"), ESearchCase::CaseSensitive))
+				{
+					if (!ApplyCreatureReplaceText(*Operation, Pointer, ModPointer, Merged, State, *Field))
+					{
+						return false;
+					}
+					continue;
+				}
 				const bool bDc = Mode.Equals(TEXT("scalarAddDc"), ESearchCase::CaseSensitive);
-				if (bDc || Mode.Equals(TEXT("scalarAddHit"), ESearchCase::CaseSensitive))
+				if (bScalarTarget && (bDc || Mode.Equals(TEXT("scalarAddHit"), ESearchCase::CaseSensitive)))
 				{
 					if (!ApplyCreatureScalarTagModifier(Merged, Field, *Operation, bDc, Pointer, State))
 					{
