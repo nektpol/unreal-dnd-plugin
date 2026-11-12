@@ -9,6 +9,9 @@
 
 class UDnd5eEditorBestiaryDatasetSubsystem;
 struct FDnd5eCreature;
+class SScrollBox;
+class SVerticalBox;
+namespace Dnd5eBestiaryStatBlockText { struct FStatBlock; }
 
 class SDnd5eBestiaryBrowser : public SCompoundWidget
 {
@@ -49,5 +52,8 @@ private:
 	FString Filter;
 	FText CardTitle;
 	FText CardSource;
-	FText CardBody;
+	TSharedPtr<SScrollBox> StatBlockScroll;
+	TSharedPtr<SVerticalBox> StatBlockBody;
+	void RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card);
+	void ShowStatBlockMessage(const FText& Message);
 };

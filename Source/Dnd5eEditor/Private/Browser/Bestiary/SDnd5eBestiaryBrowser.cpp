@@ -13,6 +13,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Browser/Bestiary/Dnd5eBestiaryStatBlockText.h"
+#include "Widgets/Layout/SUniformGridPanel.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eBestiaryBrowser"
 
@@ -46,7 +47,7 @@ void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
         ]
         + SSplitter::Slot().Value(0.65f)
         [
-            SNew(SScrollBox)
+            SAssignNew(StatBlockScroll, SScrollBox)
             + SScrollBox::Slot().Padding(12)
             [
                 SNew(SVerticalBox)
@@ -74,7 +75,7 @@ void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
                 ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0, 8)
                 [
-                    SNew(STextBlock).AutoWrapText(true).Text_Lambda([this]() { return CardBody; })
+                    SAssignNew(StatBlockBody, SVerticalBox)
                 ]
             ]
         ]
@@ -143,30 +144,6 @@ void SDnd5eBestiaryBrowser::HandleSearchChanged(const FText& Text)
     ApplyFilter();
 }
 
-void SDnd5eBestiaryBrowser::HandleSelectionChanged(FRowPtr Row, ESelectInfo::Type SelectInfo)
-{
-    CardTitle = FText::GetEmpty();
-    CardSource = FText::GetEmpty();
-    CardBody = FText::GetEmpty();
-
-    const auto* DatasetSession = Session.Get();
-    const auto* Catalog = DatasetSession ? DatasetSession->GetCatalog() : nullptr;
-    if (!Catalog)
-    {
-        CardBody = LOCTEXT("NoCatalog", "Load a Bestiary dataset from the Tools menu.");
-        return;
-    }
-
-    FDnd5eCreature Creature;
-    if (!Row || !Catalog->TryGetCreature(Row->Id, Creature))
-    {
-        CardBody = LOCTEXT("SelectCreature", "Select a creature to view its stat block.");
-        return;
-    }
-
-    ShowCreature(Creature);
-}
-
 TSharedRef<ITableRow> SDnd5eBestiaryBrowser::GenerateRow(FRowPtr Row, const TSharedRef<STableViewBase>& OwnerTable)
 {
     return SNew(STableRow<FRowPtr>, OwnerTable)
@@ -182,11 +159,110 @@ FText SDnd5eBestiaryBrowser::GetSummary() const
         FText::AsNumber(VisibleRows.Num()), FText::AsNumber(AllRows.Num()));
 }
 
+void SDnd5eBestiaryBrowser::HandleSelectionChanged(FRowPtr Row, ESelectInfo::Type SelectInfo)
+{
+    CardTitle = FText::GetEmpty();
+    CardSource = FText::GetEmpty();
+
+    const auto* DatasetSession = Session.Get();
+    const auto* Catalog = DatasetSession ? DatasetSession->GetCatalog() : nullptr;
+    if (!Catalog)
+    {
+        ShowStatBlockMessage(LOCTEXT("NoCatalog", "Load a Bestiary dataset from the Tools menu."));
+        return;
+    }
+
+    FDnd5eCreature Creature;
+    if (!Row || !Catalog->TryGetCreature(Row->Id, Creature))
+    {
+        ShowStatBlockMessage(LOCTEXT("SelectCreature", "Select a creature to view its stat block."));
+        return;
+    }
+
+    ShowCreature(Creature);
+}
+
 void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
 {
     CardTitle = FText::FromString(Creature.Header.DisplayName);
     CardSource = Dnd5eBrowserText::FormatSource(Creature.Header);
-    CardBody = Dnd5eBestiaryStatBlockText::Format(Creature);
+    RebuildStatBlock(Dnd5eBestiaryStatBlockText::Build(Creature));
+}
+
+void SDnd5eBestiaryBrowser::ShowStatBlockMessage(const FText& Message)
+{
+    StatBlockBody->ClearChildren();
+    StatBlockBody->AddSlot().AutoHeight()
+    [
+        SNew(STextBlock).Text(Message).AutoWrapText(true)
+    ];
+    StatBlockScroll->ScrollToStart();
+}
+
+void SDnd5eBestiaryBrowser::RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card)
+{
+    StatBlockBody->ClearChildren();
+    StatBlockScroll->ScrollToStart();
+
+    const auto AddText = [this](const FText& Text, const FMargin& Padding)
+    {
+        if (Text.IsEmpty()) { return; }
+        StatBlockBody->AddSlot().AutoHeight().Padding(Padding)
+        [
+            SNew(STextBlock).Text(Text).AutoWrapText(true)
+        ];
+    };
+
+    AddText(Card.Classification, FMargin(0, 0, 0, 8));
+    AddText(Card.Vitals, FMargin(0, 0, 0, 8));
+
+    if (!Card.Abilities.IsEmpty())
+    {
+        TSharedRef<SUniformGridPanel> Grid = SNew(SUniformGridPanel).SlotPadding(FMargin(4));
+        for (int32 Index = 0; Index < Card.Abilities.Num(); ++Index)
+        {
+            const auto& Ability = Card.Abilities[Index];
+            Grid->AddSlot(Index % 3, Index / 3)
+            [
+                SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
+                    .Text(Ability.Label)
+                ]
+                + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+                [
+                    SNew(STextBlock).Text(Ability.Value)
+                ]
+            ];
+        }
+        StatBlockBody->AddSlot().AutoHeight().Padding(0, 0, 0, 8)
+        [
+            Grid
+        ];
+    }
+
+    AddText(Card.Facts, FMargin(0, 0, 0, 8));
+    for (const auto& Section : Card.Sections)
+    {
+        StatBlockBody->AddSlot().AutoHeight().Padding(0, 4, 0, 4)
+        [
+            SNew(SSeparator)
+        ];
+        StatBlockBody->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+        [
+            SNew(STextBlock)
+            .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
+            .Text(Section.Heading)
+        ];
+        AddText(Section.Body, FMargin(0, 0, 0, 8));
+    }
+
+    if (StatBlockBody->GetChildren()->Num() == 0)
+    {
+        ShowStatBlockMessage(LOCTEXT("NoStats", "No stat block values supplied."));
+    }
 }
 
 #undef LOCTEXT_NAMESPACE

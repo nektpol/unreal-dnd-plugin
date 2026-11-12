@@ -213,14 +213,6 @@ namespace
         return FString::Printf(TEXT("%d (%s)"), Score, *SignedBonus(Modifier));
     }
 
-    void AppendAbilityScores(FString& Out, const FDnd5eCreatureAbilityScores& Scores)
-    {
-        if (!Scores.bHasScores) { return; }
-        AppendPreview(Out, FString::Printf(TEXT("\nSTR %s    DEX %s    CON %s\nINT %s    WIS %s    CHA %s\n\n"),
-            *FormatAbilityScore(Scores.Strength), *FormatAbilityScore(Scores.Dexterity), *FormatAbilityScore(Scores.Constitution),
-            *FormatAbilityScore(Scores.Intelligence), *FormatAbilityScore(Scores.Wisdom), *FormatAbilityScore(Scores.Charisma)));
-    }
-
     FString FormatBonus(bool bHasNumericBonus, int32 Bonus, const FString& Expression)
     {
         return bHasNumericBonus ? SignedBonus(Bonus) : Expression;
@@ -363,37 +355,61 @@ namespace
         }
     }
 
-    void AppendEntryGroup(FString& Out, const TCHAR* Label, const TArray<FDnd5eCreatureEntry>& Entries,
-        const TArray<FDnd5eContentBlock>* Header = nullptr)
+    void AddSection(Dnd5eBestiaryStatBlockText::FStatBlock& Card, const TCHAR* Heading, FString Body)
     {
-        if (Entries.IsEmpty() && (!Header || Header->IsEmpty())) { return; }
-        AppendPreview(Out, FString::Printf(TEXT("\n%s\n"), Label));
-        if (Header) { AppendDescription(Out, *Header); }
+        if (Body.IsEmpty()) { return; }
+        Card.Sections.Add({FText::FromString(Heading), FinishPreview(MoveTemp(Body))});
+    }
+
+    void AddEntrySection(Dnd5eBestiaryStatBlockText::FStatBlock& Card, const TCHAR* Heading,
+        const TArray<FDnd5eCreatureEntry>& Entries, const TArray<FDnd5eContentBlock>* Header = nullptr,
+        const FString& Tail = FString())
+    {
+        FString Body;
+        if (Header) { AppendDescription(Body, *Header); }
         for (const FDnd5eCreatureEntry& Entry : Entries)
         {
-            if (!Entry.Name.IsEmpty()) { AppendPreview(Out, Entry.Name + TEXT("\n")); }
-            AppendDescription(Out, Entry.Entries);
+            if (!Entry.Name.IsEmpty()) { AppendPreview(Body, Entry.Name + TEXT("\n")); }
+            AppendDescription(Body, Entry.Entries);
         }
+        AppendPreview(Body, Tail);
+        AddSection(Card, Heading, MoveTemp(Body));
     }
 }
 
-FText Dnd5eBestiaryStatBlockText::Format(const FDnd5eCreature& Creature)
+Dnd5eBestiaryStatBlockText::FStatBlock Dnd5eBestiaryStatBlockText::Build(const FDnd5eCreature& Creature)
 {
     using namespace Dnd5eBrowserText;
 
-    FString Body;
-    const FString Classification = FormatClassification(Creature);
-    if (!Classification.IsEmpty()) { AppendPreview(Body, Classification + TEXT("\n\n")); }
-    AppendStat(Body, TEXT("Armor Class"), FormatArmorClass(Creature.ArmorClasses));
-    AppendStat(Body, TEXT("Hit Points"), FormatHitPoints(Creature.HitPoints));
-    AppendStat(Body, TEXT("Speed"), FormatMovement(Creature.Movement));
-    AppendAbilityScores(Body, Creature.AbilityScores);
-    AppendStat(Body, TEXT("Saving Throws"), FormatSavingThrows(Creature.SavingThrows));
-    AppendStat(Body, TEXT("Skills"), FormatSkills(Creature));
-    AppendStat(Body, TEXT("Damage Vulnerabilities"), FormatDefenseList(Creature.DamageVulnerabilities));
-    AppendStat(Body, TEXT("Damage Resistances"), FormatDefenseList(Creature.DamageResistances));
-    AppendStat(Body, TEXT("Damage Immunities"), FormatDefenseList(Creature.DamageImmunities));
-    AppendStat(Body, TEXT("Condition Immunities"), FormatDefenseList(Creature.ConditionImmunities));
+    FStatBlock Card;
+    Card.Classification = FText::FromString(FormatClassification(Creature));
+
+    FString Vitals;
+    AppendStat(Vitals, TEXT("Armor Class"), FormatArmorClass(Creature.ArmorClasses));
+    AppendStat(Vitals, TEXT("Hit Points"), FormatHitPoints(Creature.HitPoints));
+    AppendStat(Vitals, TEXT("Speed"), FormatMovement(Creature.Movement));
+    if (!Vitals.IsEmpty()) { Card.Vitals = FinishPreview(MoveTemp(Vitals)); }
+
+    const auto& Scores = Creature.AbilityScores;
+    if (Scores.bHasScores)
+    {
+        Card.Abilities = {
+            {FText::FromString(TEXT("STR")), FText::FromString(FormatAbilityScore(Scores.Strength))},
+            {FText::FromString(TEXT("DEX")), FText::FromString(FormatAbilityScore(Scores.Dexterity))},
+            {FText::FromString(TEXT("CON")), FText::FromString(FormatAbilityScore(Scores.Constitution))},
+            {FText::FromString(TEXT("INT")), FText::FromString(FormatAbilityScore(Scores.Intelligence))},
+            {FText::FromString(TEXT("WIS")), FText::FromString(FormatAbilityScore(Scores.Wisdom))},
+            {FText::FromString(TEXT("CHA")), FText::FromString(FormatAbilityScore(Scores.Charisma))}
+        };
+    }
+
+    FString Facts;
+    AppendStat(Facts, TEXT("Saving Throws"), FormatSavingThrows(Creature.SavingThrows));
+    AppendStat(Facts, TEXT("Skills"), FormatSkills(Creature));
+    AppendStat(Facts, TEXT("Damage Vulnerabilities"), FormatDefenseList(Creature.DamageVulnerabilities));
+    AppendStat(Facts, TEXT("Damage Resistances"), FormatDefenseList(Creature.DamageResistances));
+    AppendStat(Facts, TEXT("Damage Immunities"), FormatDefenseList(Creature.DamageImmunities));
+    AppendStat(Facts, TEXT("Condition Immunities"), FormatDefenseList(Creature.ConditionImmunities));
 
     TArray<FString> Senses = Creature.Senses;
     if (Creature.PassivePerceptionPresence == EDnd5eValuePresence::Present)
@@ -402,23 +418,53 @@ FText Dnd5eBestiaryStatBlockText::Format(const FDnd5eCreature& Creature)
             ? FString::FromInt(Creature.PassivePerception) : Creature.PassivePerceptionFormula;
         Senses.Add(TEXT("passive Perception ") + Passive);
     }
-    AppendStat(Body, TEXT("Senses"), FString::Join(Senses, TEXT(", ")));
-    AppendStat(Body, TEXT("Languages"), FString::Join(Creature.Languages, TEXT(", ")));
-    AppendStat(Body, TEXT("Challenge"), FormatChallenge(Creature.ChallengeRating));
-    AppendEntryGroup(Body, TEXT("Traits"), Creature.Traits);
-    AppendSpellcasting(Body, Creature.Spellcasting);
-    AppendEntryGroup(Body, TEXT("Actions"), Creature.Actions);
-    AppendEntryGroup(Body, TEXT("Bonus Actions"), Creature.BonusActions);
-    AppendEntryGroup(Body, TEXT("Reactions"), Creature.Reactions.Entries, &Creature.Reactions.Header);
-    AppendEntryGroup(Body, TEXT("Legendary Actions"), Creature.LegendaryActions.Entries, &Creature.LegendaryActions.Header);
+    AppendStat(Facts, TEXT("Senses"), FString::Join(Senses, TEXT(", ")));
+    AppendStat(Facts, TEXT("Languages"), FString::Join(Creature.Languages, TEXT(", ")));
+    AppendStat(Facts, TEXT("Challenge"), FormatChallenge(Creature.ChallengeRating));
+    if (!Facts.IsEmpty()) { Card.Facts = FinishPreview(MoveTemp(Facts)); }
+
+    AddEntrySection(Card, TEXT("Traits"), Creature.Traits);
+    FString Spellcasting;
+    AppendSpellcasting(Spellcasting, Creature.Spellcasting);
+    AddSection(Card, TEXT("Spellcasting"), MoveTemp(Spellcasting));
+    AddEntrySection(Card, TEXT("Actions"), Creature.Actions);
+    AddEntrySection(Card, TEXT("Bonus Actions"), Creature.BonusActions);
+    AddEntrySection(Card, TEXT("Reactions"), Creature.Reactions.Entries, &Creature.Reactions.Header);
+
+    FString LegendaryCounts;
     if (Creature.bHasLegendaryActionCount)
     {
-        AppendStat(Body, TEXT("Legendary actions"), FString::FromInt(Creature.LegendaryActionCount));
+        AppendStat(LegendaryCounts, TEXT("Legendary actions"), FString::FromInt(Creature.LegendaryActionCount));
     }
     if (Creature.bHasLegendaryActionCountInLair)
     {
-        AppendStat(Body, TEXT("Legendary actions in lair"), FString::FromInt(Creature.LegendaryActionCountInLair));
+        AppendStat(LegendaryCounts, TEXT("Legendary actions in lair"), FString::FromInt(Creature.LegendaryActionCountInLair));
     }
-    AppendEntryGroup(Body, TEXT("Mythic Actions"), Creature.MythicActions.Entries, &Creature.MythicActions.Header);
-    return FinishPreview(MoveTemp(Body));
+    AddEntrySection(Card, TEXT("Legendary Actions"), Creature.LegendaryActions.Entries,
+        &Creature.LegendaryActions.Header, LegendaryCounts);
+    AddEntrySection(Card, TEXT("Mythic Actions"), Creature.MythicActions.Entries, &Creature.MythicActions.Header);
+    return Card;
+}
+
+FText Dnd5eBestiaryStatBlockText::Format(const FDnd5eCreature& Creature)
+{
+    using namespace Dnd5eBrowserText;
+
+    const FStatBlock Card = Build(Creature);
+    FString Preview;
+    if (!Card.Classification.IsEmpty()) { AppendPreview(Preview, Card.Classification.ToString() + TEXT("\n\n")); }
+    if (!Card.Vitals.IsEmpty()) { AppendPreview(Preview, Card.Vitals.ToString() + TEXT("\n")); }
+    for (int32 Index = 0; Index < Card.Abilities.Num(); ++Index)
+    {
+        const FAbility& Ability = Card.Abilities[Index];
+        AppendPreview(Preview, Ability.Label.ToString() + TEXT(" ") + Ability.Value.ToString());
+        AppendPreview(Preview, Index % 3 == 2 ? TEXT("\n") : TEXT("    "));
+    }
+    if (!Card.Facts.IsEmpty()) { AppendPreview(Preview, Card.Facts.ToString() + TEXT("\n")); }
+    for (const FSection& Section : Card.Sections)
+    {
+        AppendPreview(Preview, TEXT("\n") + Section.Heading.ToString() + TEXT("\n"));
+        AppendPreview(Preview, Section.Body.ToString() + TEXT("\n"));
+    }
+    return FinishPreview(MoveTemp(Preview));
 }
