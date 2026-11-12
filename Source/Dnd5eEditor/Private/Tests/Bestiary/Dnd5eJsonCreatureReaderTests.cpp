@@ -1057,6 +1057,60 @@ bool FDnd5eCreatureSpellcastingTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureBatchReadTest, "Dnd5e.Bestiary.Reader.BatchRead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureBatchReadTest::RunTest(const FString& Parameters)
+{
+	auto Children = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Child","source":"COPY","_copy":{"name":"Lantern Scout","source":"SYN-B",
+			"_mod":{"_":{"mode":"replaceSpells","daily":{"1e":[{"replace":"Original spell","with":"New spell"}]}}}}},
+		false
+	]})json"));
+	Children.Context.RelativeFilePath = TEXT("children.json");
+	const FString ParentJson = FString(StatBlock).Replace(TEXT("\"page\":4"),
+		TEXT("\"page\":4,\"spellcasting\":[{\"daily\":{\"1e\":[\"Original spell\"]}}]"));
+	auto Parent = MakeDocument(ParentJson);
+	Parent.Context.RelativeFilePath = TEXT("parent.json");
+	auto Foreign = Parent;
+	Foreign.Context.DatasetNamespace = TEXT("foreign");
+	const TArray<FDnd5eJsonDocument> Documents{Children, Parent, Foreign};
+
+	const auto Batch = FDnd5eJsonCreatureReader::ReadDocuments(Documents);
+	if (!TestTrue(TEXT("Successful rows are materialized from a partial batch"),
+		Batch.Documents.Num() == 3 && Batch.Documents[0].Rows.Num() == 2 && Batch.Creatures.Num() == 2))
+	{
+		return false;
+	}
+
+	const auto& Copy = Batch.Creatures[0];
+	const auto& Original = Batch.Creatures[1];
+	TestTrue(TEXT("A cross-file copy retains child identity and provenance"),
+		Copy.Header.DisplayName == TEXT("Child") && Original.Header.DisplayName == TEXT("Lantern Scout") &&
+		Copy.Header.Provenance.Num() > 0 && Copy.Header.Provenance[0].SourceId == TEXT("COPY") &&
+		Copy.Header.Provenance[0].RelativeFilePath == TEXT("children.json"));
+	const auto HasSpellText = [](const FDnd5eCreature& Creature, const TCHAR* Expected)
+	{
+		if (Creature.Spellcasting.Num() != 1 || Creature.Spellcasting[0].Lists.Num() != 1) { return false; }
+		const auto& List = Creature.Spellcasting[0].Lists[0];
+		if (List.Spells.Num() != 1 || List.Spells[0].Content.Num() != 1) { return false; }
+		const auto* Text = List.Spells[0].Content[0].Payload.GetPtr<FDnd5eTextContent>();
+		return List.Group == TEXT("daily") && List.Key == TEXT("1e") && Text && Text->Text == Expected;
+	};
+	TestTrue(TEXT("The public batch returns the edited spell and preserves the original"),
+		HasSpellText(Copy, TEXT("New spell")) && HasSpellText(Original, TEXT("Original spell")));
+	TestTrue(TEXT("Invalid rows and namespace mismatches keep their diagnostics"),
+		Batch.Documents[0].Rows[1].Status == EDnd5eJsonReadStatus::Failure &&
+		!Batch.Documents[0].Rows[1].Diagnostics.IsEmpty() &&
+		Batch.Documents[2].Status == EDnd5eJsonReadStatus::Failure && !Batch.Documents[2].Diagnostics.IsEmpty());
+	const auto Audit = FDnd5eJsonCreatureReader::AuditDocuments(Documents);
+	TestTrue(TEXT("Only the audit collects source field inventory"), Audit.Num() == 3 && Audit[0].Rows.Num() == 2 &&
+		Audit[0].Rows[0].Status == Batch.Documents[0].Rows[0].Status &&
+		!Audit[0].Rows[0].FieldShapes.IsEmpty() && Batch.Documents[0].Rows[0].FieldShapes.IsEmpty());
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

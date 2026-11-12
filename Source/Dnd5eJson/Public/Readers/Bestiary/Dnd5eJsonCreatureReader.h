@@ -1,4 +1,4 @@
-﻿// Developed by Neko Creative Technologies
+// Developed by Neko Creative Technologies
 
 #pragma once
 
@@ -49,6 +49,12 @@ struct DND5EJSON_API FDnd5eJsonCreatureReadResult
 	TArray<FDnd5eDiagnostic> Diagnostics;
 };
 
+struct DND5EJSON_API FDnd5eCreatureBatchReadResult
+{
+	TArray<FDnd5eCreature> Creatures;
+	TArray<FDnd5eCreatureDocumentAudit> Documents;
+};
+
 class DND5EJSON_API FDnd5eJsonCreatureReader
 {
 public:
@@ -56,4 +62,5 @@ public:
 	static FDnd5eCreatureDocumentAudit AuditDocument(const FDnd5eJsonDocument& Document);
 	static TArray<FDnd5eCreatureDocumentAudit> AuditDocuments(TArrayView<const FDnd5eJsonDocument> Documents);
 	static TArray<FDnd5eCreatureDocumentAudit> AuditDocuments(TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument& TemplateDocument);
+	static FDnd5eCreatureBatchReadResult ReadDocuments(TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument* TemplateDocument = nullptr);
 };

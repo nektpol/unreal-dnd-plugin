@@ -1445,7 +1445,7 @@ namespace
 
 	void AuditCreatureRows(const FDnd5eJsonDocument& Document,
 		const TArray<TSharedPtr<FJsonValue>>& Rows, const FDnd5eCreatureCopyIndex* CopyIndex,
-		FDnd5eCreatureDocumentAudit& Report)
+		FDnd5eCreatureDocumentAudit& Report, TArray<FDnd5eCreature>* OutCreatures = nullptr)
 	{
 		Report.Rows.Reserve(Rows.Num());
 		for (int32 Index = 0; Index < Rows.Num(); ++Index)
@@ -1467,7 +1467,10 @@ namespace
 				Row.SourceId = Source->AsString();
 			}
 			Row.bIsCopy = FindExactField(*Object, TEXT("_copy")).IsValid();
-			InventoryCreatureFields(*Object, Row.JsonPointer, Row.FieldShapes);
+			if (!OutCreatures)
+			{
+				InventoryCreatureFields(*Object, Row.JsonPointer, Row.FieldShapes);
+			}
 
 			TSharedPtr<FJsonObject> Assembled = Object;
 			TArray<FDnd5eCreatureCopyRow> Ancestors;
@@ -1482,6 +1485,10 @@ namespace
 			if (ReadCreatureRow(*Assembled, Row.JsonPointer, Candidate, RowState))
 			{
 				Row.Status = EDnd5eJsonReadStatus::Success;
+				if (OutCreatures)
+				{
+					OutCreatures->Add(MoveTemp(Candidate));
+				}
 			}
 		}
 	}
@@ -1582,8 +1589,8 @@ static bool IndexCreatureTemplates(const FDnd5eJsonDocument& Document, const FSt
 	return true;
 }
 
-static TArray<FDnd5eCreatureDocumentAudit> AuditCreatureDocuments(
-	TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument* TemplateDocument)
+static TArray<FDnd5eCreatureDocumentAudit> ProcessCreatureDocuments(
+	TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument* TemplateDocument, TArray<FDnd5eCreature>* OutCreatures)
 {
 	using namespace Dnd5eJsonReader;
 	using FCreatureRows = TArray<TSharedPtr<FJsonValue>>;
@@ -1632,7 +1639,7 @@ static TArray<FDnd5eCreatureDocumentAudit> AuditCreatureDocuments(
 		if (const FCreatureRows* Rows = RowsByDocument[DocumentIndex])
 		{
 			auto& Report = Reports[DocumentIndex];
-			AuditCreatureRows(Documents[DocumentIndex], *Rows, &CopyIndex, Report);
+			AuditCreatureRows(Documents[DocumentIndex], *Rows, &CopyIndex, Report, OutCreatures);
 			Report.Status = EDnd5eJsonReadStatus::Success;
 		}
 	}
@@ -1642,11 +1649,19 @@ static TArray<FDnd5eCreatureDocumentAudit> AuditCreatureDocuments(
 TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
 	TArrayView<const FDnd5eJsonDocument> Documents)
 {
-	return AuditCreatureDocuments(Documents, nullptr);
+	return ProcessCreatureDocuments(Documents, nullptr, nullptr);
 }
 
 TArray<FDnd5eCreatureDocumentAudit> FDnd5eJsonCreatureReader::AuditDocuments(
 	TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument& TemplateDocument)
 {
-	return AuditCreatureDocuments(Documents, &TemplateDocument);
+	return ProcessCreatureDocuments(Documents, &TemplateDocument, nullptr);
+}
+
+FDnd5eCreatureBatchReadResult FDnd5eJsonCreatureReader::ReadDocuments(
+	TArrayView<const FDnd5eJsonDocument> Documents, const FDnd5eJsonDocument* TemplateDocument)
+{
+	FDnd5eCreatureBatchReadResult Result;
+	Result.Documents = ProcessCreatureDocuments(Documents, TemplateDocument, &Result.Creatures);
+	return Result;
 }
