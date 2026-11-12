@@ -9,6 +9,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Readers/Bestiary/Dnd5eJsonCreatureCatalogLoader.h"
 #include "Readers/Bestiary/Dnd5eJsonCreatureReader.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -219,18 +220,19 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	TestEqual(TEXT("All indexed files opened"), FilesOpened, Files.Num());
 	TestEqual(TEXT("All file envelopes traversed"), BadDocuments, 0);
 	TestEqual(TEXT("Every visited row has a conversion outcome"), Converted + Failed, RowsVisited);
-	auto Batch = FDnd5eJsonCreatureReader::ReadDocuments(Documents, bLoadedTemplates ? &TemplateDocument : nullptr);
-	TestEqual(TEXT("Batch materializes every converted row"), Batch.Creatures.Num(), Converted);
+	FDnd5eJsonCreatureCatalogLoadRequest Request;
+	Request.DatasetRoot = FPaths::ConvertRelativePathToFull(Root);
+	Request.DatasetNamespace = TEXT("local-bestiary-audit");
+	if (bLoadedTemplates) { Request.TemplateFile = TEXT("template.json"); }
 	FDnd5eCreatureCatalog Catalog;
-	TArray<FDnd5eDiagnostic> CatalogDiagnostics;
-	if (TestTrue(TEXT("Snapshot records publish to the native catalog"),
-		Catalog.ReplaceCreatures(MoveTemp(Batch.Creatures), CatalogDiagnostics)))
+	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	if (TestTrue(TEXT("Indexed loader publishes the snapshot catalog"), Loaded.Status == EDnd5eJsonReadStatus::Success))
 	{
 		TestEqual(TEXT("Catalog exposes every converted row"), Catalog.GetCreatureCount(), Converted);
 	}
 	else
 	{
-		for (const auto& Diagnostic : CatalogDiagnostics)
+		for (const auto& Diagnostic : Loaded.Diagnostics)
 		{
 			AddError(Diagnostic.Message + TEXT(" ") + Diagnostic.RelativeFilePath + Diagnostic.JsonPointer);
 		}

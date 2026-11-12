@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Catalog/Dnd5eCreatureCatalog.h"
+#include "Readers/Bestiary/Dnd5eJsonCreatureCatalogLoader.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
 #include "Readers/Items/Dnd5eJsonItemCatalogLoader.h"
 #include "Readers/Spells/Dnd5eJsonSpellCatalogLibrary.h"
@@ -466,6 +468,68 @@ bool FDnd5eOfflineItemLoaderFailureTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Failed requests cannot affect the retained objects"), Items->GetRecordCount() == 1 &&
 		Definitions->GetDefinitionCount() == 1);
+	return !HasAnyErrors();
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eJsonCreatureLoaderTest, "Dnd5e.Bestiary.Loader.Indexed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eJsonCreatureLoaderTest::RunTest(const FString& Parameters)
+{
+	const FLoaderFiles Files;
+	if (!TestTrue(TEXT("Write indexed creature fixtures"),
+		Files.Write(TEXT("index.json"), TEXT(R"json({"B":"z-parent.json","A":"a-child.json","ALIAS":"z-parent.json"})json")) &&
+		Files.Write(TEXT("z-parent.json"), TEXT(R"json({"monster":[
+			{"name":"Parent","source":"B","size":["M"],"type":"beast","languages":["Original"]}
+		]})json")) &&
+		Files.Write(TEXT("a-child.json"), TEXT(R"json({"monster":[
+			{"name":"Child","source":"A","_copy":{"name":"Parent","source":"B","_templates":[{"name":"Language","source":"SYN"}]}}
+		]})json")) &&
+		Files.Write(TEXT("template.json"), TEXT(R"json({"monsterTemplate":[
+			{"name":"Language","source":"SYN","apply":{"_mod":{"languages":{"mode":"appendIfNotExistsArr","items":"Added"}}}}
+		]})json"))))
+	{
+		return false;
+	}
+
+	FDnd5eJsonCreatureCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("loader-bestiary");
+	Request.TemplateFile = TEXT("template.json");
+	FDnd5eCreatureCatalog Catalog;
+	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	if (!TestTrue(TEXT("Load deduplicates files and publishes the batch"), Loaded.Status == EDnd5eJsonReadStatus::Success &&
+		Loaded.CreatureCount == 2 && Loaded.Documents.Num() == 2 && Catalog.GetCreatureCount() == 2))
+	{
+		return false;
+	}
+
+	const auto Ids = Catalog.QueryCreatureIds({});
+	FDnd5eCreature Child;
+	TestTrue(TEXT("Sorted inputs resolve a later parent and apply the selected template"),
+		Ids.Num() == 2 && Catalog.TryGetCreature(Ids[0], Child) && Child.Header.DisplayName == TEXT("Child") &&
+		Child.Languages.Num() == 2 && Child.Languages[1] == TEXT("Added"));
+
+	if (!TestTrue(TEXT("Write invalid template"), Files.Write(TEXT("template.json"), TEXT(R"json({"monsterTemplate":false})json"))))
+	{
+		return false;
+	}
+	const auto Invalid = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	TestTrue(TEXT("Invalid template keeps diagnostics and the active catalog"),
+		Invalid.Status == EDnd5eJsonReadStatus::Failure && Invalid.CreatureCount == 0 &&
+		Invalid.Documents.Num() == 2 && !Invalid.Documents[0].Diagnostics.IsEmpty() &&
+		Catalog.QueryCreatureIds({}) == Ids);
+
+	if (!TestTrue(TEXT("Write traversal fixture"),
+		Files.Write(TEXT("index.json"), TEXT(R"json({"A":"../outside.json"})json"))))
+	{
+		return false;
+	}
+	const auto Traversal = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	TestTrue(TEXT("Invalid file path keeps the active catalog"),
+		Traversal.Status == EDnd5eJsonReadStatus::Failure && !Traversal.Diagnostics.IsEmpty() &&
+		Traversal.Documents.IsEmpty() && Catalog.QueryCreatureIds({}) == Ids);
 	return !HasAnyErrors();
 }
 
