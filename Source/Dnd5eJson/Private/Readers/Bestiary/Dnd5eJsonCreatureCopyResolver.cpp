@@ -793,13 +793,65 @@ namespace
 		return true;
 	}
 
-	bool ApplyCreatureReplaceSpells(FJsonObject& Merged, const FJsonObject& Operation,
+	bool RemoveCreatureSpellList(FJsonObject& Target, const FString& Field,
+		const TSharedPtr<FJsonValue>& InstructionsValue, const FString& Pointer, FReadState& State)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Instructions = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Existing = nullptr;
+		if (!RequireArray(InstructionsValue, Pointer, Instructions, State) ||
+			!RequireArray(FindExactField(Target, *Field), Pointer, Existing, State))
+		{
+			return false;
+		}
+
+		TArray<FString> Selectors;
+		Selectors.Reserve(Instructions->Num());
+		for (int32 Index = 0; Index < Instructions->Num(); ++Index)
+		{
+			const auto& Selector = (*Instructions)[Index];
+			if (!Selector.IsValid() || Selector->Type != EJson::String)
+			{
+				return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, FString::FromInt(Index)),
+					TEXT("Expected a spell string to remove."));
+			}
+			Selectors.Add(Selector->AsString());
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Remaining;
+		Remaining.Reserve(Existing->Num());
+		for (const auto& Entry : *Existing)
+		{
+			if (Entry.IsValid() && Entry->Type == EJson::String)
+			{
+				const FString Spell = Entry->AsString();
+				if (Selectors.ContainsByPredicate([&Spell](const FString& Selector)
+				{
+					return Spell.Equals(Selector, ESearchCase::CaseSensitive);
+				}))
+				{
+					continue;
+				}
+			}
+			Remaining.Add(Entry);
+		}
+		Target.SetArrayField(Field, MoveTemp(Remaining));
+		return true;
+	}
+
+	bool ApplyCreatureSpellListEdits(FJsonObject& Merged, const FJsonObject& Operation, bool bRemove,
 		const FString& Pointer, const FString& ModPointer, FReadState& State)
 	{
 		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("spells"), TEXT("daily")}, Pointer, State))
 		{
 			return false;
 		}
+
+		const auto EditList = [bRemove, &ModPointer, &State](FJsonObject& Target, const FString& Field,
+			const TSharedPtr<FJsonValue>& Instructions, const FString& EditPointer)
+		{
+			return bRemove ? RemoveCreatureSpellList(Target, Field, Instructions, EditPointer, State)
+				: ReplaceCreatureSpellList(Target, Field, Instructions, EditPointer, ModPointer, State);
+		};
 
 		const FString CastingPointer = AppendPointer(Pointer, TEXT("spellcasting"));
 		const TArray<TSharedPtr<FJsonValue>>* ExistingCasting = nullptr;
@@ -849,7 +901,7 @@ namespace
 
 				if (bDaily)
 				{
-					if (!ReplaceCreatureSpellList(*GroupCopy, Key, Pair.Value, KeyPointer, ModPointer, State))
+					if (!EditList(*GroupCopy, Key, Pair.Value, KeyPointer))
 					{
 						return false;
 					}
@@ -860,9 +912,14 @@ namespace
 				if (!LevelValue.IsValid()) { continue; }
 				TSharedPtr<FJsonObject> ExistingLevel;
 				if (!RequireObject(LevelValue, KeyPointer, ExistingLevel, State)) { return false; }
+				if (bRemove)
+				{
+					const auto ExistingSpells = FindExactField(*ExistingLevel, TEXT("spells"));
+					if (!ExistingSpells.IsValid() || ExistingSpells->Type == EJson::Null) { continue; }
+				}
 				const auto Level = MakeShared<FJsonObject>();
 				Level->Values = ExistingLevel->Values;
-				if (!ReplaceCreatureSpellList(*Level, TEXT("spells"), Pair.Value, KeyPointer, ModPointer, State))
+				if (!EditList(*Level, TEXT("spells"), Pair.Value, KeyPointer))
 				{
 					return false;
 				}
@@ -1104,9 +1161,13 @@ namespace
 						if (!ApplyCreatureAddSpells(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
 						continue;
 					}
-					if (Mode.Equals(TEXT("replaceSpells"), ESearchCase::CaseSensitive))
+					const bool bRemoveSpells = Mode.Equals(TEXT("removeSpells"), ESearchCase::CaseSensitive);
+					if (bRemoveSpells || Mode.Equals(TEXT("replaceSpells"), ESearchCase::CaseSensitive))
 					{
-						if (!ApplyCreatureReplaceSpells(Merged, *Operation, Pointer, ModPointer, State)) { return false; }
+						if (!ApplyCreatureSpellListEdits(Merged, *Operation, bRemoveSpells, Pointer, ModPointer, State))
+						{
+							return false;
+						}
 						continue;
 					}
 					if (!Mode.Equals(TEXT("addSenses"), ESearchCase::CaseSensitive))

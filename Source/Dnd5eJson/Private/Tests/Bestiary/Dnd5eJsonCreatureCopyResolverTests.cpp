@@ -283,4 +283,81 @@ bool FDnd5eCreatureCopyAddSpellsTest::RunTest(const FString& Parameters)
 		}));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyRemoveSpellsTest, "Dnd5e.Bestiary.Reader.CopyRemoveSpells",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyRemoveSpellsTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","spellcasting":[
+			{"daily":{"1e":["A","b","A","a"],"2":["keep"]},
+				"spells":{"2":{"slots":2,"spells":["first","second"]},"3":{"slots":1}}},
+			{"daily":{"1e":["A"]}}]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{"_":[
+			{"mode":"addSpells","daily":{"1e":["temporary"]}},
+			{"mode":"removeSpells","daily":{"1e":["A","temporary","absent"]},
+				"spells":{"2":["first"],"3":["absent"],"4":["absent"]}}
+		]}}},
+		{"name":"Invalid","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"_":{"mode":"removeSpells","daily":{"1e":[4]}}
+		}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Spell removal fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 3))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	if (!TestTrue(TEXT("Spell removals resolve"), ResolveCreatureCopy(Index,
+		{(*Rows)[1]->AsObject(), Context.RelativeFilePath, TEXT("/monster/1")}, Merged, Ancestors, State)))
+	{
+		return false;
+	}
+
+	const auto& Casting = Merged->GetArrayField(TEXT("spellcasting"));
+	const auto Daily = Casting[0]->AsObject()->GetObjectField(TEXT("daily"));
+	const auto& Once = Daily->GetArrayField(TEXT("1e"));
+	TestTrue(TEXT("Removal sees earlier additions and removes exact duplicates in order"),
+		Once.Num() == 2 && Once[0]->AsString() == TEXT("b") && Once[1]->AsString() == TEXT("a"));
+	TestEqual(TEXT("Other daily lists survive"), Daily->GetArrayField(TEXT("2")).Num(), 1);
+	TestEqual(TEXT("Other casting blocks survive"),
+		Casting[1]->AsObject()->GetObjectField(TEXT("daily"))->GetArrayField(TEXT("1e")).Num(), 1);
+
+	const auto Levels = Casting[0]->AsObject()->GetObjectField(TEXT("spells"));
+	const auto Level = Levels->GetObjectField(TEXT("2"));
+	const auto& Spells = Level->GetArrayField(TEXT("spells"));
+	TestTrue(TEXT("Level removal preserves slots and skips absent lists"),
+		Spells.Num() == 1 && Spells[0]->AsString() == TEXT("second") && Level->GetNumberField(TEXT("slots")) == 2 &&
+		!Levels->GetObjectField(TEXT("3"))->HasField(TEXT("spells")) && !Levels->HasField(TEXT("4")));
+	TestEqual(TEXT("Parent daily list survives"),
+		Parent->GetArrayField(TEXT("spellcasting"))[0]->AsObject()->
+			GetObjectField(TEXT("daily"))->GetArrayField(TEXT("1e")).Num(), 4);
+
+	Merged.Reset();
+	TestFalse(TEXT("Malformed removal fails"), ResolveCreatureCopy(Index,
+		{(*Rows)[2]->AsObject(), Context.RelativeFilePath, TEXT("/monster/2")}, Merged, Ancestors, State));
+	TestFalse(TEXT("Failed removal publishes no result"), Merged.IsValid());
+	TestTrue(TEXT("Failure identifies the authored selector"), Diagnostics.ContainsByPredicate(
+		[](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod/_/daily/1e/0");
+		}));
+	return !HasAnyErrors();
+}
 #endif
