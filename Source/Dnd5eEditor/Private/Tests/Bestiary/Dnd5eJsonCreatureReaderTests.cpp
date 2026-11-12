@@ -953,6 +953,51 @@ bool FDnd5eCreatureDefensesTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureActionGroupsTest, "Dnd5e.Bestiary.Reader.ActionGroups",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureActionGroupsTest::RunTest(const FString& Parameters)
+{
+	const auto Read = [](const TCHAR* Fields)
+	{
+		const FString Json = FString(StatBlock).Replace(TEXT("\"page\":4"), *FString::Printf(TEXT("\"page\":4%s"), Fields));
+		return FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Lantern Scout"), TEXT("SYN-B"));
+	};
+	const auto Result = Read(TEXT(R"json(,"reaction":[{"name":"Deflect","entries":["A reaction."]}],
+		"legendary":null,"legendaryHeader":["An independent header."],
+		"mythic":[],"legendaryActions":0,"legendaryActionsLair":4)json"));
+	const auto& Creature = Result.Creature;
+	if (!TestTrue(TEXT("Action groups convert"), Result.Status == EDnd5eJsonReadStatus::Success))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Reaction preserves its name and body"),
+		Creature.Reactions.Presence == EDnd5eValuePresence::Present && Creature.Reactions.Entries.Num() == 1 &&
+		Creature.Reactions.Entries[0].Name == TEXT("Deflect") && !Creature.Reactions.Entries[0].Entries.IsEmpty());
+	TestTrue(TEXT("Null and empty groups are distinct and headers are independent"),
+		Creature.LegendaryActions.Presence == EDnd5eValuePresence::ExplicitNull &&
+		Creature.LegendaryActions.Entries.IsEmpty() && Creature.LegendaryActions.Header.Num() == 1 &&
+		Creature.MythicActions.Presence == EDnd5eValuePresence::Present && Creature.MythicActions.Entries.IsEmpty());
+	TestTrue(TEXT("Both authored counts are preserved, including zero"),
+		Creature.bHasLegendaryActionCount && Creature.LegendaryActionCount == 0 &&
+		Creature.bHasLegendaryActionCountInLair && Creature.LegendaryActionCountInLair == 4);
+	const auto Missing = Read(TEXT(""));
+	TestTrue(TEXT("Omitted groups and counts keep their default presence"),
+		Missing.Status == EDnd5eJsonReadStatus::Success &&
+		Missing.Creature.LegendaryActions.Presence == EDnd5eValuePresence::Unspecified &&
+		!Missing.Creature.bHasLegendaryActionCount && !Missing.Creature.bHasLegendaryActionCountInLair);
+
+	const auto Invalid = Read(TEXT(",\"legendaryActionsLair\":1.5"));
+	TestTrue(TEXT("Malformed count identifies its source property"),
+		Invalid.Status == EDnd5eJsonReadStatus::Failure && Invalid.Diagnostics.ContainsByPredicate(
+			[](const FDnd5eDiagnostic& Diagnostic)
+			{
+				return Diagnostic.JsonPointer == TEXT("/monster/1/legendaryActionsLair");
+			}));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureLocalSmokeTest, "Dnd5e.Bestiary.Local.GoblinSmoke",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)

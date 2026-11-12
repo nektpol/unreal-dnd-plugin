@@ -1145,6 +1145,57 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureActionGroup(const FJsonObject& Object, const TCHAR* Key, const TCHAR* HeaderKey,
+		const FString& Pointer, FDnd5eCreatureActionGroup& Out, FReadState& State)
+	{
+		FDnd5eCreatureActionGroup Group;
+		const auto Entries = FindExactField(Object, Key);
+		if (Entries.IsValid())
+		{
+			if (Entries->Type == EJson::Null)
+			{
+				Group.Presence = EDnd5eValuePresence::ExplicitNull;
+			}
+			else
+			{
+				if (!ReadCreatureEntries(Object, Key, Pointer, Group.Entries, State)) { return false; }
+				Group.Presence = EDnd5eValuePresence::Present;
+			}
+		}
+
+		const auto Header = FindExactField(Object, HeaderKey);
+		if (Header.IsValid() && Header->Type != EJson::Null)
+		{
+			const FString HeaderPointer = AppendPointer(Pointer, HeaderKey);
+			if (!ReadBlocks(Header, HeaderPointer, Group.Header, State)) { return false; }
+		}
+
+		Out = MoveTemp(Group);
+		return true;
+	}
+
+	bool ReadCreatureLegendaryActionCounts(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		if (FindExactField(Object, TEXT("legendaryActions")).IsValid())
+		{
+			if (!ReadStatInteger(Object, TEXT("legendaryActions"), Pointer, Creature.LegendaryActionCount, State))
+			{
+				return false;
+			}
+			Creature.bHasLegendaryActionCount = true;
+		}
+		if (FindExactField(Object, TEXT("legendaryActionsLair")).IsValid())
+		{
+			if (!ReadStatInteger(Object, TEXT("legendaryActionsLair"), Pointer, Creature.LegendaryActionCountInLair, State))
+			{
+				return false;
+			}
+			Creature.bHasLegendaryActionCountInLair = true;
+		}
+		return true;
+	}
+
 	const TCHAR* DescribeJsonType(const TSharedPtr<FJsonValue>& Value)
 	{
 		if (!Value.IsValid()) { return TEXT("Invalid"); }
@@ -1213,7 +1264,11 @@ namespace
 			ReadCreatureObservations(Object, Pointer, Creature, State) &&
 			ReadCreatureEntries(Object, TEXT("trait"), Pointer, Creature.Traits, State) &&
 			ReadCreatureEntries(Object, TEXT("action"), Pointer, Creature.Actions, State) &&
-			ReadCreatureEntries(Object, TEXT("bonus"), Pointer, Creature.BonusActions, State);
+			ReadCreatureEntries(Object, TEXT("bonus"), Pointer, Creature.BonusActions, State) &&
+			ReadCreatureActionGroup(Object, TEXT("reaction"), TEXT("reactionHeader"), Pointer, Creature.Reactions, State) &&
+			ReadCreatureActionGroup(Object, TEXT("legendary"), TEXT("legendaryHeader"), Pointer, Creature.LegendaryActions, State) &&
+			ReadCreatureActionGroup(Object, TEXT("mythic"), TEXT("mythicHeader"), Pointer, Creature.MythicActions, State) &&
+			ReadCreatureLegendaryActionCounts(Object, Pointer, Creature, State);
 	}
 
 	void AuditCreatureRows(const FDnd5eJsonDocument& Document,
