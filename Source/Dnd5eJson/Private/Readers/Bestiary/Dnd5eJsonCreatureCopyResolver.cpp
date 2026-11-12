@@ -116,40 +116,67 @@ namespace
 	bool RemoveCreatureArrayEntries(const FJsonObject& Operation, const FString& Pointer,
 		const FString& ModPointer, TArray<TSharedPtr<FJsonValue>>& Entries, FReadState& State)
 	{
-		const FString NamesPointer = AppendPointer(Pointer, TEXT("names"));
-		if (FindExactField(Operation, TEXT("items")).IsValid())
+		const auto Items = FindExactField(Operation, TEXT("items"));
+		const bool bLiteral = Items.IsValid();
+		const TCHAR* Key = bLiteral ? TEXT("items") : TEXT("names");
+		if (bLiteral)
 		{
-			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
-				TEXT("Creature copy removal by literal item is deferred."));
+			if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("items")}, Pointer, State)) { return false; }
 		}
-		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("names"), TEXT("force")}, Pointer, State)) { return false; }
+		else if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("names"), TEXT("force")}, Pointer, State))
+		{
+			return false;
+		}
 
 		bool bForce = false;
-		if (!ReadOptionalBool(Operation, TEXT("force"), Pointer, bForce, State)) { return false; }
+		if (!bLiteral && !ReadOptionalBool(Operation, TEXT("force"), Pointer, bForce, State)) { return false; }
 
-		const auto Value = FindExactField(Operation, TEXT("names"));
+		const FString ListPointer = AppendPointer(Pointer, Key);
+		const auto Value = bLiteral ? Items : FindExactField(Operation, Key);
 		if (!Value.IsValid())
 		{
-			return Fail(State, Codes::MissingRequiredField, NamesPointer, TEXT("Expected removal names."));
+			return Fail(State, Codes::MissingRequiredField, ListPointer, TEXT("Expected removal names."));
 		}
-		TArray<TSharedPtr<FJsonValue>> Names;
-		if (Value->Type == EJson::Array) { Names = Value->AsArray(); }
-		else { Names.Add(Value); }
 
-		for (int32 Index = 0; Index < Names.Num(); ++Index)
+		const bool bArray = Value->Type == EJson::Array;
+		const TArray<TSharedPtr<FJsonValue>> Selectors = bArray
+			? Value->AsArray() : TArray<TSharedPtr<FJsonValue>>{Value};
+		for (int32 Index = 0; Index < Selectors.Num(); ++Index)
 		{
-			const FString NamePointer = Value->Type == EJson::Array
-				? AppendPointer(NamesPointer, FString::FromInt(Index)) : NamesPointer;
-			if (!Names[Index].IsValid() || Names[Index]->Type != EJson::String)
+			const FString SelectorPointer = bArray
+				? AppendPointer(ListPointer, FString::FromInt(Index)) : ListPointer;
+			const auto& Selector = Selectors[Index];
+			if (bLiteral && Selector.IsValid() && Selector->Type == EJson::Object)
 			{
-				return Fail(State, Codes::InvalidFieldValue, NamePointer, TEXT("Expected a removal name string."));
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+					TEXT("Creature copy removal by literal object is deferred."));
+			}
+			if (!Selector.IsValid() || Selector->Type != EJson::String)
+			{
+				return Fail(State, Codes::InvalidFieldValue, SelectorPointer, TEXT("Expected a removal string."));
 			}
 
-			const int32 Match = FindCreatureArrayEntry(Entries, Names[Index]->AsString());
-			if (Match != INDEX_NONE) { Entries.RemoveAt(Match); }
+			const FString Name = Selector->AsString();
+			int32 Match = INDEX_NONE;
+			if (bLiteral)
+			{
+				Match = Entries.IndexOfByPredicate([&Name](const TSharedPtr<FJsonValue>& Entry)
+				{
+					return Entry.IsValid() && Entry->Type == EJson::String &&
+						Entry->AsString().Equals(Name, ESearchCase::CaseSensitive);
+				});
+			}
+			else
+			{
+				Match = FindCreatureArrayEntry(Entries, Name);
+			}
+			if (Match != INDEX_NONE)
+			{
+				Entries.RemoveAt(Match);
+			}
 			else if (!bForce)
 			{
-				return Fail(State, Codes::UnresolvedReference, NamePointer, TEXT("Creature array entry was not found."));
+				return Fail(State, Codes::UnresolvedReference, SelectorPointer, TEXT("Creature array entry was not found."));
 			}
 		}
 		return true;
@@ -164,9 +191,10 @@ namespace
 		const bool bPrepend = Mode.Equals(TEXT("prependArr"), ESearchCase::CaseSensitive);
 		const bool bAppend = Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive);
 		const bool bAppendUnique = Mode.Equals(TEXT("appendIfNotExistsArr"), ESearchCase::CaseSensitive);
+		const bool bInsert = Mode.Equals(TEXT("insertArr"), ESearchCase::CaseSensitive);
 		const bool bReplace = Mode.Equals(TEXT("replaceArr"), ESearchCase::CaseSensitive);
 		const bool bRemove = Mode.Equals(TEXT("removeArr"), ESearchCase::CaseSensitive);
-		if (!bPrepend && !bAppend && !bAppendUnique && !bReplace && !bRemove)
+		if (!bPrepend && !bAppend && !bAppendUnique && !bInsert && !bReplace && !bRemove)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier mode is deferred: ") + Mode);
@@ -174,7 +202,7 @@ namespace
 
 		const auto Existing = FindExactField(Merged, *Field);
 		const bool bHasTarget = Existing.IsValid() && Existing->Type != EJson::Null;
-		if (!bHasTarget && (bReplace || bRemove))
+		if (!bHasTarget && (bReplace || bRemove || bInsert))
 		{
 			return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Expected an existing creature array."));
 		}
@@ -198,6 +226,13 @@ namespace
 					return false;
 				}
 			}
+			else if (bInsert)
+			{
+				if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("index"), TEXT("items")}, Pointer, State))
+				{
+					return false;
+				}
+			}
 			else if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("items")}, Pointer, State))
 			{
 				return false;
@@ -215,7 +250,7 @@ namespace
 			{
 				Added = Items->AsArray();
 			}
-			else if (Items->Type == EJson::Object || (bAppendUnique && Items->Type == EJson::String))
+			else if (Items->Type == EJson::Object || ((bAppend || bAppendUnique || bInsert) && Items->Type == EJson::String))
 			{
 				Added.Add(Items);
 			}
@@ -258,6 +293,31 @@ namespace
 						TEXT("Creature array entry was not found."));
 				}
 				Entries.RemoveAt(InsertAt);
+			}
+
+			if (bInsert)
+			{
+				TSharedPtr<FJsonValue> IndexValue;
+				if (!ReadRequiredValue(Operation, TEXT("index"), EJson::Number, Pointer, IndexValue, State))
+				{
+					return false;
+				}
+				double RawIndex = 0;
+				if (!IndexValue->TryGetNumber(RawIndex) || !FMath::IsFinite(RawIndex) ||
+					RawIndex < MIN_int32 || RawIndex > MAX_int32 || RawIndex != FMath::FloorToDouble(RawIndex))
+				{
+					return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("index")),
+						TEXT("Expected a signed integer insertion index."));
+				}
+				const int32 Index = static_cast<int32>(RawIndex);
+				if (Index >= 0)
+				{
+					InsertAt = FMath::Min(Index, Entries.Num());
+				}
+				else if (Index != -1)
+				{
+					InsertAt = FMath::Max(0, Entries.Num() + Index);
+				}
 			}
 
 			if (!Added.IsEmpty()) { Entries.Insert(Added.GetData(), Added.Num(), InsertAt); }
@@ -1558,12 +1618,13 @@ namespace
 		const bool bEntryArray = Field.Equals(TEXT("trait"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("action"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("bonus"), ESearchCase::CaseSensitive);
-		const bool bUniqueArray = Field.Equals(TEXT("languages"), ESearchCase::CaseSensitive) ||
-			Field.Equals(TEXT("resist"), ESearchCase::CaseSensitive) ||
+		const bool bDefenseArray = Field.Equals(TEXT("resist"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("immune"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("conditionImmune"), ESearchCase::CaseSensitive) ||
-			Field.Equals(TEXT("miscTags"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("vulnerable"), ESearchCase::CaseSensitive);
+		const bool bUniqueArray = bDefenseArray ||
+			Field.Equals(TEXT("languages"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("miscTags"), ESearchCase::CaseSensitive);
 
 		const bool bScalarTarget = bEntryArray ||
 			Field.Equals(TEXT("reaction"), ESearchCase::CaseSensitive) ||
@@ -1657,7 +1718,8 @@ namespace
 					}
 					continue;
 				}
-				if (Field.Equals(TEXT("spellcasting"), ESearchCase::CaseSensitive) &&
+				if ((Field.Equals(TEXT("spellcasting"), ESearchCase::CaseSensitive) ||
+						Field.Equals(TEXT("reaction"), ESearchCase::CaseSensitive)) &&
 					Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive))
 				{
 					if (!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
@@ -1724,7 +1786,9 @@ namespace
 					continue;
 				}
 
-				if (!Mode.Equals(TEXT("appendIfNotExistsArr"), ESearchCase::CaseSensitive))
+				const bool bDefenseEdit = bDefenseArray && (Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive) ||
+					Mode.Equals(TEXT("removeArr"), ESearchCase::CaseSensitive));
+				if (!bDefenseEdit && !Mode.Equals(TEXT("appendIfNotExistsArr"), ESearchCase::CaseSensitive))
 				{
 					return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 						TEXT("Creature array modifier mode is deferred: ") + Mode);

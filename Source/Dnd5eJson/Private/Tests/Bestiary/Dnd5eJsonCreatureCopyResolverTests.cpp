@@ -722,4 +722,79 @@ bool FDnd5eCreatureCopyXpAndHpTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyArrayInsertionTest, "Dnd5e.Bestiary.Reader.CopyArrayInsertion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyArrayInsertionTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","action":["first","last"],
+			"resist":["cold","COLD","cold",{"name":"cold"}]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"action":[{"mode":"insertArr","index":1,"items":"middle"},
+				{"mode":"insertArr","index":-1,"items":"end"},
+				{"mode":"insertArr","index":-99,"items":"start"},
+				{"mode":"insertArr","index":99,"items":"after"}],
+			"resist":[{"mode":"removeArr","items":"cold"},{"mode":"appendArr","items":"fire"}],
+			"reaction":{"mode":"appendArr","items":{"name":"Invented reaction"}}
+		}}},
+		{"name":"Invalid","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"action":{"mode":"insertArr","index":0.5,"items":"invalid"}
+		}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Array insertion fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 3))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	const auto Resolve = [&](int32 Row)
+	{
+		Merged.Reset();
+		return ResolveCreatureCopy(Index, {(*Rows)[Row]->AsObject(), Context.RelativeFilePath,
+			AppendPointer(TEXT("/monster"), FString::FromInt(Row))}, Merged, Ancestors, State);
+	};
+	if (!TestTrue(TEXT("Array modifiers resolve"), Resolve(1))) { return false; }
+
+	TArray<FString> Action;
+	for (const auto& Entry : Merged->GetArrayField(TEXT("action")))
+	{
+		Action.Add(Entry->AsString());
+	}
+	TestEqual(TEXT("Insertion honors middle, sentinel, and clamped indices"), FString::Join(Action, TEXT(",")),
+		FString(TEXT("start,first,middle,last,end,after")));
+	const auto& Resist = Merged->GetArrayField(TEXT("resist"));
+	TestTrue(TEXT("Literal removal removes one exact string and preserves objects"),
+		Resist.Num() == 4 && Resist[0]->AsString() == TEXT("COLD") && Resist[1]->AsString() == TEXT("cold") &&
+		Resist[2]->Type == EJson::Object && Resist[3]->AsString() == TEXT("fire"));
+	const auto& Reactions = Merged->GetArrayField(TEXT("reaction"));
+	TestTrue(TEXT("Reaction append creates the list"),
+		Reactions.Num() == 1 && Reactions[0]->AsObject()->GetStringField(TEXT("name")) == TEXT("Invented reaction"));
+	TestEqual(TEXT("Parent actions survive"), Parent->GetArrayField(TEXT("action")).Num(), 2);
+
+	TestFalse(TEXT("Fractional insertion index fails"), Resolve(2));
+	TestTrue(TEXT("Invalid insertion identifies the index and publishes no result"),
+		!Merged.IsValid() && Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod/action/index");
+		}));
+	return !HasAnyErrors();
+}
+
 #endif
