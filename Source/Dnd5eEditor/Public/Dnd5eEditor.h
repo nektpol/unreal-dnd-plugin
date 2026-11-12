@@ -1,3 +1,5 @@
+// Developed by Neko Creative Technologies
+
 #pragma once
 
 #include "Modules/ModuleManager.h"
@@ -20,6 +22,8 @@ private:
 	void LoadDataset();
 	void OpenItemDatasetSettings();
 	void LoadItemDataset();
+	void OpenBestiaryDatasetSettings();
+	void LoadBestiaryDataset();
 	void OpenSpellBrowser();
 	TSharedRef<SDockTab> SpawnSpellBrowser(const FSpawnTabArgs& Args);
 	TWeakPtr<SDockTab> SpellBrowserTab;

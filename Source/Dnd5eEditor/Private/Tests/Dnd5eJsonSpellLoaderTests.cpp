@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Dnd5eTestSupport.h"
+#include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
+#include "Subsystems/Dnd5eEditorBestiaryDatasetSubsystem.h"
 #include "Catalog/Dnd5eCreatureCatalog.h"
 #include "Catalog/Dnd5eCreatureCatalogObject.h"
 #include "Readers/Bestiary/Dnd5eJsonCreatureCatalogLibrary.h"
@@ -565,6 +567,56 @@ bool FDnd5eJsonCreatureLoaderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Invalid file path keeps the active catalog"),
 		Traversal.Status == EDnd5eJsonReadStatus::Failure && !Traversal.Diagnostics.IsEmpty() &&
 		Traversal.Documents.IsEmpty() && Catalog.QueryCreatureIds({}) == Ids);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryEditorSessionTest, "Dnd5e.Bestiary.Editor.DatasetSession",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryEditorSessionTest::RunTest(const FString& Parameters)
+{
+	const FLoaderFiles Files;
+	const TStrongObjectPtr<UDnd5eEditorBestiaryDatasetSettings> Settings(NewObject<UDnd5eEditorBestiaryDatasetSettings>());
+	Settings->DatasetRoot.Path = Files.Root;
+	Settings->DatasetNamespace = TEXT("editor-session-test");
+	Settings->TemplateFile.FilePath = FPaths::Combine(Files.Root, TEXT("template.json"));
+	const auto Request = Settings->MakeLoadRequest();
+	TestEqual(TEXT("Absolute picker path becomes relative to the dataset"), Request.TemplateFile, FString(TEXT("template.json")));
+
+	int32 Changes = 0;
+	const TStrongObjectPtr<UDnd5eEditorBestiaryDatasetSubsystem> Session(NewObject<UDnd5eEditorBestiaryDatasetSubsystem>());
+	Session->OnCatalogChanged().AddLambda([&Changes]() { ++Changes; });
+	TestTrue(TEXT("Failed first load leaves the session empty"),
+		Session->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Failure &&
+		Session->GetCatalog() == nullptr && Session->GetCreatureCount() == 0 && Changes == 0);
+
+	if (!TestTrue(TEXT("Write Bestiary session fixtures"),
+		Files.Write(TEXT("index.json"), TEXT(R"json({"SYN":"creatures.json"})json")) &&
+		Files.Write(TEXT("template.json"), TEXT(R"json({"monsterTemplate":[]})json")) &&
+		Files.Write(TEXT("creatures.json"), TEXT(R"json({"monster":[{"name":"Invented Scout","source":"SYN","size":["M"],"type":"humanoid"}]})json"))))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("First success publishes once"),
+		Session->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Success &&
+		Session->GetCatalog() && Session->GetCreatureCount() == 1 && Changes == 1))
+	{
+		return false;
+	}
+
+	const auto* Catalog = Session->GetCatalog();
+	const auto PublishedIds = Catalog->QueryCreatureIds({});
+	TestTrue(TEXT("Successful reload keeps the catalog object and notifies listeners"),
+		Session->LoadSelection(Request).Status == EDnd5eJsonReadStatus::Success &&
+		Session->GetCatalog() == Catalog && Changes == 2);
+
+	FDnd5eJsonCreatureCatalogLoadRequest Missing = Request;
+	Missing.TemplateFile = TEXT("missing.json");
+	TestTrue(TEXT("Failed reload records diagnostics and preserves the active publication"),
+		Session->LoadSelection(Missing).Status == EDnd5eJsonReadStatus::Failure &&
+		!Session->GetLastLoadResult().Diagnostics.IsEmpty() && Session->GetCatalog() == Catalog &&
+		Catalog->QueryCreatureIds({}) == PublishedIds && Changes == 2);
 	return !HasAnyErrors();
 }
 

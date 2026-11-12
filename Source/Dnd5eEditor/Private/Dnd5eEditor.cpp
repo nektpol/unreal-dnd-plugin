@@ -1,3 +1,5 @@
+// Developed by Neko Creative Technologies
+
 #include "Dnd5eEditor.h"
 #include "Editor.h"
 #include "Framework/Application/SlateApplication.h"
@@ -19,6 +21,8 @@
 #include "Subsystems/Dnd5eEditorItemDatasetSubsystem.h"
 #include "Browser/SDnd5eItemBrowser.h"
 #include "Catalog/Dnd5eSpellCatalogObject.h"
+#include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
+#include "Subsystems/Dnd5eEditorBestiaryDatasetSubsystem.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eEditor"
 
@@ -124,6 +128,14 @@ void FDnd5eEditorModule::RegisterMenus()
     Section.AddMenuEntry("Dnd5eItemBrowser", LOCTEXT("ItemBrowser", "Dnd5e Item Browser"),
         LOCTEXT("ItemBrowserTip", "Search and inspect items and groups in the current editor catalog."),
         FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenItemBrowser)));
+    Section.AddMenuEntry("Dnd5eBestiaryDatasetSettings",
+        LOCTEXT("BestiaryDatasetSettings", "Dnd5e Bestiary Dataset Settings"),
+        LOCTEXT("BestiaryDatasetSettingsTip", "Choose the local Bestiary directory and optional template."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::OpenBestiaryDatasetSettings)));
+    Section.AddMenuEntry("Dnd5eLoadBestiaryDataset",
+        LOCTEXT("LoadBestiaryDataset", "Load Dnd5e Bestiary Dataset"),
+        LOCTEXT("LoadBestiaryDatasetTip", "Load the local Bestiary index and show diagnostics."),
+        FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FDnd5eEditorModule::LoadBestiaryDataset)));
 }
 
 void FDnd5eEditorModule::OpenDatasetSettings()
@@ -193,6 +205,44 @@ void FDnd5eEditorModule::LoadItemDataset()
     {
         Log.Error(FText::Format(LOCTEXT("ItemsLoadFailed", "Load failed. The active catalogs contain {0} item records and {1} definitions."),
             FText::AsNumber(Subsystem->GetRecordCount()), FText::AsNumber(Subsystem->GetDefinitionCount())));
+    }
+    WriteDatasetDiagnostics(Log, Result.Diagnostics);
+    Log.Open(EMessageSeverity::Info, true);
+}
+
+void FDnd5eEditorModule::OpenBestiaryDatasetSettings()
+{
+    const auto* Settings = GetDefault<UDnd5eEditorBestiaryDatasetSettings>();
+    FModuleManager::LoadModuleChecked<ISettingsModule>("Settings").ShowViewer(
+        Settings->GetContainerName(), Settings->GetCategoryName(), Settings->GetSectionName());
+}
+
+void FDnd5eEditorModule::LoadBestiaryDataset()
+{
+    FMessageLog Log(DatasetLogName);
+    Log.SuppressLoggingToOutputLog();
+    Log.NewPage(LOCTEXT("BestiaryLoadPage", "Bestiary dataset load"));
+
+    auto* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UDnd5eEditorBestiaryDatasetSubsystem>() : nullptr;
+    if (!Subsystem)
+    {
+        Log.Error(LOCTEXT("BestiaryDatasetUnavailable", "The editor Bestiary dataset service is unavailable."));
+        Log.Open(EMessageSeverity::Info, true);
+        return;
+    }
+
+    auto* Settings = GetMutableDefault<UDnd5eEditorBestiaryDatasetSettings>();
+    Settings->SaveConfig();
+    const auto& Result = Subsystem->LoadSelection(Settings->MakeLoadRequest());
+    if (Result.Status == EDnd5eJsonReadStatus::Success)
+    {
+        Log.Info(FText::Format(LOCTEXT("BestiaryLoaded", "Loaded {0} creature records with {1} diagnostics."),
+            FText::AsNumber(Result.CreatureCount), FText::AsNumber(Result.Diagnostics.Num())));
+    }
+    else
+    {
+        Log.Error(FText::Format(LOCTEXT("BestiaryLoadFailed", "Load failed. The active catalog contains {0} creature records."),
+            FText::AsNumber(Subsystem->GetCreatureCount())));
     }
     WriteDatasetDiagnostics(Log, Result.Diagnostics);
     Log.Open(EMessageSeverity::Info, true);
