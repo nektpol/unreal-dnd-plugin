@@ -209,4 +209,78 @@ bool FDnd5eCreatureCopyReplaceSpellsTest::RunTest(const FString& Parameters)
 		ParentLevel->GetArrayField(TEXT("spells"))[1]->AsString(), FString(TEXT("old")));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyAddSpellsTest, "Dnd5e.Bestiary.Reader.CopyAddSpells",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyAddSpellsTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","spellcasting":[{"will":["first"],"spells":{"2":{"slots":2,"spells":["Moss"]}}}]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{"_":[
+			{"mode":"addSpells","will":["first","second"],"daily":{"1e":["old","keep"]},
+				"spells":{"2":{"spells":["zebra","Apple"]},"3":{"spells":["zebra","Apple"]}}},
+			{"mode":"replaceSpells","daily":{"1e":[{"replace":"old","with":"new"}]}}
+		]}}},
+		{"name":"Invalid","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"_":{"mode":"addSpells","will":["temporary"],"daily":{"1e":[4]}}
+		}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Spell additions fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 3))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	if (!TestTrue(TEXT("Spell additions resolve"), ResolveCreatureCopy(Index,
+		{(*Rows)[1]->AsObject(), Context.RelativeFilePath, TEXT("/monster/1")}, Merged, Ancestors, State)))
+	{
+		return false;
+	}
+
+	const auto Block = Merged->GetArrayField(TEXT("spellcasting"))[0]->AsObject();
+	const auto Levels = Block->GetObjectField(TEXT("spells"));
+	const auto Level = Levels->GetObjectField(TEXT("2"));
+	const auto& Existing = Level->GetArrayField(TEXT("spells"));
+	const auto& Added = Levels->GetObjectField(TEXT("3"))->GetArrayField(TEXT("spells"));
+	const auto& Will = Block->GetArrayField(TEXT("will"));
+	const auto& Daily = Block->GetObjectField(TEXT("daily"))->GetArrayField(TEXT("1e"));
+	TestTrue(TEXT("Existing levels sort the merged list and retain slots"), Existing.Num() == 3 &&
+		Existing[0]->AsString() == TEXT("Apple") && Existing[1]->AsString() == TEXT("Moss") &&
+		Existing[2]->AsString() == TEXT("zebra") && Level->GetNumberField(TEXT("slots")) == 2);
+	TestTrue(TEXT("New levels retain authored order"), Added.Num() == 2 &&
+		Added[0]->AsString() == TEXT("zebra") && Added[1]->AsString() == TEXT("Apple"));
+	TestTrue(TEXT("At-will spells preserve order and duplicates"), Will.Num() == 3 &&
+		Will[0]->AsString() == TEXT("first") && Will[1]->AsString() == TEXT("first") &&
+		Will[2]->AsString() == TEXT("second"));
+	TestTrue(TEXT("Replacement sees the newly added daily list"), Daily.Num() == 2 &&
+		Daily[0]->AsString() == TEXT("keep") && Daily[1]->AsString() == TEXT("new"));
+
+	Merged.Reset();
+	TestFalse(TEXT("Malformed spell addition fails"), ResolveCreatureCopy(Index,
+		{(*Rows)[2]->AsObject(), Context.RelativeFilePath, TEXT("/monster/2")}, Merged, Ancestors, State));
+	TestTrue(TEXT("Failed addition leaves the parent intact and publishes no copy"), !Merged.IsValid() &&
+		Parent->GetArrayField(TEXT("spellcasting"))[0]->AsObject()->GetArrayField(TEXT("will")).Num() == 1);
+	TestTrue(TEXT("Failure identifies the authored spell"), Diagnostics.ContainsByPredicate(
+		[](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod/_/daily/1e/0");
+		}));
+	return !HasAnyErrors();
+}
 #endif
