@@ -1092,6 +1092,136 @@ namespace
 		return true;
 	}
 
+	bool RewriteCreatureScalarTags(const FString& Text, bool bDc, int32 Scalar,
+		const FString& Pointer, FString& Out, FReadState& State)
+	{
+		const FString Prefix = bDc ? TEXT("{@dc ") : TEXT("{@hit ");
+		int32 Cursor = 0;
+		int32 CopiedUntil = 0;
+		while (Cursor < Text.Len())
+		{
+			const int32 Start = Text.Find(Prefix, ESearchCase::CaseSensitive, ESearchDir::FromStart, Cursor);
+			if (Start == INDEX_NONE) { break; }
+			Cursor = Start + Prefix.Len();
+			bool bNegative = false;
+			if (!bDc && Cursor < Text.Len() && (Text[Cursor] == TEXT('+') || Text[Cursor] == TEXT('-')))
+			{
+				bNegative = Text[Cursor] == TEXT('-');
+				++Cursor;
+			}
+			const int32 DigitStart = Cursor;
+			while (Cursor < Text.Len() && Text[Cursor] >= TEXT('0') && Text[Cursor] <= TEXT('9'))
+			{
+				++Cursor;
+			}
+			if (Cursor == DigitStart || Cursor == Text.Len()) { continue; }
+
+			int32 Close = Cursor;
+			if (bDc && Text[Close] == TEXT('|'))
+			{
+				Close = Text.Find(TEXT("}"), ESearchCase::CaseSensitive, ESearchDir::FromStart, Close + 1);
+				if (Close == INDEX_NONE || Close <= Cursor + 1) { continue; }
+			}
+			if (Text[Close] != TEXT('}')) { continue; }
+
+			const int64 Limit = bNegative ? -static_cast<int64>(MIN_int32) : MAX_int32;
+			int64 Magnitude = 0;
+			for (int32 Digit = DigitStart; Digit < Cursor; ++Digit)
+			{
+				Magnitude = Magnitude * 10 + Text[Digit] - TEXT('0');
+				if (Magnitude > Limit)
+				{
+					return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Inline modifier value is outside the supported range."));
+				}
+			}
+			const int64 Result = (bNegative ? -Magnitude : Magnitude) + Scalar;
+			if (Result < MIN_int32 || Result > MAX_int32)
+			{
+				return Fail(State, Codes::InvalidFieldValue, Pointer, TEXT("Adjusted inline modifier is outside the supported range."));
+			}
+
+			Out += Text.Mid(CopiedUntil, Start - CopiedUntil);
+			Out += Prefix;
+			Out += FString::FromInt(static_cast<int32>(Result));
+			Out += TEXT("}");
+			CopiedUntil = Close + 1;
+			Cursor = CopiedUntil;
+		}
+		Out += Text.Mid(CopiedUntil);
+		return true;
+	}
+
+	bool RewriteCreatureScalarValue(const TSharedPtr<FJsonValue>& Value, bool bDc, int32 Scalar,
+		const FString& Pointer, int32 Depth, TSharedPtr<FJsonValue>& Out, FReadState& State)
+	{
+		if (Depth > 64)
+		{
+			return Fail(State, Codes::ResourceLimitExceeded, Pointer, TEXT("Creature text nesting is too deep."));
+		}
+		Out = Value;
+		if (!Value.IsValid()) { return true; }
+
+		if (Value->Type == EJson::String)
+		{
+			FString Text;
+			if (!RewriteCreatureScalarTags(Value->AsString(), bDc, Scalar, Pointer, Text, State)) { return false; }
+			Out = MakeShared<FJsonValueString>(MoveTemp(Text));
+		}
+		else if (Value->Type == EJson::Array)
+		{
+			TArray<TSharedPtr<FJsonValue>> Values;
+			for (const auto& Entry : Value->AsArray())
+			{
+				TSharedPtr<FJsonValue> Rewritten;
+				if (!RewriteCreatureScalarValue(Entry, bDc, Scalar, Pointer, Depth + 1, Rewritten, State)) { return false; }
+				Values.Add(MoveTemp(Rewritten));
+			}
+			Out = MakeShared<FJsonValueArray>(MoveTemp(Values));
+		}
+		else if (Value->Type == EJson::Object)
+		{
+			const auto Object = MakeShared<FJsonObject>();
+			for (const auto& Pair : Value->AsObject()->Values)
+			{
+				const FString Key(Pair.Key.Len(), *Pair.Key);
+				TSharedPtr<FJsonValue> Rewritten;
+				if (!RewriteCreatureScalarValue(Pair.Value, bDc, Scalar, Pointer, Depth + 1, Rewritten, State)) { return false; }
+				Object->SetField(Key, MoveTemp(Rewritten));
+			}
+			Out = MakeShared<FJsonValueObject>(Object);
+		}
+		return true;
+	}
+
+	bool ApplyCreatureScalarTagModifier(FJsonObject& Merged, const FString& Field,
+		const FJsonObject& Operation, bool bDc, const FString& Pointer, FReadState& State)
+	{
+		TSharedPtr<FJsonValue> ScalarValue;
+		if (!CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("scalar")}, Pointer, State) ||
+			!ReadRequiredValue(Operation, TEXT("scalar"), EJson::Number, Pointer, ScalarValue, State))
+		{
+			return false;
+		}
+		double Scalar = 0;
+		if (!ScalarValue->TryGetNumber(Scalar) || !FMath::IsFinite(Scalar) ||
+			Scalar < MIN_int32 || Scalar > MAX_int32 || Scalar != FMath::FloorToDouble(Scalar))
+		{
+			return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("scalar")),
+				TEXT("Expected a signed integer scalar within the supported range."));
+		}
+
+		const auto Existing = FindExactField(Merged, *Field);
+		if (!Existing.IsValid() || Existing->Type == EJson::Null) { return true; }
+
+		TSharedPtr<FJsonValue> Rewritten;
+		if (!RewriteCreatureScalarValue(Existing, bDc, static_cast<int32>(Scalar), Pointer, 0, Rewritten, State))
+		{
+			return false;
+		}
+		Merged.SetField(Field, MoveTemp(Rewritten));
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -1111,7 +1241,13 @@ namespace
 			Field.Equals(TEXT("miscTags"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("vulnerable"), ESearchCase::CaseSensitive);
 
-		if (!bRoot && !bEntryArray && !bUniqueArray)
+		const bool bScalarTarget = bEntryArray ||
+			Field.Equals(TEXT("reaction"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("legendary"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("mythic"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("variant"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("spellcasting"), ESearchCase::CaseSensitive);
+		if (!bRoot && !bScalarTarget && !bUniqueArray)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier target is deferred: ") + Field);
@@ -1134,7 +1270,7 @@ namespace
 			const FString Pointer = bArray ? AppendPointer(FieldPointer, FString::FromInt(Index)) : FieldPointer;
 			const auto& Value = Operations[Index];
 
-			if (bEntryArray && Value.IsValid() && Value->Type == EJson::String &&
+			if (bScalarTarget && Value.IsValid() && Value->Type == EJson::String &&
 				Value->AsString().Equals(TEXT("remove"), ESearchCase::CaseSensitive))
 			{
 				Merged.RemoveField(Field);
@@ -1143,6 +1279,26 @@ namespace
 
 			TSharedPtr<FJsonObject> Operation;
 			if (!RequireObject(Value, Pointer, Operation, State)) { return false; }
+
+			if (bScalarTarget)
+			{
+				FString Mode;
+				if (!ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
+				const bool bDc = Mode.Equals(TEXT("scalarAddDc"), ESearchCase::CaseSensitive);
+				if (bDc || Mode.Equals(TEXT("scalarAddHit"), ESearchCase::CaseSensitive))
+				{
+					if (!ApplyCreatureScalarTagModifier(Merged, Field, *Operation, bDc, Pointer, State))
+					{
+						return false;
+					}
+					continue;
+				}
+				if (!bEntryArray)
+				{
+					return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+						TEXT("Creature copy modifier mode is deferred: ") + Mode);
+				}
+			}
 
 			if (bRoot || bUniqueArray)
 			{

@@ -360,4 +360,83 @@ bool FDnd5eCreatureCopyRemoveSpellsTest::RunTest(const FString& Parameters)
 		}));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyScalarTagsTest, "Dnd5e.Bestiary.Reader.CopyScalarTags",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyScalarTagsTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN",
+			"action":[{"entries":[["{@hit +5} {@hit -1} {@damage 1d6}"]]}],
+			"reaction":[{"entries":["{@dc 15|display} {@dc unresolved}"]}],
+			"variant":[{"name":"Variant"}]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"action":{"mode":"scalarAddHit","scalar":-2},
+			"reaction":{"mode":"scalarAddDc","scalar":1},
+			"legendary":{"mode":"scalarAddDc","scalar":1},
+			"variant":"remove"
+		}}},
+		{"name":"Invalid","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"action":{"mode":"scalarAddHit","scalar":1.5}
+		}}},
+		{"name":"Overflow","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"action":{"mode":"scalarAddHit","scalar":2147483647}
+		}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Scalar tag fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 4))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	if (!TestTrue(TEXT("Scalar tags resolve"), ResolveCreatureCopy(Index,
+		{(*Rows)[1]->AsObject(), Context.RelativeFilePath, TEXT("/monster/1")}, Merged, Ancestors, State)))
+	{
+		return false;
+	}
+
+	const auto GetActionText = [](const FJsonObject& Object)
+	{
+		return Object.GetArrayField(TEXT("action"))[0]->AsObject()->
+			GetArrayField(TEXT("entries"))[0]->AsArray()[0]->AsString();
+	};
+	TestEqual(TEXT("Hit changes apply to signed values inside nested arrays"), GetActionText(*Merged),
+		FString(TEXT("{@hit 3} {@hit -3} {@damage 1d6}")));
+	TestEqual(TEXT("DC changes strip the display suffix and preserve nonnumeric tags"),
+		Merged->GetArrayField(TEXT("reaction"))[0]->AsObject()->GetArrayField(TEXT("entries"))[0]->AsString(),
+		FString(TEXT("{@dc 16} {@dc unresolved}")));
+	TestTrue(TEXT("A variant removal clears only the child field"), !Merged->HasField(TEXT("variant")) && Parent->HasField(TEXT("variant")));
+	TestFalse(TEXT("An absent target stays absent"), Merged->HasField(TEXT("legendary")));
+	TestEqual(TEXT("Parent text survives"), GetActionText(*Parent),
+		FString(TEXT("{@hit +5} {@hit -1} {@damage 1d6}")));
+
+	Merged.Reset();
+	TestFalse(TEXT("Fractional scalar fails"), ResolveCreatureCopy(Index,
+		{(*Rows)[2]->AsObject(), Context.RelativeFilePath, TEXT("/monster/2")}, Merged, Ancestors, State));
+	TestTrue(TEXT("Fractional scalar points to the authored value"), Diagnostics.ContainsByPredicate(
+		[](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod/action/scalar");
+		}));
+	TestFalse(TEXT("Overflowing adjustment fails"), ResolveCreatureCopy(Index,
+		{(*Rows)[3]->AsObject(), Context.RelativeFilePath, TEXT("/monster/3")}, Merged, Ancestors, State));
+	TestFalse(TEXT("Failed adjustments publish no result"), Merged.IsValid());
+	return !HasAnyErrors();
+}
 #endif
