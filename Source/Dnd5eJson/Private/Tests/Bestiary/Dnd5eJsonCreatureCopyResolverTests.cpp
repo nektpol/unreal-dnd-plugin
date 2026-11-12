@@ -507,4 +507,80 @@ bool FDnd5eCreatureCopyNamedTextTest::RunTest(const FString& Parameters)
 }
 #endif
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureCopyNumericPropertiesTest, "Dnd5e.Bestiary.Reader.CopyNumericProperties",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureCopyNumericPropertiesTest::RunTest(const FString& Parameters)
+{
+	using namespace Dnd5eJsonReader;
+	const FString Json = TEXT(R"json({"monster":[
+		{"name":"Parent","source":"SYN","hp":{"average":43,"formula":"6d8+16"},
+			"save":{"dex":"+2","wis":"-1"},"skill":{"stealth":"+2 plus a bonus"},
+			"spellcasting":[{"name":"Original","will":["first"]}]},
+		{"name":"Child","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"hp":{"mode":"scalarMultProp","prop":"average","scalar":0.5,"floor":true},
+			"save":{"mode":"scalarAddProp","prop":"*","scalar":-2},
+			"spellcasting":{"mode":"appendArr","items":{"name":"Added","will":["second"]}},
+			"_":{"mode":"addSpells","will":["third"]}
+		}}},
+		{"name":"Deferred","source":"SYN","_copy":{"name":"Parent","source":"SYN","_mod":{
+			"skill":{"mode":"scalarAddProp","prop":"*","scalar":1}
+		}}}
+	]})json");
+	FDnd5eJsonReadContext Context;
+	Context.DatasetNamespace = TEXT("bestiary-test");
+	Context.RelativeFilePath = TEXT("fixtures/creatures.json");
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	FReadState State{Context, Json, Diagnostics};
+	TSharedPtr<FJsonValue> Root;
+	TSharedPtr<FJsonObject> Document;
+	const TArray<TSharedPtr<FJsonValue>>* Rows = nullptr;
+	if (!TestTrue(TEXT("Numeric property fixtures parse"), ParseJsonDocument(Root, State) &&
+		RequireObject(Root, TEXT(""), Document, State) &&
+		ReadRequiredArray(*Document, TEXT("monster"), TEXT(""), Rows, State) && Rows->Num() == 3))
+	{
+		return false;
+	}
+
+	const auto Parent = (*Rows)[0]->AsObject();
+	FDnd5eCreatureCopyIndex Index;
+	IndexCreatureCopyRow(Index, {Parent, Context.RelativeFilePath, TEXT("/monster/0")});
+	TSharedPtr<FJsonObject> Merged;
+	TArray<FDnd5eCreatureCopyRow> Ancestors;
+	if (!TestTrue(TEXT("Numeric modifiers and spellcasting append resolve"), ResolveCreatureCopy(Index,
+		{(*Rows)[1]->AsObject(), Context.RelativeFilePath, TEXT("/monster/1")}, Merged, Ancestors, State)))
+	{
+		return false;
+	}
+
+	const auto Hp = Merged->GetObjectField(TEXT("hp"));
+	int32 Average = 0;
+	FString Literal;
+	TestTrue(TEXT("Floored HP is readable as a numeric integer token"),
+		ReadRequiredInteger(*Hp, TEXT("average"), TEXT("/hp"), 0, MAX_int32, Average, Literal, State) &&
+		Average == 21 && Literal == TEXT("21"));
+	TestEqual(TEXT("HP formula survives"), Hp->GetStringField(TEXT("formula")), FString(TEXT("6d8+16")));
+	const auto Save = Merged->GetObjectField(TEXT("save"));
+	TestEqual(TEXT("Zero keeps an explicit plus sign"), Save->GetStringField(TEXT("dex")), FString(TEXT("+0")));
+	TestEqual(TEXT("Negative save stays a string"), Save->GetStringField(TEXT("wis")), FString(TEXT("-3")));
+	const auto& Casting = Merged->GetArrayField(TEXT("spellcasting"));
+	TestTrue(TEXT("Append adds a block and the root edit targets the first block"), Casting.Num() == 2 &&
+		Casting[0]->AsObject()->GetArrayField(TEXT("will")).Num() == 2 &&
+		Casting[1]->AsObject()->GetStringField(TEXT("name")) == TEXT("Added") &&
+		Casting[1]->AsObject()->GetArrayField(TEXT("will")).Num() == 1);
+	TestEqual(TEXT("Parent HP survives"), Parent->GetObjectField(TEXT("hp"))->GetNumberField(TEXT("average")), 43.0);
+
+	Merged.Reset();
+	TestFalse(TEXT("Compound bonus defers the copy"), ResolveCreatureCopy(Index,
+		{(*Rows)[2]->AsObject(), Context.RelativeFilePath, TEXT("/monster/2")}, Merged, Ancestors, State));
+	TestTrue(TEXT("Compound bonus reports the modifier origin without publishing a result"),
+		!Merged.IsValid() && Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Code == Codes::UnsupportedRequiredValue &&
+				Diagnostic.JsonPointer == TEXT("/monster/2/_copy/_mod");
+		}));
+	return !HasAnyErrors();
+}
+
 #endif

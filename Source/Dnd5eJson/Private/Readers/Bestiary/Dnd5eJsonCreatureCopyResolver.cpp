@@ -1231,6 +1231,104 @@ namespace
 		return true;
 	}
 
+	bool ApplyCreatureScalarPropertyModifier(FJsonObject& Merged, const FString& Field,
+		const FJsonObject& Operation, bool bMultiply, const FString& Pointer,
+		const FString& ModPointer, FReadState& State)
+	{
+		const bool bKeysValid = bMultiply
+			? CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("prop"), TEXT("scalar"), TEXT("floor")}, Pointer, State)
+			: CheckAllowedKeys(Operation, {TEXT("mode"), TEXT("prop"), TEXT("scalar")}, Pointer, State);
+		FString Property;
+		TSharedPtr<FJsonValue> ScalarValue;
+		bool bFloor = false;
+		if (!bKeysValid ||
+			!ReadRequiredString(Operation, TEXT("prop"), Pointer, Property, State) ||
+			!ReadRequiredValue(Operation, TEXT("scalar"), EJson::Number, Pointer, ScalarValue, State) ||
+			!ReadOptionalBool(Operation, TEXT("floor"), Pointer, bFloor, State))
+		{
+			return false;
+		}
+
+		double Scalar = 0;
+		if (!ScalarValue->TryGetNumber(Scalar) || !FMath::IsFinite(Scalar))
+		{
+			return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("scalar")),
+				TEXT("Expected a finite numeric scalar."));
+		}
+
+		const auto Existing = FindExactField(Merged, *Field);
+		if (!Existing.IsValid() || Existing->Type == EJson::Null) { return true; }
+
+		TSharedPtr<FJsonObject> Original;
+		if (!RequireObject(Existing, Pointer, Original, State)) { return false; }
+		const auto Updated = MakeShared<FJsonObject>();
+		Updated->Values = Original->Values;
+
+		TArray<FString> Properties;
+		if (Property.Equals(TEXT("*"), ESearchCase::CaseSensitive))
+		{
+			Properties.Reserve(Original->Values.Num());
+			for (const auto& Pair : Original->Values)
+			{
+				Properties.Emplace(Pair.Key.Len(), *Pair.Key);
+			}
+		}
+		else
+		{
+			Properties.Add(Property);
+		}
+
+		for (const FString& Key : Properties)
+		{
+			const auto Value = FindExactField(*Original, *Key);
+			if (!Value.IsValid())
+			{
+				return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("prop")),
+					TEXT("Numeric modifier property was not found: ") + Key);
+			}
+
+			double Number = 0;
+			const bool bWasString = Value->Type == EJson::String;
+			bool bParsed = false;
+			if (bWasString)
+			{
+				const FString Token = Value->AsString();
+				bParsed = Token.IsNumeric() && LexTryParseString(Number, *Token);
+			}
+			else if (Value->Type == EJson::Number)
+			{
+				bParsed = Value->TryGetNumber(Number);
+			}
+			if (!bParsed || !FMath::IsFinite(Number))
+			{
+				return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+					TEXT("Numeric modifier property is not a finite number or simple bonus: ") + Key);
+			}
+
+			double Result = bMultiply ? Number * Scalar : Number + Scalar;
+			if (!FMath::IsFinite(Result))
+			{
+				return Fail(State, Codes::InvalidFieldValue, AppendPointer(Pointer, TEXT("scalar")),
+					TEXT("Numeric modifier produced a nonfinite result."));
+			}
+			if (bFloor) { Result = FMath::FloorToDouble(Result); }
+			if (Result == 0.0) { Result = 0.0; } // Normalize negative zero.
+
+			const FString Literal = FString::Printf(TEXT("%.17g"), Result);
+			if (bWasString)
+			{
+				Updated->SetStringField(Key, Result >= 0 ? FString(TEXT("+")) + Literal : Literal);
+			}
+			else
+			{
+				Updated->SetField(Key, MakeShared<FJsonValueNumberString>(Literal));
+			}
+		}
+
+		Merged.SetObjectField(Field, Updated);
+		return true;
+	}
+
 	bool ApplyCreatureFieldModifiers(const FString& Field, const TSharedPtr<FJsonValue>& FieldValue,
 		const FString& ModPointer, FJsonObject& Merged, FReadState& State)
 	{
@@ -1262,7 +1360,10 @@ namespace
 			Field.Equals(TEXT("reactionHeader"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("legendaryHeader"), ESearchCase::CaseSensitive) ||
 			Field.Equals(TEXT("mythicHeader"), ESearchCase::CaseSensitive);
-		if (!bRoot && !bNamedTextTarget && !bUniqueArray)
+		const bool bNumericPropertyTarget = Field.Equals(TEXT("hp"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("save"), ESearchCase::CaseSensitive) ||
+			Field.Equals(TEXT("skill"), ESearchCase::CaseSensitive);
+		if (!bRoot && !bNamedTextTarget && !bUniqueArray && !bNumericPropertyTarget)
 		{
 			return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
 				TEXT("Creature copy modifier target is deferred: ") + Field);
@@ -1295,6 +1396,23 @@ namespace
 			TSharedPtr<FJsonObject> Operation;
 			if (!RequireObject(Value, Pointer, Operation, State)) { return false; }
 
+			if (bNumericPropertyTarget)
+			{
+				FString Mode;
+				if (!ReadRequiredString(*Operation, TEXT("mode"), Pointer, Mode, State)) { return false; }
+				const bool bMultiply = Mode.Equals(TEXT("scalarMultProp"), ESearchCase::CaseSensitive);
+				if (!bMultiply && !Mode.Equals(TEXT("scalarAddProp"), ESearchCase::CaseSensitive))
+				{
+					return Fail(State, Codes::UnsupportedRequiredValue, ModPointer,
+						TEXT("Creature copy numeric property mode is deferred: ") + Mode);
+				}
+				if (!ApplyCreatureScalarPropertyModifier(Merged, Field, *Operation, bMultiply, Pointer, ModPointer, State))
+				{
+					return false;
+				}
+				continue;
+			}
+
 			if (bNamedTextTarget)
 			{
 				FString Mode;
@@ -1311,6 +1429,15 @@ namespace
 				if (bScalarTarget && (bDc || Mode.Equals(TEXT("scalarAddHit"), ESearchCase::CaseSensitive)))
 				{
 					if (!ApplyCreatureScalarTagModifier(Merged, Field, *Operation, bDc, Pointer, State))
+					{
+						return false;
+					}
+					continue;
+				}
+				if (Field.Equals(TEXT("spellcasting"), ESearchCase::CaseSensitive) &&
+					Mode.Equals(TEXT("appendArr"), ESearchCase::CaseSensitive))
+				{
+					if (!ApplyCreatureArrayOperation(Merged, Field, *Operation, Pointer, ModPointer, State))
 					{
 						return false;
 					}
