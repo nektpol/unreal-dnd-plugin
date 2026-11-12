@@ -131,6 +131,85 @@ namespace Dnd5eJsonReader
 		AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::PreservedUnsupportedContent, Pointer, TEXT("The complete unmodeled inline token is retained as text."));
 	}
 
+	static FString FormatAttackInlineLabel(const FString& Tag, const FString& Body)
+	{
+		static const TMap<FString, FString> Prefixes = {
+			{TEXT("m"), TEXT("Melee")},
+			{TEXT("r"), TEXT("Ranged")},
+			{TEXT("m,r"), TEXT("Melee or Ranged")},
+			{TEXT("mw"), TEXT("Melee Weapon")},
+			{TEXT("rw"), TEXT("Ranged Weapon")},
+			{TEXT("mw,rw"), TEXT("Melee or Ranged Weapon")},
+			{TEXT("ms"), TEXT("Melee Spell")},
+			{TEXT("rs"), TEXT("Ranged Spell")},
+			{TEXT("ms,rs"), TEXT("Melee or Ranged Spell")}
+		};
+
+		TArray<FString> Parts;
+		Body.ParseIntoArray(Parts, TEXT(","), false);
+		for (FString& Part : Parts)
+		{
+			Part = Part.TrimStartAndEnd().ToLower();
+			if (Part.IsEmpty()) { return {}; }
+		}
+		const FString* Prefix = Prefixes.Find(FString::Join(Parts, TEXT(",")));
+		if (!Prefix) { return {}; }
+		return *Prefix + (Tag.Equals(TEXT("atkr"), ESearchCase::CaseSensitive)
+			? TEXT(" Attack Roll:") : TEXT(" Attack:"));
+	}
+
+	static FString FormatCombatInlineLabel(const FString& Tag, const FString& Body)
+	{
+		if (Tag.Equals(TEXT("atk"), ESearchCase::CaseSensitive) ||
+			Tag.Equals(TEXT("atkr"), ESearchCase::CaseSensitive))
+		{
+			return FormatAttackInlineLabel(Tag, Body);
+		}
+
+		const FString Value = Body.TrimStartAndEnd();
+		if (Tag.Equals(TEXT("actSave"), ESearchCase::CaseSensitive))
+		{
+			static const TMap<FString, FString> Abilities = {
+				{TEXT("str"), TEXT("Strength")}, {TEXT("dex"), TEXT("Dexterity")},
+				{TEXT("con"), TEXT("Constitution")}, {TEXT("int"), TEXT("Intelligence")},
+				{TEXT("wis"), TEXT("Wisdom")}, {TEXT("cha"), TEXT("Charisma")}
+			};
+			const FString* Ability = Abilities.Find(Value.ToLower());
+			return Ability ? *Ability + TEXT(" Saving Throw:") : FString();
+		}
+		if (Tag.Equals(TEXT("actSaveFail"), ESearchCase::CaseSensitive))
+		{
+			if (Value.IsEmpty()) { return TEXT("Failure:"); }
+			if (Value == TEXT("1")) { return TEXT("First Failure:"); }
+			if (Value == TEXT("2")) { return TEXT("Second Failure:"); }
+			if (Value == TEXT("3")) { return TEXT("Third Failure:"); }
+			return {};
+		}
+		if (Tag.Equals(TEXT("actSaveFailBy"), ESearchCase::CaseSensitive))
+		{
+			if (Value.IsEmpty() || Value.Len() > 9) { return {}; }
+			for (TCHAR Character : Value)
+			{
+				if (Character < TEXT('0') || Character > TEXT('9')) { return {}; }
+			}
+			return TEXT("Failure by ") + Value + TEXT(" or More:");
+		}
+		if (Tag.Equals(TEXT("actResponse"), ESearchCase::CaseSensitive))
+		{
+			if (Value.IsEmpty()) { return TEXT("Response:"); }
+			if (Value.Equals(TEXT("d"), ESearchCase::CaseSensitive)) { return TEXT("Response\u2014"); }
+			return {};
+		}
+		if (!Value.IsEmpty()) { return {}; }
+		if (Tag.Equals(TEXT("h"), ESearchCase::CaseSensitive)) { return TEXT("Hit: "); }
+		if (Tag.Equals(TEXT("m"), ESearchCase::CaseSensitive)) { return TEXT("Miss: "); }
+		if (Tag.Equals(TEXT("hom"), ESearchCase::CaseSensitive)) { return TEXT("Hit or Miss: "); }
+		if (Tag.Equals(TEXT("actSaveSuccess"), ESearchCase::CaseSensitive)) { return TEXT("Success:"); }
+		if (Tag.Equals(TEXT("actSaveSuccessOrFail"), ESearchCase::CaseSensitive)) { return TEXT("Failure or Success:"); }
+		if (Tag.Equals(TEXT("actTrigger"), ESearchCase::CaseSensitive)) { return TEXT("Trigger:"); }
+		return {};
+	}
+
 	bool ReadInlineToken(const FString& Token, const FString& Pointer, TArray<FDnd5eInlineContent>& Inlines, FReadState& State, int32 Depth)
 	{
 		int32 BodyStart = 2;
@@ -140,6 +219,18 @@ namespace Dnd5eJsonReader
 		const FString Body = Token.Mid(BodyStart, Token.Len() - BodyStart - 1);
 		const auto Parts = SplitInlineArguments(Body);
 		const auto Metadata = MakeContentMetadata(Pointer, State);
+
+		const FString CombatLabel = FormatCombatInlineLabel(Tag, Body);
+		if (!CombatLabel.IsEmpty())
+		{
+			FDnd5eFormattedContent Formatted;
+			Formatted.SourceFormat = TEXT("5etools");
+			Formatted.SourceReference = Token;
+			Formatted.Formatting.AddTag(Dnd5e::Content::Formatting::Italic);
+			if (!ReadInlines(CombatLabel, Pointer, Formatted.Inlines, State, Depth + 1)) { return false; }
+			Inlines.Add(MakeInline(Dnd5e::Content::Inline::Formatted, Formatted, Metadata));
+			return true;
+		}
 		if (Tag.Equals(TEXT("b"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("bold"), ESearchCase::CaseSensitive) ||
 			Tag.Equals(TEXT("i"), ESearchCase::CaseSensitive) || Tag.Equals(TEXT("italic"), ESearchCase::CaseSensitive) ||
 			Tag.Equals(TEXT("note"), ESearchCase::CaseSensitive))

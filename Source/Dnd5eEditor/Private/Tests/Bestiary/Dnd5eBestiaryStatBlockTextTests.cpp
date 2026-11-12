@@ -3,6 +3,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Browser/Bestiary/Dnd5eBestiaryStatBlockText.h"
+#include "Browser/Dnd5eBrowserText.h"
+#include "Content/Dnd5eContentLibrary.h"
+#include "Dnd5eTags.h"
 #include "Misc/AutomationTest.h"
 #include "Readers/Bestiary/Dnd5eJsonCreatureReader.h"
 
@@ -52,6 +55,47 @@ bool FDnd5eBestiaryStatBlockTextTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Hidden spell groups and entries are omitted"), Text.Contains(TEXT("Hidden group entry")) || Text.Contains(TEXT("Hidden individual entry")));
 	const FString Empty = Dnd5eBestiaryStatBlockText::Format(FDnd5eCreature{}).ToString();
 	TestFalse(TEXT("Missing fields do not invent numeric values"), Empty.Contains(TEXT("Armor Class")) || Empty.Contains(TEXT("Hit Points")) || Empty.Contains(TEXT("STR")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryCombatLabelTest, "Dnd5e.Bestiary.Editor.CombatLabels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryCombatLabelTest::RunTest(const FString& Parameters)
+{
+	FDnd5eJsonDocument Document;
+	Document.Context.DatasetNamespace = TEXT("combat-label-test");
+	Document.Context.RelativeFilePath = TEXT("creatures.json");
+	Document.JsonText = TEXT(R"json({"monster":[{
+		"name":"Invented Guard","source":"SYN","size":["M"],"type":"humanoid","action":[
+			{"name":"Legacy","entries":["{@atk mw} {@hit 2} to hit. {@h}2 ({@damage 1d4}) damage."]},
+			{"name":"Revised","entries":["{@atkr m,r} {@hit 3}. {@actSave dex} {@dc 12}. {@actSaveFail 2} Prone. {@actSaveSuccess} Safe."]},
+			{"name":"Unknown","entries":["Prefix {@inventedToken payload} suffix."]}
+		]
+	}]})json");
+	const auto Result = FDnd5eJsonCreatureReader::ReadCreature(Document, TEXT("Invented Guard"), TEXT("SYN"));
+	if (!TestTrue(TEXT("Combat fixture converts"), Result.Status == EDnd5eJsonReadStatus::Success &&
+		Result.Creature.Actions.Num() == 3 && Result.Creature.Actions[0].Entries.Num() == 1))
+	{
+		for (const auto& Diagnostic : Result.Diagnostics) { AddError(Diagnostic.JsonPointer + TEXT(" ") + Diagnostic.Message); }
+		return false;
+	}
+
+	const auto& Actions = Result.Creature.Actions;
+	TestEqual(TEXT("Legacy attack preserves hit and damage spacing"), Dnd5eBrowserText::FormatDescription(Actions[0].Entries).ToString(),
+		FString(TEXT("Melee Weapon Attack: +2 to hit. Hit: 2 (1d4) damage.")));
+	TestEqual(TEXT("Revised attack and save labels display with the DC"), Dnd5eBrowserText::FormatDescription(Actions[1].Entries).ToString(),
+		FString(TEXT("Melee or Ranged Attack Roll: +3. Dexterity Saving Throw: DC 12. Second Failure: Prone. Success: Safe.")));
+	TestEqual(TEXT("Unrecognized text still appears in the shared preview"), Dnd5eBrowserText::FormatDescription(Actions[2].Entries).ToString(),
+		FString(TEXT("Prefix {@inventedToken payload} suffix.")));
+
+	FDnd5eParagraphContent Paragraph;
+	FDnd5eFormattedContent AttackLabel;
+	TestTrue(TEXT("The reader preserves the exact token on typed italic content"),
+		UDnd5eContentLibrary::TryGetParagraph(Actions[0].Entries[0], Paragraph) && !Paragraph.Inlines.IsEmpty() &&
+		UDnd5eContentLibrary::TryGetFormatted(Paragraph.Inlines[0], AttackLabel) &&
+		AttackLabel.SourceFormat == TEXT("5etools") && AttackLabel.SourceReference == TEXT("{@atk mw}") &&
+		AttackLabel.Formatting.HasTagExact(Dnd5e::Content::Formatting::Italic));
 	return !HasAnyErrors();
 }
 

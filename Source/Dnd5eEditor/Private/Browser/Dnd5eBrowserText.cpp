@@ -79,7 +79,7 @@ namespace Dnd5eBrowserText
 	{
 		if (Depth >= MaxPreviewDepth)
 		{
-			AppendPreview(Out, LOCTEXT("InlineDepth", "[More in typed details]").ToString());
+			AppendPreview(Out, LOCTEXT("InlineDepth", "[Preview nesting limit reached]").ToString());
 			return;
 		}
 		for (const auto& Inline : Inlines)
@@ -120,11 +120,16 @@ namespace Dnd5eBrowserText
 				if (!Link.Display.IsEmpty()) { AppendInlines(Link.Display, Out, Depth + 1); }
 				else { AppendPreview(Out, Link.Url); }
 			}
-			else if (UDnd5eContentLibrary::TryGetUnsupportedInline(Inline, Unsupported) && !Unsupported.DisplayText.IsEmpty())
+			else if (UDnd5eContentLibrary::TryGetUnsupportedInline(Inline, Unsupported))
 			{
-				AppendPreview(Out, Unsupported.DisplayText);
+				if (!Unsupported.DisplayText.IsEmpty()) { AppendPreview(Out, Unsupported.DisplayText); }
+				else if (Unsupported.FragmentKind == EDnd5eSourceFragmentKind::Text && !Unsupported.SourceFragment.IsEmpty())
+				{
+					AppendPreview(Out, Unsupported.SourceFragment);
+				}
+				else { AppendPreview(Out, LOCTEXT("InlineFallback", "[Unsupported inline content]").ToString()); }
 			}
-			else { AppendPreview(Out, LOCTEXT("InlineFallback", "[See typed details]").ToString()); }
+			else { AppendPreview(Out, LOCTEXT("InvalidInline", "[Unsupported inline content]").ToString()); }
 		}
 	}
 
