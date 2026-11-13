@@ -8,6 +8,6 @@
 
 namespace Dnd5eJsonCreatureLoreReader
 {
-	bool ReadAndAttach(const FDnd5eJsonDocument& Document, TArray<FDnd5eCreature>& Creatures,
+	bool ReadAndAttach(const TArray<FDnd5eJsonDocument>& Documents, TArray<FDnd5eCreature>& Creatures,
 		TArray<FDnd5eDiagnostic>& Diagnostics);
 }

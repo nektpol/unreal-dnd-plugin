@@ -26,6 +26,9 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Dataset", meta = (FilePathFilter = "json"))
 	FFilePath LoreFile;
 
+	UPROPERTY(Config, EditAnywhere, Category = "Dataset")
+	bool bUseLoreIndex = false;
+
 	virtual FName GetContainerName() const override { return TEXT("Editor"); }
 	virtual FName GetCategoryName() const override { return TEXT("General"); }
 	virtual FName GetSectionName() const override { return TEXT("Dnd5eBestiaryDataset"); }

@@ -225,11 +225,26 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	Request.DatasetNamespace = TEXT("local-bestiary-audit");
 	if (bLoadedTemplates) { Request.TemplateFile = TEXT("template.json"); }
 	FParse::Value(FCommandLine::Get(), TEXT("Dnd5eBestiaryLoreFile="), Request.LoreFile);
+	Request.bUseLoreIndex = FParse::Param(FCommandLine::Get(), TEXT("Dnd5eBestiaryLoreIndex"));
 	FDnd5eCreatureCatalog Catalog;
 	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
 	if (TestTrue(TEXT("Indexed loader publishes the snapshot catalog"), Loaded.Status == EDnd5eJsonReadStatus::Success))
 	{
 		TestEqual(TEXT("Catalog exposes every converted row"), Catalog.GetCreatureCount(), Converted);
+		if (Request.bUseLoreIndex)
+		{
+			FDnd5eCreatureQuery Query;
+			Query.Name = TEXT("Violet Fungus");
+			Query.SourceId = TEXT("DoSI");
+			const auto Ids = Catalog.QueryCreatureIds(Query);
+			FDnd5eCreature Creature;
+			TestTrue(TEXT("Violet Fungus inherits lore authored in the Monster Manual file"),
+				Ids.Num() == 1 && Catalog.TryGetCreature(Ids[0], Creature) &&
+				Creature.SupplementaryContent.Entries.ContainsByPredicate([](const FDnd5eContentBlock& Entry)
+				{
+					return Entry.Metadata.RelativeFilePath == TEXT("fluff-bestiary-mm.json");
+				}));
+		}
 		if (Request.LoreFile == TEXT("fluff-bestiary-mm.json"))
 		{
 			FDnd5eCreatureQuery Query;
@@ -251,7 +266,10 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 	{
 		for (const auto& Diagnostic : Loaded.Diagnostics)
 		{
-			AddError(Diagnostic.Message + TEXT(" ") + Diagnostic.RelativeFilePath + Diagnostic.JsonPointer);
+			if (Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error)
+			{
+				AddError(Diagnostic.Message + TEXT(" ") + Diagnostic.RelativeFilePath + Diagnostic.JsonPointer);
+			}
 		}
 	}
 	return !HasAnyErrors();

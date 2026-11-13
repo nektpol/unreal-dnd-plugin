@@ -10,5 +10,6 @@ FDnd5eJsonCreatureCatalogLoadRequest UDnd5eEditorBestiaryDatasetSettings::MakeLo
 	Request.DatasetNamespace = DatasetNamespace;
 	Request.TemplateFile = Dnd5eEditorDatasetPaths::ToDatasetRelativePath(TemplateFile.FilePath, DatasetRoot.Path);
 	Request.LoreFile = Dnd5eEditorDatasetPaths::ToDatasetRelativePath(LoreFile.FilePath, DatasetRoot.Path);
+	Request.bUseLoreIndex = bUseLoreIndex;
 	return Request;
 }

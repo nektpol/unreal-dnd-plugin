@@ -13,6 +13,7 @@ namespace
         TSharedPtr<FJsonObject> Object;
         FString Source;
         FString Pointer;
+        int32 DocumentIndex = INDEX_NONE;
     };
 
     struct FPendingCreatureLore
@@ -38,15 +39,13 @@ namespace
         return Key;
     }
 
-    bool ReadLoreRows(const TArray<TSharedPtr<FJsonValue>>& Values, FReadState& State,
-        TArray<FLoreRow>& Rows, TMap<FDnd5eRecordId, int32>& Lookup, TArray<FDnd5eRecordId>& Keys)
+    bool ReadLoreRows(const TArray<TSharedPtr<FJsonValue>>& Values, int32 DocumentIndex, FReadState& State,
+           TArray<FLoreRow>& Rows, TMap<FDnd5eRecordId, int32>& Lookup, TArray<FDnd5eRecordId>& Keys)
     {
-        Rows.Reserve(Values.Num());
-        Lookup.Reserve(Values.Num());
-        Keys.Reserve(Values.Num());
         for (int32 Index = 0; Index < Values.Num(); ++Index)
         {
             FLoreRow Row;
+            Row.DocumentIndex = DocumentIndex;
             Row.Pointer = AppendPointer(TEXT("/monsterFluff"), FString::FromInt(Index));
             FString Name;
             if (!RequireObject(Values[Index], Row.Pointer, Row.Object, State) ||
@@ -63,7 +62,7 @@ namespace
             {
                 return Fail(State, Codes::InvalidFieldValue, Row.Pointer, TEXT("Duplicate creature lore identity."));
             }
-            Lookup.Add(Key, Index);
+            Lookup.Add(Key, Rows.Num());
             Keys.Add(MoveTemp(Key));
             Rows.Add(MoveTemp(Row));
         }
@@ -71,14 +70,16 @@ namespace
     }
 
     ELoreChainResult CollectLoreChain(int32 StartIndex, const TArray<FLoreRow>& Rows,
-        const TMap<FDnd5eRecordId, int32>& Lookup, FReadState& State, TArray<int32>& Chain)
+        const TMap<FDnd5eRecordId, int32>& Lookup, const TArray<FDnd5eJsonDocument>& Documents,
+        TArray<FDnd5eDiagnostic>& Diagnostics, TArray<int32>& Chain)
     {
         TSet<int32> Seen;
         int32 Index = StartIndex;
         for (;;)
         {
             const FLoreRow& Row = Rows[Index];
-            FReadState RowState{State.Context, State.JsonText, State.Diagnostics, Row.Source};
+            const FDnd5eJsonDocument& Document = Documents[Row.DocumentIndex];
+            FReadState RowState{Document.Context, Document.JsonText, Diagnostics, Row.Source};
             if (Seen.Contains(Index))
             {
                 Fail(RowState, Codes::InvalidFieldValue, Row.Pointer, TEXT("Creature lore copy cycle."));
@@ -114,12 +115,12 @@ namespace
                 return ELoreChainResult::Invalid;
             }
 
-            const auto ParentKey = MakeLoreJoinKey(State.Context.DatasetNamespace, ParentName, ParentSource);
+            const auto ParentKey = MakeLoreJoinKey(Document.Context.DatasetNamespace, ParentName, ParentSource);
             const int32* ParentIndex = Lookup.Find(ParentKey);
             if (!ParentIndex)
             {
                 AddDiagnostic(RowState, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference, Pointer,
-                    TEXT("Creature lore parent is absent from the selected file."));
+                    TEXT("Creature lore parent is absent from the selected lore documents."));
                 return ELoreChainResult::Skipped;
             }
             Index = *ParentIndex;
@@ -199,12 +200,14 @@ namespace
     }
 
     bool ResolveLoreEntries(const TArray<FLoreRow>& Rows, const TArray<int32>& Chain,
-        FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Entries)
+        const TArray<FDnd5eJsonDocument>& Documents, TArray<FDnd5eDiagnostic>& Diagnostics,
+        int32& Converted, TArray<FDnd5eContentBlock>& Entries)
     {
         for (int32 Index = Chain.Num() - 1; Index >= 0; --Index)
         {
             const FLoreRow& Row = Rows[Chain[Index]];
-            FReadState RowState{State.Context, State.JsonText, State.Diagnostics, Row.Source};
+            const FDnd5eJsonDocument& Document = Documents[Row.DocumentIndex];
+            FReadState RowState{Document.Context, Document.JsonText, Diagnostics, Row.Source};
             if (const auto Direct = FindExactField(*Row.Object, TEXT("entries")))
             {
                 if (!ReadLoreContent(Direct, AppendPointer(Row.Pointer, TEXT("entries")), false, RowState, Converted, Entries))
@@ -251,29 +254,36 @@ namespace
     }
 }
 
-bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const FDnd5eJsonDocument& Document,
+bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const TArray<FDnd5eJsonDocument>& Documents,
     TArray<FDnd5eCreature>& Creatures, TArray<FDnd5eDiagnostic>& Diagnostics)
 {
-    FReadState State{Document.Context, Document.JsonText, Diagnostics, FString{}};
-    TSharedPtr<FJsonValue> RootValue;
-    TSharedPtr<FJsonObject> Root;
-    const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
-    if (!ValidateReadContext(State) || !ValidateDocumentText(State) || !PreflightJson(State) ||
-        !ParseJsonDocument(RootValue, State) || !RequireObject(RootValue, TEXT(""), Root, State) ||
-        !ReadRequiredArray(*Root, TEXT("monsterFluff"), TEXT(""), Values, State))
-    {
-        return false;
-    }
-    if (Values->Num() > 100000)
-    {
-        return Fail(State, Codes::ResourceLimitExceeded, TEXT("/monsterFluff"), TEXT("Too many creature lore rows."));
-    }
+    if (Documents.IsEmpty()) { return true; }
 
     TArray<FLoreRow> Rows;
     TMap<FDnd5eRecordId, int32> LoreLookup;
     TArray<FDnd5eRecordId> Keys;
-    if (!ReadLoreRows(*Values, State, Rows, LoreLookup, Keys)) { return false; }
+    for (int32 DocumentIndex = 0; DocumentIndex < Documents.Num(); ++DocumentIndex)
+    {
+        const auto& Document = Documents[DocumentIndex];
+        FReadState State{Document.Context, Document.JsonText, Diagnostics, FString{}};
+        TSharedPtr<FJsonValue> RootValue;
+        TSharedPtr<FJsonObject> Root;
+        const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+        if (!ValidateReadContext(State) || !ValidateDocumentText(State) || !PreflightJson(State) ||
+            !ParseJsonDocument(RootValue, State) || !RequireObject(RootValue, TEXT(""), Root, State) ||
+            !ReadRequiredArray(*Root, TEXT("monsterFluff"), TEXT(""), Values, State))
+        {
+            return false;
+        }
+        if (Values->Num() > 100000 - Rows.Num())
+        {
+            return Fail(State, Codes::ResourceLimitExceeded, TEXT("/monsterFluff"),
+                TEXT("Too many creature lore rows across the selected files."));
+        }
+        if (!ReadLoreRows(*Values, DocumentIndex, State, Rows, LoreLookup, Keys)) { return false; }
+    }
 
+    FReadState State{Documents[0].Context, Documents[0].JsonText, Diagnostics, FString{}};
     TMap<FDnd5eRecordId, int32> Primary;
     for (int32 Index = 0; Index < Creatures.Num(); ++Index)
     {
@@ -296,7 +306,7 @@ bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const FDnd5eJsonDocument& Docume
         if (!CreatureIndex) { continue; }
 
         TArray<int32> Chain;
-        const ELoreChainResult Result = CollectLoreChain(RowIndex, Rows, LoreLookup, State, Chain);
+        const ELoreChainResult Result = CollectLoreChain(RowIndex, Rows, LoreLookup, Documents, Diagnostics, Chain);
         if (Result == ELoreChainResult::Invalid) { return false; }
         if (Result == ELoreChainResult::Skipped) { continue; }
 
@@ -304,9 +314,9 @@ bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const FDnd5eJsonDocument& Docume
         FPendingCreatureLore Attachment;
         Attachment.CreatureIndex = *CreatureIndex;
         Attachment.Provenance.SourceId = Row.Source;
-        Attachment.Provenance.RelativeFilePath = Document.Context.RelativeFilePath;
+        Attachment.Provenance.RelativeFilePath = Documents[Row.DocumentIndex].Context.RelativeFilePath;
         Attachment.Provenance.JsonPointer = Row.Pointer;
-        if (!ResolveLoreEntries(Rows, Chain, State, Converted, Attachment.Entries)) { return false; }
+        if (!ResolveLoreEntries(Rows, Chain, Documents, Diagnostics, Converted, Attachment.Entries)) { return false; }
         if (!Attachment.Entries.IsEmpty()) { Pending.Add(MoveTemp(Attachment)); }
     }
 

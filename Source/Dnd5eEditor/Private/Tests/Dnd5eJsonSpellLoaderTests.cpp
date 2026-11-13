@@ -781,4 +781,66 @@ bool FDnd5eBestiaryInheritedLoreTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryLoreIndexTest, "Dnd5e.Bestiary.Loader.LoreIndex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryLoreIndexTest::RunTest(const FString& Parameters)
+{
+	const FLoaderFiles Files;
+	if (!TestTrue(TEXT("Write indexed lore fixtures"),
+		Files.Write(TEXT("index.json"), TEXT(R"json({"SYN":"creatures.json"})json")) &&
+		Files.Write(TEXT("creatures.json"), TEXT(R"json({"monster":[{"name":"Child","source":"SYN","size":["M"],"type":"humanoid"}]})json")) &&
+		Files.Write(TEXT("fluff-index.json"), TEXT(R"json({"SYN":"a-child.json","ALIAS":"a-child.json","BASE":"z-parent.json"})json")) &&
+		Files.Write(TEXT("a-child.json"), TEXT(R"json({"monsterFluff":[{"name":"Child","source":"SYN","_copy":{"name":"Shared","source":"BASE","_mod":{"entries":{"mode":"prependArr","items":"Child text."}}}}]})json")) &&
+		Files.Write(TEXT("z-parent.json"), TEXT(R"json({"monsterFluff":[{"name":"Shared","source":"BASE","entries":["Shared text."]}]})json"))))
+	{
+		return false;
+	}
+
+	FDnd5eJsonCreatureCatalogLoadRequest Request;
+	Request.DatasetRoot = Files.Root;
+	Request.DatasetNamespace = TEXT("lore-index-test");
+	Request.bUseLoreIndex = true;
+	FDnd5eCreatureCatalog Catalog;
+	const auto Loaded = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	const auto Ids = Catalog.QueryCreatureIds({});
+	FDnd5eCreature Child;
+	if (!TestTrue(TEXT("Indexed alias is read once and the child publishes"), Loaded.Status == EDnd5eJsonReadStatus::Success &&
+		Ids.Num() == 1 && Catalog.TryGetCreature(Ids[0], Child)))
+	{
+		for (const auto& Diagnostic : Loaded.Diagnostics) { AddError(Diagnostic.RelativeFilePath + TEXT(" ") + Diagnostic.Message); }
+		return false;
+	}
+	const auto& Entries = Child.SupplementaryContent.Entries;
+	TestTrue(TEXT("Forward cross-file parent retains provenance and follows the child introduction"),
+		Entries.Num() == 2 && Entries[0].Metadata.RelativeFilePath == TEXT("a-child.json") &&
+		Entries[0].Metadata.JsonPointer == TEXT("/monsterFluff/0/_copy/_mod/entries/items") &&
+		Entries[1].Metadata.RelativeFilePath == TEXT("z-parent.json") &&
+		Entries[1].Metadata.JsonPointer == TEXT("/monsterFluff/0/entries/0"));
+
+	Request.LoreFile = TEXT("a-child.json");
+	const auto Conflict = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	TestTrue(TEXT("Conflicting settings reject the load"), Conflict.Status == EDnd5eJsonReadStatus::Failure &&
+		Conflict.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Code == FName(TEXT("Dnd5e.Json.Load.ConflictingLoreSelection"));
+		}));
+	Request.LoreFile.Reset();
+
+	if (!TestTrue(TEXT("Write a duplicate in another indexed file"),
+		Files.Write(TEXT("z-parent.json"), TEXT(R"json({"monsterFluff":[{"name":"Child","source":"SYN","entries":["Duplicate."]}]})json"))))
+	{
+		return false;
+	}
+	const auto Duplicate = FDnd5eJsonCreatureCatalogLoader::LoadCatalog(Request, Catalog);
+	FDnd5eCreature Preserved;
+	TestTrue(TEXT("Cross-file duplicate fails at the second file and preserves the published lore"),
+		Duplicate.Status == EDnd5eJsonReadStatus::Failure &&
+		Duplicate.Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.RelativeFilePath == TEXT("z-parent.json") && Diagnostic.Message.Contains(TEXT("Duplicate creature lore identity"));
+		}) && Catalog.TryGetCreature(Ids[0], Preserved) && Preserved.SupplementaryContent.Entries.Num() == 2);
+	return !HasAnyErrors();
+}
+
 #endif

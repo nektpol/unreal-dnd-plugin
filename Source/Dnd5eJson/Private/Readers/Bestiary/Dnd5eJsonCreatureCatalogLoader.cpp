@@ -49,6 +49,70 @@ namespace
 		return true;
 	}
 
+    bool ReadBestiaryLoreDocuments(const FDnd5eJsonCreatureCatalogLoadRequest& Request, const FString& Root,
+        const TArray<FString>& ReservedPaths, int64& TotalBytes, TArray<FDnd5eJsonDocument>& OutDocuments,
+        TArray<FDnd5eDiagnostic>& Diagnostics)
+    {
+        using namespace Dnd5eJsonLocalDocuments;
+        if (!Request.bUseLoreIndex && Request.LoreFile.IsEmpty()) { return true; }
+        if (Request.bUseLoreIndex && !Request.LoreFile.IsEmpty())
+        {
+            return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.ConflictingLoreSelection"),
+                TEXT("Choose either Use Lore Index or a single Lore File."), Request.LoreFile);
+        }
+
+        const auto ContainsPath = [](const TArray<FString>& Paths, const FString& Path)
+        {
+            return Paths.ContainsByPredicate([&Path](const FString& Existing)
+            {
+                return FPaths::IsSamePath(Existing, Path);
+            });
+        };
+
+        TArray<FString> Files;
+        FString LoreIndexPath;
+        if (Request.bUseLoreIndex)
+        {
+            const FString IndexFile = TEXT("fluff-index.json");
+            if (!ResolveSelectedFile(Root, IndexFile, Request.DatasetNamespace, LoreIndexPath, Diagnostics)) { return false; }
+            if (ContainsPath(ReservedPaths, LoreIndexPath))
+            {
+                return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.DuplicateFile"),
+                    TEXT("The lore index must be separate from the primary dataset inputs."), IndexFile);
+            }
+            FDnd5eJsonDocument LoreIndex;
+            if (!ReadDocument(LoreIndexPath, IndexFile, Request.DatasetNamespace, TotalBytes, LoreIndex, Diagnostics) ||
+                !ReadBestiaryIndex(LoreIndex, Files, Diagnostics))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            Files.Add(Request.LoreFile);
+        }
+
+        TArray<FString> ReadPaths;
+        for (const FString& File : Files)
+        {
+            FString FullPath;
+            if (!ResolveSelectedFile(Root, File, Request.DatasetNamespace, FullPath, Diagnostics)) { return false; }
+            if (ContainsPath(ReservedPaths, FullPath) ||
+                (!LoreIndexPath.IsEmpty() && FPaths::IsSamePath(LoreIndexPath, FullPath)))
+            {
+                return LoadError(Diagnostics, TEXT("Dnd5e.Json.Load.DuplicateFile"),
+                    TEXT("A lore document must be separate from index, template, and creature documents."), File);
+            }
+            if (ContainsPath(ReadPaths, FullPath)) { continue; }
+
+            FDnd5eJsonDocument Lore;
+            if (!ReadDocument(FullPath, File, Request.DatasetNamespace, TotalBytes, Lore, Diagnostics)) { return false; }
+            ReadPaths.Add(MoveTemp(FullPath));
+            OutDocuments.Add(MoveTemp(Lore));
+        }
+        return true;
+    }
+
 	bool HasBestiaryReadErrors(const FDnd5eCreatureDocumentAudit& Document)
 	{
 		const auto IsError = [](const FDnd5eDiagnostic& Diagnostic)
@@ -149,27 +213,13 @@ FDnd5eJsonCreatureCatalogLoadResult FDnd5eJsonCreatureCatalogLoader::LoadCatalog
 	{
 		return Result;
 	}
-	if (!Request.LoreFile.IsEmpty())
+	ReadPaths.Add(IndexPath);
+	if (bHasTemplate) { ReadPaths.Add(TemplatePath); }
+	TArray<FDnd5eJsonDocument> LoreDocuments;
+	if (!ReadBestiaryLoreDocuments(Request, Root, ReadPaths, TotalBytes, LoreDocuments, Result.Diagnostics) ||
+		!Dnd5eJsonCreatureLoreReader::ReadAndAttach(LoreDocuments, Batch.Creatures, Result.Diagnostics))
 	{
-		FString LorePath;
-		if (!ResolveSelectedFile(Root, Request.LoreFile, Request.DatasetNamespace, LorePath, Result.Diagnostics))
-		{
-			return Result;
-		}
-		if (FPaths::IsSamePath(IndexPath, LorePath) || (bHasTemplate && FPaths::IsSamePath(TemplatePath, LorePath)) ||
-			ReadPaths.ContainsByPredicate([&LorePath](const FString& Path) { return FPaths::IsSamePath(Path, LorePath); }))
-		{
-			LoadError(Result.Diagnostics, TEXT("Dnd5e.Json.Load.DuplicateFile"),
-				TEXT("The lore file must be separate from the index, template, and creature documents."), Request.LoreFile);
-			return Result;
-		}
-
-		FDnd5eJsonDocument Lore;
-		if (!ReadDocument(LorePath, Request.LoreFile, Request.DatasetNamespace, TotalBytes, Lore, Result.Diagnostics) ||
-			!Dnd5eJsonCreatureLoreReader::ReadAndAttach(Lore, Batch.Creatures, Result.Diagnostics))
-		{
-			return Result;
-		}
+		return Result;
 	}
 	TArray<FDnd5eDiagnostic> CatalogDiagnostics;
 	const bool bPublished = Catalog.ReplaceCreatures(MoveTemp(Batch.Creatures), CatalogDiagnostics);

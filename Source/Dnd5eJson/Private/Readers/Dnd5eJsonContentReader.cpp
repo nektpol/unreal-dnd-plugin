@@ -451,7 +451,13 @@ namespace Dnd5eJsonReader
 	bool ReadTableCell(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, FDnd5eTableCellContent& OutCell, FReadState& State, int32 Depth)
 	{
 		FDnd5eTableCellContent Cell;
-		if (Value->Type != EJson::Object)
+		const auto Object = Value->Type == EJson::Object ? Value->AsObject() : nullptr;
+		const auto TypeValue = Object ? FindExactField(*Object, TEXT("type")) : nullptr;
+		FString ContentType;
+		const bool bSection = TypeValue && TypeValue->TryGetString(ContentType) &&
+			(ContentType.Equals(TEXT("entries"), ESearchCase::CaseSensitive) ||
+			 ContentType.Equals(TEXT("section"), ESearchCase::CaseSensitive));
+		if (!Object || bSection)
 		{
 			FDnd5eContentBlock Block;
 			if (!ReadContent(Value, Pointer, Block, State, Depth + 1)) { return false; }
@@ -459,7 +465,6 @@ namespace Dnd5eJsonReader
 		}
 		else
 		{
-			const auto Object = Value->AsObject();
 			if (!CheckAllowedKeys(*Object, {TEXT("type"), TEXT("roll"), TEXT("entry"), TEXT("width")}, Pointer, State)) { return false; }
 			FString Type;
 			if (!ReadRequiredString(*Object, TEXT("type"), Pointer, Type, State)) { return false; }
