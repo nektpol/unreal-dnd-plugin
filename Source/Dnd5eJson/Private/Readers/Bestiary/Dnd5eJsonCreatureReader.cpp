@@ -1418,6 +1418,97 @@ namespace
 		}
 	}
 
+    void SetCreatureTokenReference(const FString& Kind, const FString& Value, const FString& Pointer,
+        FDnd5eMediaReference& Token, FReadState& State)
+    {
+        if (Kind == TEXT("internal") && Dnd5eMedia::IsDatasetRelativePath(Value))
+        {
+            Token.Kind = EDnd5eMediaReferenceKind::DatasetRelative;
+            Token.RelativePath = Value;
+        }
+        else if (Kind == TEXT("external") &&
+            (Value.StartsWith(TEXT("https://")) || Value.StartsWith(TEXT("http://"))))
+        {
+            Token.Kind = EDnd5eMediaReferenceKind::ExternalUrl;
+            Token.Url = Value;
+        }
+        else
+        {
+            AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnsupportedRequiredValue,
+                Pointer, TEXT("Unsupported creature token reference."));
+        }
+    }
+
+    bool ReadCreatureToken(const FJsonObject& Object, const FString& Pointer, FDnd5eCreature& Creature, FReadState& State)
+    {
+        if (const auto Value = FindExactField(Object, TEXT("tokenUrl")); Value && Value->Type != EJson::Null)
+        {
+            FString Url;
+            if (!ReadRequiredString(Object, TEXT("tokenUrl"), Pointer, Url, State)) { return false; }
+            SetCreatureTokenReference(TEXT("external"), Url, AppendPointer(Pointer, TEXT("tokenUrl")), Creature.Token, State);
+            return true;
+        }
+
+        FString Name = Creature.Header.DisplayName;
+        FString Source = Creature.Header.Provenance[0].SourceId;
+        FString Location = AppendPointer(Pointer, TEXT("hasToken"));
+        if (const auto Value = FindExactField(Object, TEXT("token")); Value && Value->Type != EJson::Null)
+        {
+            Location = AppendPointer(Pointer, TEXT("token"));
+            TSharedPtr<FJsonObject> Selector;
+            if (!RequireObject(Value, Location, Selector, State) ||
+                !ReadRequiredString(*Selector, TEXT("name"), Location, Name, State) ||
+                !ReadRequiredString(*Selector, TEXT("source"), Location, Source, State))
+            {
+                return false;
+            }
+        }
+        else if (const auto Href = FindExactField(Object, TEXT("tokenHref")); Href && Href->Type != EJson::Null)
+        {
+            Location = AppendPointer(Pointer, TEXT("tokenHref"));
+            TSharedPtr<FJsonObject> Reference;
+            FString Kind;
+            FString ValueText;
+            if (!RequireObject(Href, Location, Reference, State) ||
+                !ReadRequiredString(*Reference, TEXT("type"), Location, Kind, State))
+            {
+                return false;
+            }
+
+            const TCHAR* Field = Kind == TEXT("external") ? TEXT("url") : TEXT("path");
+            if (!ReadRequiredString(*Reference, Field, Location, ValueText, State)) { return false; }
+            SetCreatureTokenReference(Kind, ValueText, Location, Creature.Token, State);
+            return true;
+        }
+        else
+        {
+            bool bHasToken = false;
+            if (!ReadOptionalBool(Object, TEXT("hasToken"), Pointer, bHasToken, State)) { return false; }
+            if (!bHasToken) { return true; }
+        }
+
+        Name.ReplaceInline(TEXT("\""), TEXT(""));
+        if (Name.IsEmpty() || Source.IsEmpty() || Name.Contains(TEXT("/")) || Source.Contains(TEXT("/")))
+        {
+            AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnsupportedRequiredValue,
+                Location, TEXT("Creature token name or source cannot form a local filename."));
+            return true;
+        }
+        for (TCHAR Character : Name)
+        {
+            if (Character > 127)
+            {
+                AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnsupportedRequiredValue,
+                    Location, TEXT("Supply an explicit token path for this non-ASCII name."));
+                return true;
+            }
+        }
+
+        const FString Path = TEXT("bestiary/tokens/") + Source + TEXT("/") + Name + TEXT(".webp");
+        SetCreatureTokenReference(TEXT("internal"), Path, Location, Creature.Token, State);
+        return true;
+    }
+
 	bool ReadCreatureRow(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -1428,7 +1519,8 @@ namespace
 				TEXT("Creature copy assembly is pending."));
 		}
 
-		return ReadCreatureClassification(Object, Pointer, Creature, State) &&
+		return ReadCreatureToken(Object, Pointer, Creature, State) &&
+			ReadCreatureClassification(Object, Pointer, Creature, State) &&
 			ReadArmorClasses(Object, Pointer, Creature.ArmorClasses, Creature.ArmorClassPresence, State) &&
 			ReadHitPoints(Object, Pointer, Creature.HitPoints, State) &&
 			ReadMovementAndScores(Object, Pointer, Creature, State) &&

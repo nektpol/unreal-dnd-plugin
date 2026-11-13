@@ -24,6 +24,7 @@
 #include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Images/SImage.h"
+#include "Dnd5eTags.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eBestiaryBrowser"
 
@@ -252,6 +253,17 @@ void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
 {
     SetImagesMessage(LOCTEXT("NoArtwork", "No local artwork is available for this creature."));
     SelectedImages = Creature.SupplementaryContent.Images;
+    if (Creature.Token.Kind != EDnd5eMediaReferenceKind::Unspecified)
+    {
+        FDnd5eImageContent Image;
+        Image.Resource = Creature.Token;
+        Image.AltText = TEXT("Creature token");
+
+        FDnd5eContentBlock Block;
+        Block.Kind = Dnd5e::Content::Block::Image;
+        Block.Payload = FInstancedStruct::Make<FDnd5eImageContent>(Image);
+        SelectedImages.Insert(MoveTemp(Block), 0);
+    }
     if (DetailsPages->GetActiveWidgetIndex() == 2) { RebuildImages(); }
     CardTitle = FText::FromString(Creature.Header.DisplayName);
     CardSource = Dnd5eBrowserText::FormatSource(Creature.Header);

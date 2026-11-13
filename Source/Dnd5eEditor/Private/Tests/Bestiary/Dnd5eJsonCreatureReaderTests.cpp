@@ -1197,4 +1197,34 @@ bool FDnd5eCreatureLocalSmokeTest::RunTest(const FString& Parameters)
 	}
 	return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureTokenTest, "Dnd5e.Bestiary.Reader.Token",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eCreatureTokenTest::RunTest(const FString& Parameters)
+{
+    struct FCase
+    {
+        const TCHAR* Fields;
+        EDnd5eMediaReferenceKind Kind;
+        const TCHAR* Value;
+    };
+    const FCase Cases[] = {
+        {TEXT(R"(,"hasToken":true)"), EDnd5eMediaReferenceKind::DatasetRelative, TEXT("bestiary/tokens/SYN/Scout.webp")},
+        {TEXT(R"(,"token":{"name":"Shared Guard","source":"BASE"},"hasToken":true)"), EDnd5eMediaReferenceKind::DatasetRelative, TEXT("bestiary/tokens/BASE/Shared Guard.webp")},
+        {TEXT(R"(,"tokenHref":{"type":"internal","path":"tokens/scout.png"})"), EDnd5eMediaReferenceKind::DatasetRelative, TEXT("tokens/scout.png")},
+        {TEXT(R"(,"tokenUrl":"https://example.org/scout.png","hasToken":true)"), EDnd5eMediaReferenceKind::ExternalUrl, TEXT("https://example.org/scout.png")},
+        {TEXT(R"(,"tokenHref":{"type":"internal","path":"../scout.png"})"), EDnd5eMediaReferenceKind::Unspecified, TEXT("")},
+        {TEXT(""), EDnd5eMediaReferenceKind::Unspecified, TEXT("")}
+    };
+    for (const FCase& Case : Cases)
+    {
+        const FString Json = FString::Printf(TEXT(R"({"monster":[{"name":"Scout","source":"SYN","size":["M"],"type":"humanoid"%s}]})"), Case.Fields);
+        const auto Result = FDnd5eJsonCreatureReader::ReadCreature(MakeDocument(Json), TEXT("Scout"), TEXT("SYN"));
+        const auto& Token = Result.Creature.Token;
+        TestTrue(FString::Printf(TEXT("Token case %s"), Case.Fields), Result.Status == EDnd5eJsonReadStatus::Success &&
+            Token.Kind == Case.Kind && (Case.Kind == EDnd5eMediaReferenceKind::ExternalUrl ? Token.Url : Token.RelativePath) == Case.Value);
+    }
+    return !HasAnyErrors();
+}
+
 #endif

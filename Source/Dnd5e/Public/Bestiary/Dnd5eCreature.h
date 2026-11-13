@@ -9,7 +9,9 @@
 #include "Bestiary/Dnd5eCreatureTypes.h"
 #include "Values/Dnd5eValuePresence.h"
 #include "Content/Dnd5eSupplementaryContent.h"
+#include "Values/Dnd5eMediaReference.h"
 #include "Dnd5eCreature.generated.h"
+
 
 USTRUCT(BlueprintType)
 struct DND5E_API FDnd5eCreature
@@ -138,4 +140,7 @@ struct DND5E_API FDnd5eCreature
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
 	FDnd5eSupplementaryContent SupplementaryContent;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dnd5e|Creature")
+	FDnd5eMediaReference Token;
 };
