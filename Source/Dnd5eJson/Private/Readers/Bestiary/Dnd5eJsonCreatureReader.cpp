@@ -1102,6 +1102,13 @@ namespace
 		return true;
 	}
 
+	bool ReadCreatureProficiencyNote(const FJsonObject& Object, const FString& Pointer,
+		FDnd5eCreature& Creature, FReadState& State)
+	{
+		const auto Note = FindExactField(Object, TEXT("pbNote"));
+		return !Note || ReadRequiredString(Object, TEXT("pbNote"), Pointer, Creature.ProficiencyNote, State);
+	}
+
 	bool ReadCreatureObservations(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -1109,6 +1116,9 @@ namespace
 			ReadSkills(Object, Pointer, Creature, State) &&
 			ReadStrings(Object, TEXT("senses"), Pointer, Creature.Senses, State) &&
 			ReadStrings(Object, TEXT("languages"), Pointer, Creature.Languages, State) &&
+			ReadStrings(Object, TEXT("environment"), Pointer, Creature.Environments, State) &&
+			ReadStrings(Object, TEXT("referenceSources"), Pointer, Creature.ReferenceSources, State) &&
+			ReadCreatureProficiencyNote(Object, Pointer, Creature, State) &&
 			ReadCreaturePassivePerception(Object, Pointer, Creature, State) &&
 			ReadCreatureChallengeRating(Object, Pointer, Creature.ChallengeRating, State) &&
 			ReadCreatureDefenseList(Object, TEXT("vulnerable"), false, Pointer, Creature.DamageVulnerabilities, State) &&

@@ -19,6 +19,7 @@ bool FDnd5eBestiaryStatBlockTextTest::RunTest(const FString& Parameters)
 	Document.Context.RelativeFilePath = TEXT("fixture.json");
 	Document.JsonText = TEXT(R"json({"monster":[{
 		"name":"Invented Scout","source":"SYN","size":["S"],"type":"fey",
+		"cr":"1/4","environment":["forest","hill"],"referenceSources":["SYN-REF"],
 		"alignment":["NY","C","E","NX","L"],
 		"ac":[0,{"special":"variable shell"},{"ac":15,"condition":"while glowing"}],
 		"hp":{"average":0,"formula":"1d4"},
@@ -49,6 +50,19 @@ bool FDnd5eBestiaryStatBlockTextTest::RunTest(const FString& Parameters)
 	Check(TEXT("STR 7 (-2)    DEX 14 (+2)"));
 	Check(TEXT("Saving Throws  Strength -2"));
 	Check(TEXT("Skills  Stealth +6"));
+	Check(TEXT("Challenge  1/4 (50 XP)"));
+	Check(TEXT("Proficiency Bonus  +2"));
+	Check(TEXT("Environment  forest, hill"));
+	Check(TEXT("Referenced in  SYN-REF"));
+
+	auto Override = Result.Creature;
+	Override.ChallengeRating.bHasXp = true;
+	Override.ChallengeRating.Xp = 0;
+	Override.ProficiencyNote = TEXT("Varies by form");
+	const FString OverrideText = Dnd5eBestiaryStatBlockText::Format(Override).ToString();
+	TestTrue(TEXT("Authored zero XP and proficiency wording override defaults"),
+		OverrideText.Contains(TEXT("Challenge  1/4 (0 XP)")) && OverrideText.Contains(TEXT("Proficiency Bonus  Varies by form")));
+
 	Check(TEXT("Damage Resistances  only cold, fire while shielded"));
 	Check(TEXT("Daily (1 each)  Visible daily entry"));
 	Check(TEXT("Levels 1-3 (0 slots)  Visible level entry"));

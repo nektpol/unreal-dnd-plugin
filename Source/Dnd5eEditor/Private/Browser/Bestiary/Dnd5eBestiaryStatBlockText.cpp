@@ -292,21 +292,65 @@ namespace
         return Result;
     }
 
+    int32 StandardChallengeInteger(const FString& Cr)
+    {
+        if (Cr.IsEmpty() || Cr.Len() > 2) { return INDEX_NONE; }
+        for (TCHAR Character : Cr)
+        {
+            if (Character < TEXT('0') || Character > TEXT('9')) { return INDEX_NONE; }
+        }
+        const int32 Value = FCString::Atoi(*Cr);
+        return Value <= 30 && Cr == FString::FromInt(Value) ? Value : INDEX_NONE;
+    }
+
+    bool IsFractionalChallenge(const FString& Cr)
+    {
+        return Cr == TEXT("1/8") || Cr == TEXT("1/4") || Cr == TEXT("1/2");
+    }
+
+    int32 DefaultChallengeXp(const FString& Cr)
+    {
+        if (Cr == TEXT("1/8")) { return 25; }
+        if (Cr == TEXT("1/4")) { return 50; }
+        if (Cr == TEXT("1/2")) { return 100; }
+
+        static constexpr int32 XpByCr[] = {
+            10, 200, 450, 700, 1100, 1800, 2300, 2900, 3900, 5000,
+            5900, 7200, 8400, 10000, 11500, 13000, 15000, 18000, 20000,
+            22000, 25000, 33000, 41000, 50000, 62000, 75000, 90000,
+            105000, 120000, 135000, 155000
+        };
+        const int32 Value = StandardChallengeInteger(Cr);
+        return Value == INDEX_NONE ? INDEX_NONE : XpByCr[Value];
+    }
+
+    FString FormatProficiency(const FDnd5eCreature& Creature)
+    {
+        if (!Creature.ProficiencyNote.IsEmpty()) { return Creature.ProficiencyNote; }
+
+        const FString& Cr = Creature.ChallengeRating.Base;
+        if (IsFractionalChallenge(Cr)) { return TEXT("+2"); }
+        const int32 Value = StandardChallengeInteger(Cr);
+        return Value == INDEX_NONE ? FString() : FString::Printf(TEXT("+%d"), Value < 5 ? 2 : (Value + 3) / 4 + 1);
+    }
+
     FString FormatChallenge(const FDnd5eCreatureChallengeRating& Rating)
     {
         TArray<FString> Parts;
         FString Base = Rating.Base;
-        if (Rating.bHasXp)
+        const int32 BaseXp = Rating.bHasXp ? Rating.Xp : DefaultChallengeXp(Rating.Base);
+        if (BaseXp != INDEX_NONE)
         {
             if (!Base.IsEmpty()) { Base += TEXT(" "); }
-            Base += FString::Printf(TEXT("(%d XP)"), Rating.Xp);
+            Base += FString::Printf(TEXT("(%d XP)"), BaseXp);
         }
         AddText(Parts, MoveTemp(Base));
         if (!Rating.Lair.IsEmpty() || Rating.bHasLairXp)
         {
             FString Lair = TEXT("lair");
             if (!Rating.Lair.IsEmpty()) { Lair += TEXT(" ") + Rating.Lair; }
-            if (Rating.bHasLairXp) { Lair += FString::Printf(TEXT(" (%d XP)"), Rating.LairXp); }
+            const int32 LairXp = Rating.bHasLairXp ? Rating.LairXp : DefaultChallengeXp(Rating.Lair);
+            if (LairXp != INDEX_NONE) { Lair += FString::Printf(TEXT(" (%d XP)"), LairXp); }
             Parts.Add(MoveTemp(Lair));
         }
         if (!Rating.Coven.IsEmpty()) { Parts.Add(TEXT("coven ") + Rating.Coven); }
@@ -421,6 +465,9 @@ Dnd5eBestiaryStatBlockText::FStatBlock Dnd5eBestiaryStatBlockText::Build(const F
     AppendStat(Facts, TEXT("Senses"), FString::Join(Senses, TEXT(", ")));
     AppendStat(Facts, TEXT("Languages"), FString::Join(Creature.Languages, TEXT(", ")));
     AppendStat(Facts, TEXT("Challenge"), FormatChallenge(Creature.ChallengeRating));
+    AppendStat(Facts, TEXT("Proficiency Bonus"), FormatProficiency(Creature));
+    AppendStat(Facts, TEXT("Environment"), FString::Join(Creature.Environments, TEXT(", ")));
+    AppendStat(Facts, TEXT("Referenced in"), FString::Join(Creature.ReferenceSources, TEXT(", ")));
     if (!Facts.IsEmpty()) { Card.Facts = FinishPreview(MoveTemp(Facts)); }
 
     AddEntrySection(Card, TEXT("Traits"), Creature.Traits);
