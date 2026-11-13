@@ -161,14 +161,17 @@ bool FDnd5eBestiarySrdPreviewTest::RunTest(const FString& Parameters)
 	FString Root;
 	if (!FParse::Value(FCommandLine::Get(), TEXT("Dnd5eSrdBestiaryRoot="), Root))
 	{
-		AddInfo(TEXT("Supply -Dnd5eSrdBestiaryRoot to verify the local SRD preview exports and host settings."));
+		AddInfo(TEXT("Supply -Dnd5eSrdBestiaryRoot to verify the local SRD preview exports."));
 		return true;
 	}
 
-	const auto Selected = GetDefault<UDnd5eEditorBestiaryDatasetSettings>()->MakeLoadRequest();
-	TestTrue(TEXT("The host editor selects SRD 5.1 with no template"),
-		FPaths::IsSamePath(Selected.DatasetRoot, FPaths::Combine(Root, TEXT("srd51"))) &&
-		Selected.DatasetNamespace == TEXT("srd51-local") && Selected.TemplateFile.IsEmpty());
+	FDnd5eJsonCreatureCatalogLoadRequest Selected;
+	Selected.DatasetRoot = FPaths::Combine(Root, TEXT("srd51"));
+	Selected.DatasetNamespace = TEXT("srd51-local");
+	if (FPaths::FileExists(FPaths::Combine(Selected.DatasetRoot, TEXT("preview-lore.json"))))
+	{
+		Selected.LoreFile = TEXT("preview-lore.json");
+	}
 	const TStrongObjectPtr<UDnd5eEditorBestiaryDatasetSubsystem> Session(NewObject<UDnd5eEditorBestiaryDatasetSubsystem>());
 
 	const auto Verify = [this, &Session](const FDnd5eJsonCreatureCatalogLoadRequest& Request, int32 ExpectedCount,

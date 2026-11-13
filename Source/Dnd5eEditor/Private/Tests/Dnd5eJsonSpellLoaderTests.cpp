@@ -646,6 +646,8 @@ bool FDnd5eBestiaryDirectLoreTest::RunTest(const FString& Parameters)
 
 	const TStrongObjectPtr<UDnd5eEditorBestiaryDatasetSettings> Settings(NewObject<UDnd5eEditorBestiaryDatasetSettings>());
 	Settings->DatasetRoot.Path = Files.Root;
+	Settings->TemplateFile.FilePath.Reset();
+	Settings->bUseLoreIndex = false;
 	Settings->DatasetNamespace = TEXT("lore-test");
 	Settings->LoreFile.FilePath = FPaths::Combine(Files.Root, TEXT("lore.json"));
 	const auto Request = Settings->MakeLoadRequest();

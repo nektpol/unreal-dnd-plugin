@@ -6,6 +6,7 @@
 #include "Records/Dnd5eRecordId.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
+#include "Content/Dnd5eContentType.h"
 
 class UDnd5eEditorBestiaryDatasetSubsystem;
 struct FDnd5eCreature;
@@ -57,6 +58,13 @@ private:
 	TSharedPtr<SScrollBox> StatBlockScroll;
 	TSharedPtr<SWidgetSwitcher> DetailsPages;
 	TSharedPtr<SScrollBox> InfoScroll;
+	TSharedPtr<SScrollBox> ImageScroll;
+	TSharedPtr<SVerticalBox> ImageBody;
+	TArray<FDnd5eContentBlock> SelectedImages;
+	bool bImagesBuilt = false;
+
+	void SetImagesMessage(const FText& Message);
+	void RebuildImages();
 	FText InfoText;
 
 	FReply ShowDetailsPage(int32 PageIndex);

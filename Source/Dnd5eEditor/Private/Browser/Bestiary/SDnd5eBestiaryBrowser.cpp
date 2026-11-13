@@ -16,8 +16,25 @@
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Content/Dnd5eContentLibrary.h"
+#include "Engine/Texture2D.h"
+#include "HAL/FileManager.h"
+#include "ImageUtils.h"
+#include "Misc/Paths.h"
+#include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
+#include "UObject/StrongObjectPtr.h"
+#include "Widgets/Images/SImage.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eBestiaryBrowser"
+
+namespace
+{
+    struct FBestiaryArtwork
+    {
+        TStrongObjectPtr<UTexture2D> Texture;
+        FSlateBrush Brush;
+    };
+}
 
 
 void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
@@ -79,6 +96,12 @@ void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
                     .Text(LOCTEXT("Info", "Info"))
                     .OnClicked(this, &SDnd5eBestiaryBrowser::ShowDetailsPage, 1)
                 ]
+                + SHorizontalBox::Slot().AutoWidth().Padding(4, 0, 0, 0)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("Images", "Images"))
+                    .OnClicked(this, &SDnd5eBestiaryBrowser::ShowDetailsPage, 2)
+                ]
             ]
             + SVerticalBox::Slot().AutoHeight()
             [
@@ -104,6 +127,14 @@ void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
                         SNew(STextBlock)
                         .AutoWrapText(true)
                         .Text_Lambda([this]() { return InfoText; })
+                    ]
+                ]
+                + SWidgetSwitcher::Slot()
+                [
+                    SAssignNew(ImageScroll, SScrollBox)
+                    + SScrollBox::Slot().Padding(12)
+                    [
+                        SAssignNew(ImageBody, SVerticalBox)
                     ]
                 ]
             ]
@@ -200,6 +231,7 @@ void SDnd5eBestiaryBrowser::HandleSelectionChanged(FRowPtr Row, ESelectInfo::Typ
         const FText Message = LOCTEXT("NoCatalog", "Load a Bestiary dataset from the Tools menu.");
         ShowStatBlockMessage(Message);
         SetInfoText(Message);
+        SetImagesMessage(Message);
         return;
     }
 
@@ -209,6 +241,7 @@ void SDnd5eBestiaryBrowser::HandleSelectionChanged(FRowPtr Row, ESelectInfo::Typ
         const FText Message = LOCTEXT("SelectCreature", "Select a creature to view its stat block.");
         ShowStatBlockMessage(Message);
         SetInfoText(Message);
+        SetImagesMessage(Message);
         return;
     }
 
@@ -217,6 +250,9 @@ void SDnd5eBestiaryBrowser::HandleSelectionChanged(FRowPtr Row, ESelectInfo::Typ
 
 void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
 {
+    SetImagesMessage(LOCTEXT("NoArtwork", "No local artwork is available for this creature."));
+    SelectedImages = Creature.SupplementaryContent.Images;
+    if (DetailsPages->GetActiveWidgetIndex() == 2) { RebuildImages(); }
     CardTitle = FText::FromString(Creature.Header.DisplayName);
     CardSource = Dnd5eBrowserText::FormatSource(Creature.Header);
     RebuildStatBlock(Dnd5eBestiaryStatBlockText::Build(Creature));
@@ -229,8 +265,82 @@ void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
 
 FReply SDnd5eBestiaryBrowser::ShowDetailsPage(int32 PageIndex)
 {
+    if (PageIndex == 2 && !bImagesBuilt && !SelectedImages.IsEmpty()) { RebuildImages(); }
     DetailsPages->SetActiveWidgetIndex(PageIndex);
     return FReply::Handled();
+}
+
+void SDnd5eBestiaryBrowser::SetImagesMessage(const FText& Message)
+{
+    SelectedImages.Reset();
+    bImagesBuilt = false;
+    ImageBody->ClearChildren();
+    ImageScroll->ScrollToStart();
+    ImageBody->AddSlot().AutoHeight()
+    [
+        SNew(STextBlock).AutoWrapText(true).Text(Message)
+    ];
+}
+
+void SDnd5eBestiaryBrowser::RebuildImages()
+{
+    ImageBody->ClearChildren();
+    ImageScroll->ScrollToStart();
+    bImagesBuilt = true;
+
+    const FString Root = GetDefault<UDnd5eEditorBestiaryDatasetSettings>()->ArtworkRoot.Path;
+    int32 Displayed = 0;
+    if (!Root.IsEmpty() && !FPaths::IsRelative(Root))
+    {
+        for (const FDnd5eContentBlock& Block : SelectedImages)
+        {
+            if (Displayed == 8) { break; }
+            FDnd5eImageContent Image;
+            if (!UDnd5eContentLibrary::TryGetImage(Block, Image) ||
+                Image.Resource.Kind != EDnd5eMediaReferenceKind::DatasetRelative ||
+                !Dnd5eMedia::IsDatasetRelativePath(Image.Resource.RelativePath))
+            {
+                continue;
+            }
+
+            FString Path = FPaths::Combine(Root, Image.Resource.RelativePath);
+            FString Extension = FPaths::GetExtension(Path).ToLower();
+            if (Extension == TEXT("webp"))
+            {
+                Path = FPaths::ChangeExtension(Path, TEXT("png"));
+                Extension = TEXT("png");
+            }
+            if (Extension != TEXT("png") && Extension != TEXT("jpg") && Extension != TEXT("jpeg")) { continue; }
+
+            const int64 Bytes = IFileManager::Get().FileSize(*Path);
+            if (Bytes <= 0 || Bytes > 16 * 1024 * 1024) { continue; }
+
+            auto Artwork = MakeShared<FBestiaryArtwork>();
+            Artwork->Texture.Reset(FImageUtils::ImportFileAsTexture2D(Path));
+            if (!Artwork->Texture.IsValid()) { continue; }
+
+            Artwork->Brush.SetResourceObject(Artwork->Texture.Get());
+            Artwork->Brush.DrawAs = ESlateBrushDrawType::Image;
+            const float Width = static_cast<float>(Artwork->Texture->GetSizeX());
+            const float Height = static_cast<float>(Artwork->Texture->GetSizeY());
+            const float Scale = FMath::Min(1.0f, 640.0f / FMath::Max(Width, Height));
+            Artwork->Brush.ImageSize = FVector2D(Width * Scale, Height * Scale);
+            ImageBody->AddSlot().AutoHeight().HAlign(HAlign_Left).Padding(0, 0, 0, 8)
+            [
+                SNew(SImage).Image_Lambda([Artwork]() { return &Artwork->Brush; })
+            ];
+            ++Displayed;
+        }
+    }
+
+    if (Displayed == 0)
+    {
+        ImageBody->AddSlot().AutoHeight()
+        [
+            SNew(STextBlock).AutoWrapText(true)
+            .Text(LOCTEXT("NoArtwork", "No local artwork is available for this creature."))
+        ];
+    }
 }
 
 void SDnd5eBestiaryBrowser::SetInfoText(const FText& Text)

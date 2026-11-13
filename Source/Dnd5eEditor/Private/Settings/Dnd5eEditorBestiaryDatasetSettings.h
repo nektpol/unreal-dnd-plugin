@@ -27,6 +27,9 @@ public:
 	FFilePath LoreFile;
 
 	UPROPERTY(Config, EditAnywhere, Category = "Dataset")
+	FDirectoryPath ArtworkRoot;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Dataset")
 	bool bUseLoreIndex = false;
 
 	virtual FName GetContainerName() const override { return TEXT("Editor"); }
