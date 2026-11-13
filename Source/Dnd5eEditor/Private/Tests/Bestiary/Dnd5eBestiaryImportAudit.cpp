@@ -244,6 +244,14 @@ bool FDnd5eBestiaryImportAudit::RunTest(const FString& Parameters)
 				{
 					return Entry.Metadata.RelativeFilePath == TEXT("fluff-bestiary-mm.json");
 				}));
+			Query.Name = TEXT("Allosaurus");
+			Query.SourceId = TEXT("XMM");
+			const auto AllosaurusIds = Catalog.QueryCreatureIds(Query);
+			FDnd5eCreature Allosaurus;
+			TestTrue(TEXT("Allosaurus keeps its prepended image reference"),
+				AllosaurusIds.Num() == 1 && Catalog.TryGetCreature(AllosaurusIds[0], Allosaurus) &&
+				!Allosaurus.SupplementaryContent.Images.IsEmpty() &&
+				Allosaurus.SupplementaryContent.Images[0].Metadata.JsonPointer.Contains(TEXT("/_copy/_mod/images/items")));
 		}
 		if (Request.LoreFile == TEXT("fluff-bestiary-mm.json"))
 		{

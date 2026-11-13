@@ -579,6 +579,8 @@ bool FDnd5eBestiaryEditorSessionTest::RunTest(const FString& Parameters)
 	const FLoaderFiles Files;
 	const TStrongObjectPtr<UDnd5eEditorBestiaryDatasetSettings> Settings(NewObject<UDnd5eEditorBestiaryDatasetSettings>());
 	Settings->DatasetRoot.Path = Files.Root;
+	Settings->LoreFile.FilePath.Reset();
+	Settings->bUseLoreIndex = false;
 	Settings->DatasetNamespace = TEXT("editor-session-test");
 	Settings->TemplateFile.FilePath = FPaths::Combine(Files.Root, TEXT("template.json"));
 	const auto Request = Settings->MakeLoadRequest();
@@ -628,7 +630,7 @@ bool FDnd5eBestiaryDirectLoreTest::RunTest(const FString& Parameters)
 {
 	const FLoaderFiles Files;
 	const auto* ValidLore = TEXT(R"json({"monsterFluff":[
-		{"name":"Invented Scout","source":"SYN-A","entries":["Lore for the first scout."],"images":[{"type":"image"}]},
+		{"name":"Invented Scout","source":"SYN-A","entries":["Lore for the first scout."],"images":[{"type":"image","href":{"type":"internal","path":"bestiary/SYN/scout.webp"}}]},
 		{"name":"Invented Scout","source":"SYN-B","_copy":{"name":"Other","source":"SYN-B"}},
 		{"name":"invented scout","source":"SYN-A","entries":["Different exact identity."]}
 	]})json");
@@ -664,8 +666,9 @@ bool FDnd5eBestiaryDirectLoreTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestTrue(TEXT("Only exact source and name attach, with original location and no image import"),
-		First.SupplementaryContent.Entries.Num() == 1 && First.SupplementaryContent.Images.IsEmpty() &&
+	TestTrue(TEXT("Only exact source and name attach, with original location and a typed image"),
+		First.SupplementaryContent.Entries.Num() == 1 && First.SupplementaryContent.Images.Num() == 1 &&
+		First.SupplementaryContent.Images[0].Metadata.JsonPointer == TEXT("/monsterFluff/0/images/0") &&
 		First.Header.Provenance.Num() == 2 && First.Header.Provenance[1].RelativeFilePath == TEXT("lore.json") &&
 		First.Header.Provenance[1].JsonPointer == TEXT("/monsterFluff/0") &&
 		Second.SupplementaryContent.Entries.IsEmpty() && Second.Header.Provenance.Num() == 1);

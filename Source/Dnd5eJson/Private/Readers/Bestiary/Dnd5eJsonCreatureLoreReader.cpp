@@ -20,6 +20,7 @@ namespace
     {
         int32 CreatureIndex = INDEX_NONE;
         TArray<FDnd5eContentBlock> Entries;
+        TArray<FDnd5eContentBlock> Images;
         FDnd5eRecordProvenance Provenance;
     };
 
@@ -127,7 +128,7 @@ namespace
         }
     }
 
-    bool ReadLoreContent(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, bool bAllowSingle,
+    bool ReadLoreContent(const TSharedPtr<FJsonValue>& Value, const FString& Pointer, bool bAllowSingle, bool bImages,
         FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Out)
     {
         const int32 Before = State.Budget->ContentValues;
@@ -135,10 +136,16 @@ namespace
         {
             FDnd5eContentBlock Block;
             if (!ReadContent(Value, Pointer, Block, State)) { return false; }
+            if (bImages && Block.Kind != Dnd5e::Content::Block::Image &&
+                Block.Kind != Dnd5e::Content::Block::Unsupported)
+            {
+                return Fail(State, Codes::InvalidFieldValue, Pointer,
+                    TEXT("Expected an image or a preserved unsupported image payload."));
+            }
             Out.Reset();
             Out.Add(MoveTemp(Block));
         }
-        else if (!ReadBlocks(Value, Pointer, Out, State))
+        else if (!(bImages ? ReadSupplementaryImages(Value, Pointer, Out, State) : ReadBlocks(Value, Pointer, Out, State)))
         {
             return false;
         }
@@ -152,8 +159,8 @@ namespace
         return true;
     }
 
-    bool ApplyLoreEntryOperation(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
-        FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Entries)
+    bool ApplyLoreOperation(const TSharedPtr<FJsonValue>& Value, const FString& Pointer,
+        bool bImages, FReadState& State, int32& Converted, TArray<FDnd5eContentBlock>& Entries)
     {
         TSharedPtr<FJsonObject> Operation;
         FString Mode;
@@ -169,7 +176,7 @@ namespace
         if (!bReplace && !bPrepend && !bAppend)
         {
             return Fail(State, Codes::UnsupportedRequiredValue, AppendPointer(Pointer, TEXT("mode")),
-                TEXT("Unsupported creature lore entries modifier."));
+                TEXT("Unsupported creature lore modifier."));
         }
 
         const TCHAR* Field = bReplace ? TEXT("value") : TEXT("items");
@@ -182,7 +189,7 @@ namespace
         }
 
         TArray<FDnd5eContentBlock> Blocks;
-        if (!ReadLoreContent(Items, ItemsPointer, !bReplace, State, Converted, Blocks)) { return false; }
+        if (!ReadLoreContent(Items, ItemsPointer, !bReplace, bImages, State, Converted, Blocks)) { return false; }
         if (bReplace)
         {
             Entries = MoveTemp(Blocks);
@@ -199,18 +206,22 @@ namespace
         return true;
     }
 
-    bool ResolveLoreEntries(const TArray<FLoreRow>& Rows, const TArray<int32>& Chain,
+     bool ResolveLoreField(const TArray<FLoreRow>& Rows, const TArray<int32>& Chain,
         const TArray<FDnd5eJsonDocument>& Documents, TArray<FDnd5eDiagnostic>& Diagnostics,
-        int32& Converted, TArray<FDnd5eContentBlock>& Entries)
+        const TCHAR* Field, bool bImages, int32& Converted, TArray<FDnd5eContentBlock>& Blocks)
     {
         for (int32 Index = Chain.Num() - 1; Index >= 0; --Index)
         {
             const FLoreRow& Row = Rows[Chain[Index]];
             const FDnd5eJsonDocument& Document = Documents[Row.DocumentIndex];
             FReadState RowState{Document.Context, Document.JsonText, Diagnostics, Row.Source};
-            if (const auto Direct = FindExactField(*Row.Object, TEXT("entries")))
+            if (const auto Direct = FindExactField(*Row.Object, Field))
             {
-                if (!ReadLoreContent(Direct, AppendPointer(Row.Pointer, TEXT("entries")), false, RowState, Converted, Entries))
+                if (bImages && Direct->Type == EJson::Null)
+                {
+                    Blocks.Reset();
+                }
+                else if (!ReadLoreContent(Direct, AppendPointer(Row.Pointer, Field), false, bImages, RowState, Converted, Blocks))
                 {
                     return false;
                 }
@@ -230,22 +241,22 @@ namespace
                 return false;
             }
 
-            const auto Operations = FindExactField(*Mods, TEXT("entries"));
+            const auto Operations = FindExactField(*Mods, Field);
             if (!Operations) { continue; }
-            const FString Pointer = AppendPointer(ModsPointer, TEXT("entries"));
+            const FString Pointer = AppendPointer(ModsPointer, Field);
             if (Operations->Type == EJson::Array)
             {
                 const auto& Values = Operations->AsArray();
                 for (int32 OpIndex = 0; OpIndex < Values.Num(); ++OpIndex)
                 {
-                    if (!ApplyLoreEntryOperation(Values[OpIndex], AppendPointer(Pointer, FString::FromInt(OpIndex)),
-                        RowState, Converted, Entries))
+                    if (!ApplyLoreOperation(Values[OpIndex], AppendPointer(Pointer, FString::FromInt(OpIndex)),
+                        bImages, RowState, Converted, Blocks))
                     {
                         return false;
                     }
                 }
             }
-            else if (!ApplyLoreEntryOperation(Operations, Pointer, RowState, Converted, Entries))
+            else if (!ApplyLoreOperation(Operations, Pointer, bImages, RowState, Converted, Blocks))
             {
                 return false;
             }
@@ -316,14 +327,22 @@ bool Dnd5eJsonCreatureLoreReader::ReadAndAttach(const TArray<FDnd5eJsonDocument>
         Attachment.Provenance.SourceId = Row.Source;
         Attachment.Provenance.RelativeFilePath = Documents[Row.DocumentIndex].Context.RelativeFilePath;
         Attachment.Provenance.JsonPointer = Row.Pointer;
-        if (!ResolveLoreEntries(Rows, Chain, Documents, Diagnostics, Converted, Attachment.Entries)) { return false; }
-        if (!Attachment.Entries.IsEmpty()) { Pending.Add(MoveTemp(Attachment)); }
+        if (!ResolveLoreField(Rows, Chain, Documents, Diagnostics, TEXT("entries"), false, Converted, Attachment.Entries) ||
+            !ResolveLoreField(Rows, Chain, Documents, Diagnostics, TEXT("images"), true, Converted, Attachment.Images))
+        {
+            return false;
+        }
+        if (!Attachment.Entries.IsEmpty() || !Attachment.Images.IsEmpty())
+        {
+            Pending.Add(MoveTemp(Attachment));
+        }
     }
 
     for (FPendingCreatureLore& Attachment : Pending)
     {
         FDnd5eCreature& Creature = Creatures[Attachment.CreatureIndex];
         Creature.SupplementaryContent.Entries = MoveTemp(Attachment.Entries);
+        Creature.SupplementaryContent.Images = MoveTemp(Attachment.Images);
         Creature.Header.Provenance.Add(MoveTemp(Attachment.Provenance));
     }
     return true;

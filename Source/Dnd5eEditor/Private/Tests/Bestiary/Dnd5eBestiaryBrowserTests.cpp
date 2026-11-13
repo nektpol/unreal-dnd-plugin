@@ -199,6 +199,16 @@ bool FDnd5eBestiarySrdPreviewTest::RunTest(const FString& Parameters)
 	};
 
 	Verify(Selected, 323, TEXT("Goblin"), TEXT("MM"));
+	if (Selected.LoreFile == TEXT("preview-lore.json") && Session->GetCatalog())
+	{
+		FDnd5eCreatureQuery Query;
+		Query.Name = TEXT("Goblin");
+		Query.SourceId = TEXT("MM");
+		const auto Ids = Session->GetCatalog()->QueryCreatureIds(Query);
+		FDnd5eCreature Goblin;
+		TestTrue(TEXT("Goblin has the local preview lore"), Ids.Num() == 1 &&
+			Session->GetCatalog()->TryGetCreature(Ids[0], Goblin) && !Goblin.SupplementaryContent.Entries.IsEmpty());
+	}
 	FDnd5eJsonCreatureCatalogLoadRequest Revised;
 	Revised.DatasetRoot = FPaths::Combine(Root, TEXT("srd52"));
 	Revised.DatasetNamespace = TEXT("srd52-local");
