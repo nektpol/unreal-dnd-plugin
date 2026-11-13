@@ -14,6 +14,8 @@
 #include "Widgets/Views/STableRow.h"
 #include "Browser/Bestiary/Dnd5eBestiaryStatBlockText.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eBestiaryBrowser"
 
@@ -47,35 +49,62 @@ void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
         ]
         + SSplitter::Slot().Value(0.65f)
         [
-            SAssignNew(StatBlockScroll, SScrollBox)
-            + SScrollBox::Slot().Padding(12)
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(12, 8)
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1)
                 [
-                    SNew(STextBlock).Text(LOCTEXT("StatBlock", "Stat Block"))
+                    SNew(STextBlock)
+                    .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
+                    .Text_Lambda([this]() { return CardTitle; })
                 ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 8)
+                + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
                 [
-                    SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().FillWidth(1)
+                    SNew(STextBlock).Text_Lambda([this]() { return CardSource; })
+                ]
+            ]
+            + SVerticalBox::Slot().AutoHeight().Padding(12, 0, 12, 6)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("StatBlock", "Stat Block"))
+                    .OnClicked(this, &SDnd5eBestiaryBrowser::ShowDetailsPage, 0)
+                ]
+                + SHorizontalBox::Slot().AutoWidth()
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("Info", "Info"))
+                    .OnClicked(this, &SDnd5eBestiaryBrowser::ShowDetailsPage, 1)
+                ]
+            ]
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                SNew(SSeparator)
+            ]
+            + SVerticalBox::Slot().FillHeight(1)
+            [
+                SAssignNew(DetailsPages, SWidgetSwitcher)
+                .WidgetIndex(0)
+                + SWidgetSwitcher::Slot()
+                [
+                    SAssignNew(StatBlockScroll, SScrollBox)
+                    + SScrollBox::Slot().Padding(12)
+                    [
+                        SAssignNew(StatBlockBody, SVerticalBox)
+                    ]
+                ]
+                + SWidgetSwitcher::Slot()
+                [
+                    SAssignNew(InfoScroll, SScrollBox)
+                    + SScrollBox::Slot().Padding(12)
                     [
                         SNew(STextBlock)
-                        .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
-                        .Text_Lambda([this]() { return CardTitle; })
+                        .AutoWrapText(true)
+                        .Text_Lambda([this]() { return InfoText; })
                     ]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(8, 0, 0, 0)
-                    [
-                        SNew(STextBlock).Text_Lambda([this]() { return CardSource; })
-                    ]
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    SNew(SSeparator)
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0, 8)
-                [
-                    SAssignNew(StatBlockBody, SVerticalBox)
                 ]
             ]
         ]
@@ -168,14 +197,18 @@ void SDnd5eBestiaryBrowser::HandleSelectionChanged(FRowPtr Row, ESelectInfo::Typ
     const auto* Catalog = DatasetSession ? DatasetSession->GetCatalog() : nullptr;
     if (!Catalog)
     {
-        ShowStatBlockMessage(LOCTEXT("NoCatalog", "Load a Bestiary dataset from the Tools menu."));
+        const FText Message = LOCTEXT("NoCatalog", "Load a Bestiary dataset from the Tools menu.");
+        ShowStatBlockMessage(Message);
+        SetInfoText(Message);
         return;
     }
 
     FDnd5eCreature Creature;
     if (!Row || !Catalog->TryGetCreature(Row->Id, Creature))
     {
-        ShowStatBlockMessage(LOCTEXT("SelectCreature", "Select a creature to view its stat block."));
+        const FText Message = LOCTEXT("SelectCreature", "Select a creature to view its stat block.");
+        ShowStatBlockMessage(Message);
+        SetInfoText(Message);
         return;
     }
 
@@ -187,6 +220,23 @@ void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
     CardTitle = FText::FromString(Creature.Header.DisplayName);
     CardSource = Dnd5eBrowserText::FormatSource(Creature.Header);
     RebuildStatBlock(Dnd5eBestiaryStatBlockText::Build(Creature));
+
+    const auto& Entries = Creature.SupplementaryContent.Entries;
+    SetInfoText(Entries.IsEmpty()
+        ? LOCTEXT("NoLore", "No lore is available for this creature in the loaded dataset.")
+        : Dnd5eBrowserText::FormatDescription(Entries));
+}
+
+FReply SDnd5eBestiaryBrowser::ShowDetailsPage(int32 PageIndex)
+{
+    DetailsPages->SetActiveWidgetIndex(PageIndex);
+    return FReply::Handled();
+}
+
+void SDnd5eBestiaryBrowser::SetInfoText(const FText& Text)
+{
+    InfoText = Text;
+    InfoScroll->ScrollToStart();
 }
 
 void SDnd5eBestiaryBrowser::ShowStatBlockMessage(const FText& Message)

@@ -11,6 +11,8 @@ class UDnd5eEditorBestiaryDatasetSubsystem;
 struct FDnd5eCreature;
 class SScrollBox;
 class SVerticalBox;
+class SWidgetSwitcher;
+
 namespace Dnd5eBestiaryStatBlockText { struct FStatBlock; }
 
 class SDnd5eBestiaryBrowser : public SCompoundWidget
@@ -53,6 +55,12 @@ private:
 	FText CardTitle;
 	FText CardSource;
 	TSharedPtr<SScrollBox> StatBlockScroll;
+	TSharedPtr<SWidgetSwitcher> DetailsPages;
+	TSharedPtr<SScrollBox> InfoScroll;
+	FText InfoText;
+
+	FReply ShowDetailsPage(int32 PageIndex);
+	void SetInfoText(const FText& Text);
 	TSharedPtr<SVerticalBox> StatBlockBody;
 	void RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card);
 	void ShowStatBlockMessage(const FText& Message);

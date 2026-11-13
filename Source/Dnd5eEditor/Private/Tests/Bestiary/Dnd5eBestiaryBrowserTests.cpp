@@ -18,6 +18,7 @@
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 
 namespace
 {
@@ -90,6 +91,16 @@ bool FDnd5eBestiaryBrowserWidgetTest::RunTest(const FString& Parameters)
 	First.AbilityScores.bHasScores = true;
 	First.AbilityScores.Strength = 7;
 	First.Actions.AddDefaulted_GetRef().Name = TEXT("Invented Lunge");
+	FDnd5eTextContent LoreText;
+	LoreText.Text = TEXT("The first scout watches the ridge.");
+	FDnd5eParagraphContent LoreParagraph;
+	auto& Inline = LoreParagraph.Inlines.AddDefaulted_GetRef();
+	Inline.Kind = Dnd5e::Content::Inline::Text;
+	Inline.Payload = FInstancedStruct::Make<FDnd5eTextContent>(LoreText);
+	auto& Lore = First.SupplementaryContent.Entries.AddDefaulted_GetRef();
+	Lore.Kind = Dnd5e::Content::Block::Paragraph;
+	Lore.Payload = FInstancedStruct::Make<FDnd5eParagraphContent>(LoreParagraph);
+
 
 	TArray<FDnd5eDiagnostic> Diagnostics;
 	if (!TestTrue(TEXT("Install two same-name records with distinct sources"), Fixture->GetMutableCatalog().ReplaceCreatures({First, Second}, Diagnostics)))
@@ -108,7 +119,16 @@ bool FDnd5eBestiaryBrowserWidgetTest::RunTest(const FString& Parameters)
 		Grid && Grid->GetChildren()->Num() == 6 && ContainsText(*Grid, TEXT("7 (-2)")) &&
 		ContainsText(*Browser, TEXT("Actions")) && ContainsText(*Browser, TEXT("Invented Lunge")));
 
+	TestEqual(TEXT("Stat Block opens first"), Browser->DetailsPages->GetActiveWidgetIndex(), 0);
+	Browser->ShowDetailsPage(1);
+	TestTrue(TEXT("Info displays the selected creature's lore"), Browser->DetailsPages->GetActiveWidgetIndex() == 1 &&
+		ContainsText(*Browser, TEXT("The first scout watches the ridge.")));
 	Browser->ListView->SetSelection(Browser->ListView->GetItems()[1]);
+	TestTrue(TEXT("Selecting a creature without lore keeps Info open and clears the old lore"),
+		Browser->DetailsPages->GetActiveWidgetIndex() == 1 &&
+		ContainsText(*Browser, TEXT("No lore is available")) &&
+		!ContainsText(*Browser, TEXT("The first scout watches the ridge.")));
+	Browser->ShowDetailsPage(0);
 	TestTrue(TEXT("Second row retrieves its own record by exact ID"), Browser->CardSource.ToString() == TEXT("SYN-SECOND") &&
 		ContainsText(*Browser, TEXT("Hit Points  15")));
 	TestTrue(TEXT("Changing selection removes the former ability grid and action section"),
