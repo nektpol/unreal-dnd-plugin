@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Bestiary/Dnd5eCreature.h"
 #include "Diagnostics/Dnd5eDiagnostic.h"
+#include "Records/Dnd5eReferenceResolution.h"
 #include "Dnd5eCreatureCatalog.generated.h"
 
 USTRUCT(BlueprintType)
@@ -33,6 +34,8 @@ public:
 	bool TryGetCreature(const FDnd5eRecordId& Id, FDnd5eCreature& OutCreature) const;
 	TArray<FDnd5eRecordId> QueryCreatureIds(const FDnd5eCreatureQuery& Query) const;
 	int32 GetCreatureCount() const { return Creatures.Num(); }
+
+	EDnd5eReferenceResolveStatus ResolveCreatureRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eCreature& OutCreature) const;
 
 private:
 	TArray<FDnd5eCreature> Creatures;

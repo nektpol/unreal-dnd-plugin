@@ -91,3 +91,21 @@ TArray<FDnd5eRecordId> FDnd5eCreatureCatalog::QueryCreatureIds(const FDnd5eCreat
 	}
 	return Ids;
 }
+
+EDnd5eReferenceResolveStatus FDnd5eCreatureCatalog::ResolveCreatureRelationship(
+	const FDnd5eRecordRelationship& Relationship, FDnd5eCreature& OutCreature) const
+{
+	const bool bHasTargetRecord = Relationship.bHasTargetRecord;
+	const FDnd5eRecordId Id = Relationship.TargetRecordId;
+	OutCreature = FDnd5eCreature{};
+	if (!bHasTargetRecord) { return EDnd5eReferenceResolveStatus::MissingTargetId; }
+	if (!Id.Category.IsValid() || Id.DatasetNamespace.TrimStartAndEnd().IsEmpty() ||
+		Id.SourceKey.TrimStartAndEnd().IsEmpty())
+	{
+		return EDnd5eReferenceResolveStatus::InvalidTargetId;
+	}
+	if (Id.Category != Dnd5e::Category::Creature) { return EDnd5eReferenceResolveStatus::UnsupportedCategory; }
+
+	return TryGetCreature(Id, OutCreature) ? EDnd5eReferenceResolveStatus::Resolved :
+		EDnd5eReferenceResolveStatus::TargetNotFound;
+}

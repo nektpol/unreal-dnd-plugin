@@ -91,6 +91,16 @@ namespace
 			Fail(State, Codes::InvalidFieldValue, TEXT("/monster"), TEXT("Creature name and source were not found."));
 	}
 
+	FDnd5eRecordId MakeCreatureRecordId(const FString& Name, const FString& SourceId, const FString& DatasetNamespace)
+	{
+		FDnd5eRecordId Id;
+		Id.DatasetNamespace = DatasetNamespace;
+		Id.Category = Dnd5e::Category::Creature;
+		Id.SourceKey = TEXT("5etools:creature:v1:") + EscapeIdentityComponent(Name) +
+			TEXT("|") + EscapeIdentityComponent(SourceId);
+		return Id;
+	}
+
 	bool ReadCreatureHeader(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eRecordHeader& Header, FReadState& State)
 	{
@@ -103,10 +113,7 @@ namespace
 			return false;
 		}
 		State.SourceId = Origin.SourceId;
-		Header.RecordId.DatasetNamespace = State.Context.DatasetNamespace;
-		Header.RecordId.Category = Dnd5e::Category::Creature;
-		Header.RecordId.SourceKey = TEXT("5etools:creature:v1:") + EscapeIdentityComponent(Header.DisplayName) +
-			TEXT("|") + EscapeIdentityComponent(Origin.SourceId);
+		Header.RecordId = MakeCreatureRecordId(Header.DisplayName, Origin.SourceId, State.Context.DatasetNamespace);
 
 		Origin.RelativeFilePath = State.Context.RelativeFilePath;
 		Origin.JsonPointer = Pointer;
@@ -1519,6 +1526,53 @@ namespace
         return true;
     }
 
+	bool ReadCreatureRelationships(const FJsonObject& Object, const FString& Pointer,
+		TArray<FDnd5eRecordRelationship>& Out, FReadState& State)
+	{
+		const auto Value = FindExactField(Object, TEXT("reprintedAs"));
+		if (!Value.IsValid()) { return true; }
+
+		const FString ArrayPointer = AppendPointer(Pointer, TEXT("reprintedAs"));
+		const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+		if (!RequireArray(Value, ArrayPointer, Entries, State)) { return false; }
+
+		for (int32 Index = 0; Index < Entries->Num(); ++Index)
+		{
+			const FString EntryPointer = AppendPointer(ArrayPointer, FString::FromInt(Index));
+			const auto& Entry = (*Entries)[Index];
+			FDnd5eRecordRelationship Link;
+			if (!Entry.IsValid() || Entry->Type != EJson::String || !Entry->TryGetString(Link.SourceReference))
+			{
+				return Fail(State, Codes::InvalidFieldValue, EntryPointer, TEXT("Expected a creature reprint reference string."));
+			}
+			if (!ValidateIdentityText(Link.SourceReference, EntryPointer, State)) { return false; }
+
+			Link.Kind = Dnd5e::Record::Relationship::ReprintedAs;
+			Link.SourceFormat = TEXT("5etools");
+
+			FString Name, SourceId;
+			if (Link.SourceReference.Split(TEXT("|"), &Name, &SourceId) &&
+				!Name.IsEmpty() && !SourceId.IsEmpty() && !SourceId.Contains(TEXT("|")))
+			{
+				if (!ValidateIdentityText(Name, EntryPointer, State) ||
+					!ValidateIdentityText(SourceId, EntryPointer, State))
+				{
+					return false;
+				}
+				Link.TargetRecordId = MakeCreatureRecordId(Name, SourceId, State.Context.DatasetNamespace);
+				Link.bHasTargetRecord = true;
+			}
+			else
+			{
+				AddDiagnostic(State, EDnd5eDiagnosticSeverity::Warning, Codes::UnresolvedReference,
+					EntryPointer, TEXT("Creature reprint retained without an explicit name and source."));
+			}
+
+			Out.Add(MoveTemp(Link));
+		}
+		return true;
+	}
+
 	bool ReadCreatureRow(const FJsonObject& Object, const FString& Pointer,
 		FDnd5eCreature& Creature, FReadState& State)
 	{
@@ -1529,7 +1583,8 @@ namespace
 				TEXT("Creature copy assembly is pending."));
 		}
 
-		return ReadCreatureToken(Object, Pointer, Creature, State) &&
+		return ReadCreatureRelationships(Object, Pointer, Creature.Relationships, State) &&
+			ReadCreatureToken(Object, Pointer, Creature, State) &&
 			ReadCreatureClassification(Object, Pointer, Creature, State) &&
 			ReadArmorClasses(Object, Pointer, Creature.ArmorClasses, Creature.ArmorClassPresence, State) &&
 			ReadHitPoints(Object, Pointer, Creature.HitPoints, State) &&

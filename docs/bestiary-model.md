@@ -5,6 +5,7 @@
 | Field | C++ type | Meaning |
 | --- | --- | --- |
 | Header | `FDnd5eRecordHeader` | Display name, record identity, and provenance. |
+| Relationships | `TArray<FDnd5eRecordRelationship>` | Outgoing reprints in authored order. |
 | Sizes | `TArray<EDnd5eSize>` | Ordered size choices. |
 | CreatureType and CreatureSubtypes | `FGameplayTag`, `TArray<FDnd5eCreatureSubtype>` | Single creature type and ordered subtype values with name, optional prefix, and a hidden-prefix flag. Read `Name` for the original subtype term. |
 | CreatureTypeChoices | `TArray<FGameplayTag>` | Ordered alternatives. The single type is unset for a choice. |
@@ -39,3 +40,5 @@ The two-argument `AuditDocuments` overload accepts a separate template document 
 The creature’s `Token` stores a shared media reference. The reader handles explicit URLs, shared token identities, explicit media paths, and conventional filenames for ASCII names. The Images tab places a locally available token before supplementary artwork.
 
 Bestiary stat blocks display authored environments, reference publication IDs, and proficiency notes. The editor derives display XP and proficiency from standard challenge ratings when the corresponding authored values are absent. Explicit zero XP takes precedence.
+
+The creature reader preserves each `reprintedAs` string in `Relationships` with the shared `ReprintedAs` kind. An explicit name and source produce a creature target ID in the importing dataset namespace. A reference without an explicit pair keeps its source text and emits an unresolved reference warning. Invalid values report the entry location. Copies follow the existing metadata preserve policy for this field. `FDnd5eCreatureCatalog::ResolveCreatureRelationship` looks up the exact target ID and reports whether it is present in the active catalog.

@@ -1227,4 +1227,68 @@ bool FDnd5eCreatureTokenTest::RunTest(const FString& Parameters)
     return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eCreatureReprintTest, "Dnd5e.Bestiary.Reader.Reprints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FDnd5eCreatureReprintTest::RunTest(const FString& Parameters)
+{
+	const auto Document = MakeDocument(TEXT(R"json({"monster":[
+		{"name":"Copper Scout","source":"SYN-B","size":["S"],"type":"fey","alignment":["N"],"ac":[12],"hp":{"average":9,"formula":"2d8"},"speed":{"walk":25},"cr":"1/4"},
+		{"name":"Copper Scout","source":"SYN-C","_copy":{"name":"Copper Scout","source":"SYN-B"}},
+		{"name":"Old Scout","source":"SYN-A","_copy":{"name":"Copper Scout","source":"SYN-B"},"reprintedAs":["Copper Scout|SYN-B","Copper Scout|SYN-C","Copper Scout"]},
+		{"name":"Other Scout","source":"SYN-D","_copy":{"name":"Old Scout","source":"SYN-A"}},
+		{"name":"Broken Scout","source":"SYN-E","_copy":{"name":"Copper Scout","source":"SYN-B"},"reprintedAs":[15]}
+	]})json"));
+	const auto Batch = FDnd5eJsonCreatureReader::ReadDocuments({Document});
+	if (!TestEqual(TEXT("Four valid records are published"), Batch.Creatures.Num(), 4)) { return false; }
+	const auto& TargetB = Batch.Creatures[0];
+	const auto& TargetC = Batch.Creatures[1];
+	const auto& Origin = Batch.Creatures[2];
+	const auto& Links = Origin.Relationships;
+	if (!TestEqual(TEXT("Copy retains its three authored reprints"), Links.Num(), 3)) { return false; }
+
+	TestTrue(TEXT("First link uses the independently imported escaped ID"),
+		Links[0].bHasTargetRecord && Links[0].TargetRecordId == TargetB.Header.RecordId &&
+		Links[0].Kind == Dnd5e::Record::Relationship::ReprintedAs &&
+		Links[0].SourceFormat == TEXT("5etools") && Links[0].SourceReference == TEXT("Copper Scout|SYN-B"));
+	TestTrue(TEXT("Same name in a different source has a different target"),
+		Links[1].bHasTargetRecord && Links[1].TargetRecordId == TargetC.Header.RecordId && Links[1].TargetRecordId != Links[0].TargetRecordId);
+	TestTrue(TEXT("Omitted source preserves the original reference"),
+		!Links[2].bHasTargetRecord && Links[2].SourceReference == TEXT("Copper Scout"));
+	TestTrue(TEXT("An unlisted copy does not inherit the reprint"), Batch.Creatures[3].Relationships.IsEmpty());
+
+	const auto& Rows = Batch.Documents[0].Rows;
+	TestTrue(TEXT("Missing source produces a warning on the third link"),
+		Rows[2].Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Severity == EDnd5eDiagnosticSeverity::Warning &&
+				Diagnostic.JsonPointer == TEXT("/monster/2/reprintedAs/2");
+		}));
+	TestTrue(TEXT("Non-string reprint fails at the entry location"),
+		Rows[4].Status == EDnd5eJsonReadStatus::Failure &&
+		Rows[4].Diagnostics.ContainsByPredicate([](const FDnd5eDiagnostic& Diagnostic)
+		{
+			return Diagnostic.Severity == EDnd5eDiagnosticSeverity::Error &&
+				Diagnostic.JsonPointer == TEXT("/monster/4/reprintedAs/0");
+		}));
+
+	FDnd5eCreatureCatalog Catalog;
+	TArray<FDnd5eDiagnostic> Diagnostics;
+	if (!TestTrue(TEXT("Partial catalog publishes"), Catalog.ReplaceCreatures({Origin, TargetC}, Diagnostics))) { return false; }
+	FDnd5eCreature Found = TargetC;
+	TestTrue(TEXT("Missing exact target clears output without choosing the other source"),
+		Catalog.ResolveCreatureRelationship(Links[0], Found) == EDnd5eReferenceResolveStatus::TargetNotFound &&
+		Found.Header.DisplayName.IsEmpty());
+	TestTrue(TEXT("Loaded target resolves by exact ID"),
+		Catalog.ResolveCreatureRelationship(Links[1], Found) == EDnd5eReferenceResolveStatus::Resolved &&
+		Found.Header.RecordId == TargetC.Header.RecordId);
+	TestTrue(TEXT("Unnormalized link returns MissingTargetId"),
+		Catalog.ResolveCreatureRelationship(Links[2], Found) == EDnd5eReferenceResolveStatus::MissingTargetId &&
+		Found.Header.DisplayName.IsEmpty());
+	FDnd5eCreature ReusedCreature = Origin;
+	TestTrue(TEXT("The output can replace the creature that owns the relationship"),
+		Catalog.ResolveCreatureRelationship(ReusedCreature.Relationships[1], ReusedCreature) == EDnd5eReferenceResolveStatus::Resolved &&
+		ReusedCreature.Header.RecordId == TargetC.Header.RecordId);
+	return !HasAnyErrors();
+}
+
 #endif
