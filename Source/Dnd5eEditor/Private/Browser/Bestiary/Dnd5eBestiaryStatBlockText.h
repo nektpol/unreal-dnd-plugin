@@ -27,6 +27,8 @@ namespace Dnd5eBestiaryStatBlockText
 		TArray<FAbility> Abilities;
 		FText Facts;
 		TArray<FSection> Sections;
+		FText Environment;
+		FText References;
 	};
 
 	FStatBlock Build(const FDnd5eCreature& Creature);

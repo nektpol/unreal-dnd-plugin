@@ -466,8 +466,6 @@ Dnd5eBestiaryStatBlockText::FStatBlock Dnd5eBestiaryStatBlockText::Build(const F
     AppendStat(Facts, TEXT("Languages"), FString::Join(Creature.Languages, TEXT(", ")));
     AppendStat(Facts, TEXT("Challenge"), FormatChallenge(Creature.ChallengeRating));
     AppendStat(Facts, TEXT("Proficiency Bonus"), FormatProficiency(Creature));
-    AppendStat(Facts, TEXT("Environment"), FString::Join(Creature.Environments, TEXT(", ")));
-    AppendStat(Facts, TEXT("Referenced in"), FString::Join(Creature.ReferenceSources, TEXT(", ")));
     if (!Facts.IsEmpty()) { Card.Facts = FinishPreview(MoveTemp(Facts)); }
 
     AddEntrySection(Card, TEXT("Traits"), Creature.Traits);
@@ -490,6 +488,13 @@ Dnd5eBestiaryStatBlockText::FStatBlock Dnd5eBestiaryStatBlockText::Build(const F
     AddEntrySection(Card, TEXT("Legendary Actions"), Creature.LegendaryActions.Entries,
         &Creature.LegendaryActions.Header, LegendaryCounts);
     AddEntrySection(Card, TEXT("Mythic Actions"), Creature.MythicActions.Entries, &Creature.MythicActions.Header);
+    FString Environment;
+    AppendStat(Environment, TEXT("Environment"), FString::Join(Creature.Environments, TEXT(", ")));
+    if (!Environment.IsEmpty()) { Card.Environment = FinishPreview(MoveTemp(Environment)); }
+
+    FString References;
+    AppendStat(References, TEXT("Referenced in"), FString::Join(Creature.ReferenceSources, TEXT(", ")));
+    if (!References.IsEmpty()) { Card.References = FinishPreview(MoveTemp(References)); }
     return Card;
 }
 
@@ -513,5 +518,7 @@ FText Dnd5eBestiaryStatBlockText::Format(const FDnd5eCreature& Creature)
         AppendPreview(Preview, TEXT("\n") + Section.Heading.ToString() + TEXT("\n"));
         AppendPreview(Preview, Section.Body.ToString() + TEXT("\n"));
     }
+    if (!Card.Environment.IsEmpty()) { AppendPreview(Preview, TEXT("\n") + Card.Environment.ToString() + TEXT("\n")); }
+    if (!Card.References.IsEmpty()) { AppendPreview(Preview, TEXT("\n") + Card.References.ToString() + TEXT("\n")); }
     return FinishPreview(MoveTemp(Preview));
 }

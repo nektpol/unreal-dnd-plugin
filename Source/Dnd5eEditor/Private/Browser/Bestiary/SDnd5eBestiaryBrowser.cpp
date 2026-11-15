@@ -435,6 +435,16 @@ void SDnd5eBestiaryBrowser::RebuildStatBlock(const Dnd5eBestiaryStatBlockText::F
 
     AddReprintLinks(Relationships);
 
+    if (!Card.Environment.IsEmpty() || !Card.References.IsEmpty())
+    {
+        StatBlockBody->AddSlot().AutoHeight().Padding(0, 4, 0, 4)
+        [
+            SNew(SSeparator)
+        ];
+        AddText(Card.Environment, FMargin(0, 0, 0, 4));
+        AddText(Card.References, FMargin(0, 0, 0, 8));
+    }
+
     if (StatBlockBody->GetChildren()->Num() == 0)
     {
         ShowStatBlockMessage(LOCTEXT("NoStats", "No stat block values supplied."));
