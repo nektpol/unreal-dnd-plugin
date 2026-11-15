@@ -17,8 +17,11 @@
 #include "ToolMenus.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
+#include "Widgets/Input/SHyperlink.h"
+#include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/SBoxPanel.h"
 
 namespace
 {
@@ -88,6 +91,21 @@ bool FDnd5eBestiaryBrowserWidgetTest::RunTest(const FString& Parameters)
 	Second.Header.RecordId.SourceKey = TEXT("scout-second");
 	Second.Header.Provenance[0].SourceId = TEXT("SYN-SECOND");
 	Second.HitPoints.Average = 15;
+	FDnd5eRecordRelationship Reprint;
+	Reprint.Kind = Dnd5e::Record::Relationship::ReprintedAs;
+	Reprint.bHasTargetRecord = true;
+	Reprint.TargetRecordId = Second.Header.RecordId;
+	Reprint.SourceReference = TEXT("Invented Scout|SYN-SECOND");
+	First.Relationships.Add(Reprint);
+
+	Reprint.TargetRecordId.SourceKey = TEXT("scout-unavailable");
+	Reprint.SourceReference = TEXT("Invented Scout|SYN-MISSING");
+	First.Relationships.Add(Reprint);
+
+	Reprint.bHasTargetRecord = false;
+	Reprint.TargetRecordId = {};
+	Reprint.SourceReference = TEXT("Invented Scout");
+	First.Relationships.Add(Reprint);
 	First.AbilityScores.bHasScores = true;
 	First.AbilityScores.Strength = 7;
 	First.Actions.AddDefaulted_GetRef().Name = TEXT("Invented Lunge");
@@ -134,7 +152,31 @@ bool FDnd5eBestiaryBrowserWidgetTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Changing selection removes the former ability grid and action section"),
 		!FindWidgetByType(*Browser, TEXT("SUniformGridPanel")) && !ContainsText(*Browser, TEXT("Invented Lunge")));
 
-	Browser->HandleSearchChanged(FText::FromString(TEXT("  syn-first  ")));
+	Browser->SearchBox->SetText(FText::FromString(TEXT("syn-first")));
+	if (!TestEqual(TEXT("The search hides the reprint target"), Browser->VisibleRows.Num(), 1)) { return false; }
+	Browser->ListView->SetSelection(Browser->VisibleRows[0]);
+	TestTrue(TEXT("Missing and unresolved references remain readable"),
+		ContainsText(*Browser, TEXT("Invented Scout|SYN-MISSING (not loaded)")) &&
+		ContainsText(*Browser, TEXT("Invented Scout (unresolved reference)")));
+
+	TArray<TSharedRef<SWidget>> Links;
+	FChildren* CardChildren = Browser->StatBlockBody->GetChildren();
+	for (int32 Index = 0; Index < CardChildren->Num(); ++Index)
+	{
+		const TSharedRef<SWidget> Child = CardChildren->GetChildAt(Index);
+		if (Child->GetType() == TEXT("SHyperlink")) { Links.Add(Child); }
+	}
+	if (!TestEqual(TEXT("Only the loaded reprint is a link"), Links.Num(), 1)) { return false; }
+	static_cast<SHyperlink&>(*Links[0]).SimulateClick();
+	const auto Selected = Browser->ListView->GetSelectedItems();
+	TestTrue(TEXT("Activating the link clears the search and selects the exact publication"),
+		Browser->SearchBox->GetText().IsEmpty() && Browser->Filter.IsEmpty() && Selected.Num() == 1 &&
+		Selected[0]->Id == Second.Header.RecordId && Browser->CardSource.ToString() == TEXT("SYN-SECOND"));
+	TestTrue(TEXT("The target card drops the origin's link and unavailable reference"),
+		!FindWidgetByType(*Browser->StatBlockBody, TEXT("SHyperlink")) &&
+		!ContainsText(*Browser, TEXT("SYN-MISSING")));
+
+	Browser->SearchBox->SetText(FText::FromString(TEXT("  syn-first  ")));
 	TestTrue(TEXT("Source search trims and ignores case, and clears the old selection"),
 		Browser->VisibleRows.Num() == 1 && Browser->VisibleRows[0]->Id == First.Header.RecordId &&
 		Browser->ListView->GetSelectedItems().IsEmpty() && Browser->CardTitle.IsEmpty());

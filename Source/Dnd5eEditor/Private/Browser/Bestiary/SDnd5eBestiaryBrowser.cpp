@@ -24,6 +24,7 @@
 #include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SHyperlink.h"
 #include "Dnd5eTags.h"
 
 #define LOCTEXT_NAMESPACE "Dnd5eBestiaryBrowser"
@@ -52,7 +53,7 @@ void SDnd5eBestiaryBrowser::Construct(const FArguments& InArgs)
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(6, 0, 6, 6)
             [
-                SNew(SSearchBox)
+                SAssignNew(SearchBox, SSearchBox)
                 .HintText(LOCTEXT("Search", "Search creature name or source"))
                 .OnTextChanged(this, &SDnd5eBestiaryBrowser::HandleSearchChanged)
             ]
@@ -267,7 +268,7 @@ void SDnd5eBestiaryBrowser::ShowCreature(const FDnd5eCreature& Creature)
     if (DetailsPages->GetActiveWidgetIndex() == 2) { RebuildImages(); }
     CardTitle = FText::FromString(Creature.Header.DisplayName);
     CardSource = Dnd5eBrowserText::FormatSource(Creature.Header);
-    RebuildStatBlock(Dnd5eBestiaryStatBlockText::Build(Creature));
+    RebuildStatBlock(Dnd5eBestiaryStatBlockText::Build(Creature), Creature.Relationships);
 
     const auto& Entries = Creature.SupplementaryContent.Entries;
     SetInfoText(Entries.IsEmpty()
@@ -371,7 +372,8 @@ void SDnd5eBestiaryBrowser::ShowStatBlockMessage(const FText& Message)
     StatBlockScroll->ScrollToStart();
 }
 
-void SDnd5eBestiaryBrowser::RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card)
+void SDnd5eBestiaryBrowser::RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card,
+    const TArray<FDnd5eRecordRelationship>& Relationships)
 {
     StatBlockBody->ClearChildren();
     StatBlockScroll->ScrollToStart();
@@ -431,10 +433,88 @@ void SDnd5eBestiaryBrowser::RebuildStatBlock(const Dnd5eBestiaryStatBlockText::F
         AddText(Section.Body, FMargin(0, 0, 0, 8));
     }
 
+    AddReprintLinks(Relationships);
+
     if (StatBlockBody->GetChildren()->Num() == 0)
     {
         ShowStatBlockMessage(LOCTEXT("NoStats", "No stat block values supplied."));
     }
+}
+
+void SDnd5eBestiaryBrowser::AddReprintLinks(const TArray<FDnd5eRecordRelationship>& Relationships)
+{
+    const auto* DatasetSession = Session.Get();
+    const auto* Catalog = DatasetSession ? DatasetSession->GetCatalog() : nullptr;
+    bool bAddedHeading = false;
+
+    for (const FDnd5eRecordRelationship& Relationship : Relationships)
+    {
+        if (Relationship.Kind != Dnd5e::Record::Relationship::ReprintedAs) { continue; }
+
+        if (!bAddedHeading)
+        {
+            StatBlockBody->AddSlot().AutoHeight().Padding(0, 4)
+            [
+                SNew(SSeparator)
+            ];
+            StatBlockBody->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+            [
+                SNew(STextBlock)
+                .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
+                .Text(LOCTEXT("ReprintedAs", "Reprinted as"))
+            ];
+            bAddedHeading = true;
+        }
+
+        FDnd5eCreature Target;
+        if (Catalog && Catalog->ResolveCreatureRelationship(Relationship, Target) == EDnd5eReferenceResolveStatus::Resolved)
+        {
+            const FText Label = FText::Format(LOCTEXT("ReprintTarget", "{0} ({1})"),
+                FText::FromString(Target.Header.DisplayName), Dnd5eBrowserText::FormatSource(Target.Header));
+            StatBlockBody->AddSlot().AutoHeight().HAlign(HAlign_Left).Padding(0, 0, 0, 4)
+            [
+                SNew(SHyperlink)
+                .Text(Label)
+                .OnNavigate(this, &SDnd5eBestiaryBrowser::NavigateToCreature, Target.Header.RecordId)
+            ];
+        }
+        else
+        {
+            const FText Label = FText::Format(
+                Relationship.bHasTargetRecord ? LOCTEXT("UnavailableReprint", "{0} (not loaded)") :
+                    LOCTEXT("UnresolvedReprint", "{0} (unresolved reference)"),
+                FText::FromString(Relationship.SourceReference));
+            StatBlockBody->AddSlot().AutoHeight().Padding(0, 0, 0, 4)
+            [
+                SNew(STextBlock).Text(Label).AutoWrapText(true)
+            ];
+        }
+    }
+}
+
+void SDnd5eBestiaryBrowser::NavigateToCreature(FDnd5eRecordId Id)
+{
+    const auto* DatasetSession = Session.Get();
+    const auto* Catalog = DatasetSession ? DatasetSession->GetCatalog() : nullptr;
+    FDnd5eCreature Target;
+    if (!Catalog || !Catalog->TryGetCreature(Id, Target)) { return; }
+
+    const auto FindVisibleRow = [this, &Id]()
+    {
+        return VisibleRows.FindByPredicate([&Id](const FRowPtr& Row) { return Row->Id == Id; });
+    };
+
+    const FRowPtr* Found = FindVisibleRow();
+    if (!Found && !Filter.IsEmpty())
+    {
+        SearchBox->SetText(FText::GetEmpty());
+        Found = FindVisibleRow();
+    }
+    if (!Found) { return; }
+
+    const FRowPtr Row = *Found;
+    ListView->SetSelection(Row);
+    ListView->RequestScrollIntoView(Row);
 }
 
 #undef LOCTEXT_NAMESPACE

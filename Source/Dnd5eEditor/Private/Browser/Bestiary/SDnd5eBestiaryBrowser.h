@@ -7,12 +7,15 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
 #include "Content/Dnd5eContentType.h"
+#include "Records/Dnd5eRecordRelationship.h"
 
 class UDnd5eEditorBestiaryDatasetSubsystem;
 struct FDnd5eCreature;
 class SScrollBox;
 class SVerticalBox;
 class SWidgetSwitcher;
+class SSearchBox;
+
 
 namespace Dnd5eBestiaryStatBlockText { struct FStatBlock; }
 
@@ -52,6 +55,7 @@ private:
 	TArray<FRowPtr> AllRows;
 	TArray<FRowPtr> VisibleRows;
 	TSharedPtr<SListView<FRowPtr>> ListView;
+	TSharedPtr<SSearchBox> SearchBox;
 	FString Filter;
 	FText CardTitle;
 	FText CardSource;
@@ -70,6 +74,8 @@ private:
 	FReply ShowDetailsPage(int32 PageIndex);
 	void SetInfoText(const FText& Text);
 	TSharedPtr<SVerticalBox> StatBlockBody;
-	void RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card);
+	void RebuildStatBlock(const Dnd5eBestiaryStatBlockText::FStatBlock& Card, const TArray<FDnd5eRecordRelationship>& Relationships);
+	void AddReprintLinks(const TArray<FDnd5eRecordRelationship>& Relationships);
+	void NavigateToCreature(FDnd5eRecordId Id);
 	void ShowStatBlockMessage(const FText& Message);
 };

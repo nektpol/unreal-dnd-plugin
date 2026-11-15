@@ -16,6 +16,8 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|CreatureCatalog")
 	bool TryGetCreature(const FDnd5eRecordId& Id, FDnd5eCreature& OutCreature) const;
 
+	EDnd5eReferenceResolveStatus ResolveCreatureRelationship(const FDnd5eRecordRelationship& Relationship, FDnd5eCreature& OutCreature) const;
+
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "Dnd5e|CreatureCatalog")
 	TArray<FDnd5eRecordId> QueryCreatureIds(const FDnd5eCreatureQuery& Query) const;
 
