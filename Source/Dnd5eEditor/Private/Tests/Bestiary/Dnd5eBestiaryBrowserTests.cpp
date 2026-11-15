@@ -3,6 +3,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Browser/Bestiary/SDnd5eBestiaryBrowser.h"
+#include "Browser/Bestiary/Dnd5eBestiaryArtwork.h"
+#include "Engine/Texture2D.h"
 #include "Dnd5eTags.h"
 #include "Editor.h"
 #include "Framework/Docking/TabManager.h"
@@ -260,5 +262,37 @@ bool FDnd5eBestiarySrdPreviewTest::RunTest(const FString& Parameters)
 	Verify(Revised, 336, TEXT("Goblin Warrior"), TEXT("XMM"));
 	return !HasAnyErrors();
 }
+
+
+#if PLATFORM_WINDOWS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnd5eBestiaryLocalWebPTest, "Dnd5e.Bestiary.Local.WebP",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FDnd5eBestiaryLocalWebPTest::RunTest(const FString& Parameters)
+{
+	FString Root;
+	if (!FParse::Value(FCommandLine::Get(), TEXT("Dnd5eBestiaryArtworkRoot="), Root))
+	{
+		AddInfo(TEXT("Supply -Dnd5eBestiaryArtworkRoot to verify the local WebP image pack."));
+		return true;
+	}
+
+	for (const TCHAR* RelativePath : {TEXT("bestiary/MM/Goblin.webp"), TEXT("bestiary/tokens/MM/Goblin.webp"),
+		TEXT("bestiary/XMM/Allosaurus.webp")})
+	{
+		const FString Path = FPaths::Combine(Root, RelativePath);
+		if (!TestTrue(FString::Printf(TEXT("Original WebP exists with no PNG fallback: %s"), RelativePath),
+			FPaths::FileExists(Path) && !FPaths::FileExists(FPaths::ChangeExtension(Path, TEXT("png")))))
+		{
+			continue;
+		}
+		const TStrongObjectPtr<UTexture2D> Texture(Dnd5eBestiaryArtwork::LoadTexture(Path));
+		TestTrue(FString::Printf(TEXT("Original WebP decodes to a BGRA texture: %s"), RelativePath),
+			Texture.IsValid() && Texture->GetSizeX() > 0 && Texture->GetSizeY() > 0 &&
+			Texture->GetPixelFormat() == PF_B8G8R8A8);
+	}
+	return !HasAnyErrors();
+}
+#endif
 
 #endif

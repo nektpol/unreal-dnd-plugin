@@ -18,8 +18,7 @@
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Content/Dnd5eContentLibrary.h"
 #include "Engine/Texture2D.h"
-#include "HAL/FileManager.h"
-#include "ImageUtils.h"
+#include "Browser/Bestiary/Dnd5eBestiaryArtwork.h"
 #include "Misc/Paths.h"
 #include "Settings/Dnd5eEditorBestiaryDatasetSettings.h"
 #include "UObject/StrongObjectPtr.h"
@@ -316,20 +315,9 @@ void SDnd5eBestiaryBrowser::RebuildImages()
                 continue;
             }
 
-            FString Path = FPaths::Combine(Root, Image.Resource.RelativePath);
-            FString Extension = FPaths::GetExtension(Path).ToLower();
-            if (Extension == TEXT("webp"))
-            {
-                Path = FPaths::ChangeExtension(Path, TEXT("png"));
-                Extension = TEXT("png");
-            }
-            if (Extension != TEXT("png") && Extension != TEXT("jpg") && Extension != TEXT("jpeg")) { continue; }
-
-            const int64 Bytes = IFileManager::Get().FileSize(*Path);
-            if (Bytes <= 0 || Bytes > 16 * 1024 * 1024) { continue; }
-
+            const FString Path = FPaths::Combine(Root, Image.Resource.RelativePath);
             auto Artwork = MakeShared<FBestiaryArtwork>();
-            Artwork->Texture.Reset(FImageUtils::ImportFileAsTexture2D(Path));
+            Artwork->Texture.Reset(Dnd5eBestiaryArtwork::LoadTexture(Path));
             if (!Artwork->Texture.IsValid()) { continue; }
 
             Artwork->Brush.SetResourceObject(Artwork->Texture.Get());

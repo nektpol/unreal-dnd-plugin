@@ -27,5 +27,10 @@ public class Dnd5eEditor : ModuleRules
 			"InputCore",
 			"EditorStyle",
 		});
+
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			PublicSystemLibraries.AddRange(new[] { "ole32.lib", "windowscodecs.lib" });
+		}
 	}
 }
